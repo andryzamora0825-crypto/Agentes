@@ -1,12 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { useUser } from "@clerk/nextjs";
 import VipGate from "@/components/VipGate";
 
+const FORMAT_OPTIONS = [
+  { id: 'square',     label: 'Cuadrado',       ratio: '1:1',   desc: 'Instagram Post',   icon: 'square' },
+  { id: 'vertical',   label: 'Vertical',        ratio: '9:16',  desc: 'Reels / Stories',   icon: 'phone' },
+  { id: 'horizontal', label: 'Horizontal',       ratio: '16:9',  desc: 'YouTube / PC',      icon: 'monitor' },
+  { id: 'portrait',   label: 'Retrato',          ratio: '4:5',   desc: 'Instagram Retrato', icon: 'rect-v' },
+  { id: 'landscape',  label: 'Paisaje',          ratio: '3:2',   desc: 'Publicidad / Web',  icon: 'rect-h' },
+  { id: 'whatsapp',   label: 'WhatsApp',         ratio: '1:1',   desc: 'Estado / Perfil',   icon: 'square' },
+];
+
 export default function EstudioIAPage() {
+  const { user, isLoaded } = useUser();
   const [prompt, setPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
   const [images, setImages] = useState<any[]>([]);
@@ -14,6 +25,11 @@ export default function EstudioIAPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [refImages, setRefImages] = useState<File[]>([]);
   const [lastModel, setLastModel] = useState<string | null>(null);
+  const [useAgencyIdentity, setUseAgencyIdentity] = useState(true);
+  const [imageFormat, setImageFormat] = useState('square');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
 
   const loadHistory = async () => {
@@ -33,6 +49,16 @@ export default function EstudioIAPage() {
   useEffect(() => {
     loadHistory();
   }, []);
+
+  // Leer estado por defecto si el usuario lo guardó en la Configuración
+  useEffect(() => {
+    if (isLoaded && user && user.publicMetadata?.aiSettings) {
+      const settings = user.publicMetadata.aiSettings as any;
+      if (settings.aiEnabled !== undefined) {
+        setUseAgencyIdentity(settings.aiEnabled);
+      }
+    }
+  }, [user, isLoaded]);
 
   const handleRefImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -54,9 +80,10 @@ export default function EstudioIAPage() {
     setErrorMsg(null);
     setLastModel(null);
     try {
-      // Usar FormData para enviar imágenes de referencia opcionales
       const fd = new FormData();
       fd.append("prompt", prompt);
+      fd.append("useAgencyIdentity", String(useAgencyIdentity));
+      fd.append("imageFormat", imageFormat);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
       const res = await fetch("/api/ai/generate", { method: "POST", body: fd });
@@ -101,6 +128,29 @@ export default function EstudioIAPage() {
     }
   };
 
+  const deleteImage = async (imageId: string) => {
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/ai/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImages(prev => prev.filter(img => img.id !== imageId));
+        setDeleteConfirm(null);
+      } else {
+        alert(data.error || "Error eliminando imagen.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al eliminar.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <VipGate>
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-10">
@@ -117,11 +167,9 @@ export default function EstudioIAPage() {
         <p className="text-gray-400 mt-2 text-lg">Escribe tu idea creativa y la IA la pintará en segundos — ahora con <span className="text-[#FFDE00] font-black">Nano Banana 🍌</span>.</p>
       </div>
 
-      {/* Máquina Generadora */}
-      <div className="bg-[#121212] rounded-3xl p-6 sm:p-8 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-white/5 relative overflow-hidden">
-         <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#FFDE00]/5 rounded-full blur-[100px] -z-10 translate-x-1/3 translate-y-1/3"></div>
-
-         {/* Model Badge */}
+      {/* Panel de Generación */}
+      <div className="bg-[#121212] rounded-3xl border border-white/5 p-5 sm:p-8 shadow-2xl">
+         {/* Indicador de Modelo Activo */}
          <div className="flex items-center gap-2 mb-5">
            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border transition-all ${
              refImages.length > 0
@@ -153,6 +201,55 @@ export default function EstudioIAPage() {
          )}
          
          <form onSubmit={handleGenerate} className="space-y-4">
+
+           {/* Switch de Identidad de Agencia */}
+           <div className="flex items-center justify-between bg-black/40 border border-[#FFDE00]/10 rounded-2xl p-4 cursor-pointer hover:bg-black/60 transition-colors" onClick={() => setUseAgencyIdentity(!useAgencyIdentity)}>
+             <div className="flex items-center gap-3">
+               <div className={`p-2 rounded-lg transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]/20 text-[#FFDE00]' : 'bg-white/5 text-gray-500'}`}>
+                 <Zap className="w-5 h-5" />
+               </div>
+               <div>
+                 <p className={`font-bold text-sm ${useAgencyIdentity ? 'text-white' : 'text-gray-400'}`}>Usar Identidad de mi Agencia</p>
+                 <p className="text-xs text-gray-500">Inyecta tus logos, colores y datos al prompt automáticamente.</p>
+               </div>
+             </div>
+             <div className={`w-12 h-6 rounded-full relative transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]' : 'bg-gray-700'}`}>
+               <div className={`absolute top-1 left-1 w-4 h-4 bg-black rounded-full transition-transform ${useAgencyIdentity ? 'translate-x-6' : 'translate-x-0'}`}></div>
+             </div>
+           </div>
+
+           {/* Selector de Formato de Imagen */}
+           <div>
+             <div className="flex items-center gap-2 mb-3">
+               <Monitor className="w-4 h-4 text-gray-500" />
+               <span className="text-xs text-gray-500 font-black uppercase tracking-widest">Formato de imagen</span>
+             </div>
+             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+               {FORMAT_OPTIONS.map((fmt) => {
+                 const selected = imageFormat === fmt.id;
+                 const IconEl = fmt.icon === 'monitor' ? Monitor : fmt.icon === 'phone' ? Smartphone : fmt.icon === 'rect-h' ? RectangleHorizontal : fmt.icon === 'rect-v' ? RectangleVertical : Square;
+                 return (
+                   <button
+                     key={fmt.id}
+                     type="button"
+                     onClick={() => setImageFormat(fmt.id)}
+                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-all ${
+                       selected
+                         ? 'bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00] shadow-[0_0_12px_rgba(255,222,0,0.15)]'
+                         : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'
+                     }`}
+                   >
+                     <IconEl className="w-5 h-5" />
+                     <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{fmt.label}</span>
+                     <span className={`text-[9px] font-mono ${selected ? 'text-[#FFDE00]/70' : 'text-gray-600'}`}>{fmt.ratio}</span>
+                   </button>
+                 );
+               })}
+             </div>
+             <p className="text-[10px] text-gray-600 mt-2 ml-1">
+               {FORMAT_OPTIONS.find(f => f.id === imageFormat)?.desc}
+             </p>
+           </div>
 
            {/* Prompt Textarea */}
            <div className="relative group">
@@ -251,7 +348,7 @@ export default function EstudioIAPage() {
                </div>
              )}
            </div>
-           
+            
            {/* Loader Detallado UI */}
            {generating && (
              <div className="flex items-center justify-center p-8 border border-white/10 rounded-2xl bg-black/50 overflow-hidden relative">
@@ -293,18 +390,35 @@ export default function EstudioIAPage() {
               <div className="relative aspect-square w-full bg-black flex items-center justify-center">
                 <img src={img.image_url} alt="IA Art" className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110 group-hover:opacity-60" />
                 
-                {/* Botón Flotante para Descargar */}
-                <button 
-                  onClick={() => forceDownload(img.image_url, `ecuabet_ia_${img.id.slice(0,6)}.png`)}
-                  className="absolute inset-x-0 bottom-6 mx-auto w-max bg-[#FFDE00] text-black font-black uppercase tracking-widest text-xs px-6 py-3 rounded-full flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all hover:bg-[#FFC107] hover:scale-105 cursor-pointer shadow-[0_0_20px_rgba(255,222,0,0.4)] z-20 translate-y-4 group-hover:translate-y-0"
-                >
-                  <Download className="w-4 h-4" /> Guardar HD
-                </button>
+                {/* Botones Flotantes al Hover */}
+                <div className="absolute inset-0 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-all z-20">
+                  <button 
+                    onClick={() => setLightboxUrl(img.image_url)}
+                    className="bg-white/90 hover:bg-white text-black p-3 rounded-full shadow-lg hover:scale-110 transition-all"
+                    title="Ver imagen completa"
+                  >
+                    <Eye className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => forceDownload(img.image_url, `ecuabet_ia_${img.id.slice(0,6)}.png`)}
+                    className="bg-[#FFDE00] hover:bg-[#FFC107] text-black p-3 rounded-full shadow-lg hover:scale-110 transition-all"
+                    title="Descargar HD"
+                  >
+                    <Download className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => setDeleteConfirm(img.id)}
+                    className="bg-red-500/90 hover:bg-red-500 text-white p-3 rounded-full shadow-lg hover:scale-110 transition-all"
+                    title="Eliminar imagen"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               <div className="p-5 bg-[#121212] flex-1 flex flex-col justify-between z-10 border-t border-white/5">
                 <p className="text-sm font-medium text-gray-300 line-clamp-3 italic leading-relaxed">
-                  "{img.prompt}"
+                  &quot;{img.prompt}&quot;
                 </p>
                 <div className="flex items-center justify-between mt-5 border-t border-white/10 pt-4">
                    <div className="flex items-center gap-2">
@@ -323,6 +437,62 @@ export default function EstudioIAPage() {
       )}
 
     </div>
+
+    {/* MODAL: Lightbox (Ver Imagen Completa) */}
+    {lightboxUrl && (
+      <div 
+        className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+        onClick={() => setLightboxUrl(null)}
+      >
+        <button 
+          className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors z-50"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <X className="w-6 h-6" />
+        </button>
+        <img 
+          src={lightboxUrl} 
+          alt="Vista completa" 
+          className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    )}
+
+    {/* MODAL: Confirmación de Eliminación */}
+    {deleteConfirm && (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="bg-[#1A1A1A] border border-white/10 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-red-500/20 p-2.5 rounded-xl">
+              <Trash2 className="w-6 h-6 text-red-400" />
+            </div>
+            <h3 className="text-lg font-black text-white">¿Eliminar esta imagen?</h3>
+          </div>
+          <p className="text-gray-400 text-sm mb-6">
+            Esta acción es permanente. La imagen será eliminada del servidor y no se podrá recuperar.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              disabled={deleting}
+              className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl font-bold text-sm border border-white/10 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => deleteImage(deleteConfirm)}
+              disabled={deleting}
+              className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {deleting ? "Eliminando..." : "Sí, Eliminar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </VipGate>
   );
 }

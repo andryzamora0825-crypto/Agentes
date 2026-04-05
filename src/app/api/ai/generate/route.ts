@@ -18,13 +18,17 @@ export async function POST(request: Request) {
     // Aceptar FormData (con imágenes de referencia opcionales) o JSON simple
     const contentType = request.headers.get("content-type") || "";
     let prompt = "";
+    let useAgencyIdentity = false;
+    let imageFormat = "square";
     let referenceImages: { base64: string; mimeType: string }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       prompt = formData.get("prompt") as string;
+      useAgencyIdentity = formData.get("useAgencyIdentity") === "true";
+      imageFormat = (formData.get("imageFormat") as string) || "square";
 
-      // Hasta 3 imágenes de referencia
+      // Hasta 3 imágenes de referencia directas desde el formulario
       for (let i = 0; i < 3; i++) {
         const file = formData.get(`ref_${i}`) as File | null;
         if (file) {
@@ -36,10 +40,58 @@ export async function POST(request: Request) {
     } else {
       const body = await request.json();
       prompt = body.prompt;
+      useAgencyIdentity = body.useAgencyIdentity === true;
+      imageFormat = body.imageFormat || "square";
     }
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Falta el prompt" }, { status: 400 });
+    }
+
+    // --- Mapeo de formatos a instrucciones de aspecto ---
+    const FORMAT_MAP: Record<string, string> = {
+      square:     "OBLIGATORIO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles. NO generes forma rectangular.",
+      vertical:   "OBLIGATORIO: La imagen DEBE ser VERTICAL MUY ALTA y ANGOSTA (9:16), como 768x1365 píxeles. La altura debe ser mucho mayor que el ancho. Formato tipo celular/Stories/Reels.",
+      horizontal: "OBLIGATORIO: La imagen DEBE ser HORIZONTAL MUY ANCHA y BAJA (16:9), como 1365x768 píxeles. El ancho debe ser mucho mayor que la altura. Formato tipo YouTube/pantalla de PC.",
+      portrait:   "OBLIGATORIO: La imagen DEBE ser VERTICAL tipo RETRATO (4:5), como 819x1024 píxeles. Ligeramente más alta que ancha. Formato Instagram Retrato.",
+      landscape:  "OBLIGATORIO: La imagen DEBE ser HORIZONTAL tipo PAISAJE (3:2), como 1024x683 píxeles. Más ancha que alta. Formato publicidad/web.",
+      whatsapp:   "OBLIGATORIO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles. Formato WhatsApp estado/perfil.",
+    };
+    const formatInstruction = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
+
+    // --- INYECCIÓN DE IDENTIDAD DE AGENCIA ---
+    let finalPrompt = `[INSTRUCCIÓN DE FORMATO CRÍTICA - MÁXIMA PRIORIDAD]: ${formatInstruction}\n\n${prompt}`;
+
+
+    if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
+      const aiSettings: any = user.publicMetadata.aiSettings;
+      
+      const agencyContext = `
+[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
+Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
+A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca:
+- Tono/Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
+- Colores representativos: Primario (${aiSettings.primaryColor || '#FFDE00'}), Secundario (${aiSettings.secondaryColor || '#000000'}). Refleja abundantemente estos colores en ropa, fondos, decoraciones o iluminación.
+- Contactos (añade creativamente a carteles/letreros si es orgánico): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.
+`;
+      finalPrompt = `${prompt}\n\n${agencyContext}`;
+
+      // Inyectar imágenes de marca pre-guardadas como referencias
+      const urlsToFetch = [aiSettings.agencyLogoUrl, aiSettings.inspLogoUrl, aiSettings.brandLogoUrl].filter(Boolean);
+      for (const url of urlsToFetch) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            referenceImages.push({ 
+              base64: Buffer.from(arrayBuffer).toString("base64"), 
+              mimeType: res.headers.get('content-type') || "image/png" 
+            });
+          }
+        } catch (e) {
+          console.error("Error trayendo imagen de agencia:", e);
+        }
+      }
     }
 
     // 1. Verificación Financiera
@@ -68,7 +120,7 @@ export async function POST(request: Request) {
       // Nano Banana 2 para generación pura de texto (más rápido)
       const model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
 
-      const contents: any[] = [{ text: prompt }];
+      const contents: any[] = [{ text: finalPrompt }];
       for (const img of referenceImages) {
         contents.push({
           inlineData: {
