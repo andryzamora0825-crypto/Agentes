@@ -1,0 +1,40 @@
+@import "tailwindcss";
+/* trigger rescan */@import "tailwindcss";
+
+@theme inline {
+  --color-ecuabet-blue: #0A0A0A; /* Now represents Dark Mode Base */
+  --color-ecuabet-yellow: #FFDE00;
+  --color-ecuabet-bg: #000000; /* Pure Black Background */
+  --color-surface: #121212; /* Cards background */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --background: #000000;
+  --foreground: #FFFFFF;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Scrollbar personalizado para Dark Mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 222, 0, 0.5);
+}
