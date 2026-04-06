@@ -38,3 +38,45 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 222, 0, 0.5);
 }
+
+/* Corrección de drag-to-scroll para iframes anidados (Bug de transform: scale en Blink/Chromium) */
+.ecuabet-frame {
+  transform-origin: top left;
+  transition: transform 0.3s;
+  width: 200%;
+  height: 200%;
+  transform: scale(0.5);
+}
+
+@media (min-width: 640px) {
+  .ecuabet-frame {
+    width: 150%;
+    height: 150%;
+    transform: scale(0.66);
+  }
+}
+
+@media (min-width: 1024px) {
+  .ecuabet-frame {
+    width: 170%;
+    height: 170%;
+    transform: scale(0.588);
+  }
+}
+
+@supports (zoom: 1) {
+  .ecuabet-frame {
+    transform: none !important;
+    zoom: 0.5;
+  }
+  @media (min-width: 640px) {
+    .ecuabet-frame {
+      zoom: 0.66;
+    }
+  }
+  @media (min-width: 1024px) {
+    .ecuabet-frame {
+      zoom: 0.588;
+    }
+  }
+}

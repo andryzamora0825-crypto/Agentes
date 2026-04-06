@@ -305,7 +305,7 @@ export default function DashboardPage() {
                <span className="text-gray-400 font-bold tracking-widest text-sm uppercase">Cargando Plataforma...</span>
             </div>
             {/* The actual scaled iframe */}
-            <div className="absolute top-0 left-0 z-10 origin-top-left w-[200%] h-[200%] scale-[0.5] sm:w-[150%] sm:h-[150%] sm:scale-[0.66] lg:w-[170%] lg:h-[170%] lg:scale-[0.588] transition-transform">
+            <div className="absolute top-0 left-0 z-10 ecuabet-frame">
               <iframe 
                 src="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" 
                 className="w-full h-full border-none bg-white"
