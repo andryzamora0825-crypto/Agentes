@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -135,16 +136,50 @@ Usa formato compatible con WhatsApp (puedes usar *negrita* o _cursiva_).
 No seas excesivamente robótico, mantén el tono de comportamiento indicado.
 `;
 
-    const chat = model.startChat({
-       history: [
-         { role: "user", parts: [{ text: systemPrompt }] },
-         { role: "model", parts: [{ text: "Entendido. Respondere basado en las reglas anteriores y el conocimiento limitado." }]}
-       ]
-    });
+    // A. Recuperar el historial reciente de este teléfono (Máximo últimos 10 mensajes)
+    const { data: pastMessages, error: historyError } = await supabase
+      .from('whatsapp_chats')
+      .select('role, content')
+      .eq('owner_id', uid)
+      .eq('phone_number', sender)
+      .order('created_at', { ascending: false })
+      .limit(10);
+      
+    if (historyError) {
+      console.error("[WEBHOOK] Error obteniendo historial:", historyError.message);
+    }
+    
+    // Invertimos el array porque vienen ordenados descendentemente por fecha para sacar los últimos 10
+    const chronologicalHistory = (pastMessages || []).reverse();
+
+    // B. Construir el historial compatible con Gemini
+    const chatHistory = [
+      { role: "user", parts: [{ text: systemPrompt }] },
+      { role: "model", parts: [{ text: "Entendido. Responderé basado en las reglas anteriores y el conocimiento limitado." }]}
+    ];
+
+    for (const msg of chronologicalHistory) {
+      chatHistory.push({
+        role: msg.role === 'model' ? 'model' : 'user', // Asegurar que sea 'user' o 'model'
+        parts: [{ text: msg.content }]
+      });
+    }
+
+    const chat = model.startChat({ history: chatHistory });
 
     const result = await chat.sendMessage(messageText);
     const aiResponse = result.response.text();
     console.log("[WEBHOOK] Respuesta IA generada:", aiResponse.substring(0, 150));
+
+    // C. Guardar la nueva conversación (User + Model) en la Base de Datos
+    const { error: insertError } = await supabase.from('whatsapp_chats').insert([
+      { owner_id: uid, phone_number: sender, role: 'user', content: messageText },
+      { owner_id: uid, phone_number: sender, role: 'model', content: aiResponse }
+    ]);
+    
+    if (insertError) {
+      console.error("[WEBHOOK] Error guardando nuevo chat:", insertError.message);
+    }
 
     // 5. Enviar Mensaje de Vuelta vía Green-API
     const cleanUrl = providerConfig.apiUrl.replace(/\/$/, "");
