@@ -237,6 +237,40 @@ export async function POST(request: Request) {
     }
 
     // =====================================================
+    // DEBOUNCE: Guardar mensaje AHORA, esperar rafága
+    // =====================================================
+    // Guardar el mensaje del usuario en la BD ANTES de esperar,
+    // así todos los mensajes de la rafága quedan registrados.
+    const { data: savedMsg } = await supabase
+      .from('whatsapp_chats')
+      .insert({ owner_id: uid, phone_number: sender, role: 'user', content: messageText })
+      .select('created_at')
+      .single();
+
+    const thisMsgTime = savedMsg?.created_at || new Date().toISOString();
+
+    // Esperar 4 segundos (debounce)
+    console.log(`[WEBHOOK] ⏳ Debounce: esperando 4s para ver si hay más mensajes en rafága...`);
+    await new Promise(resolve => setTimeout(resolve, 4000));
+
+    // Verificar si llegó un mensaje MÁS NUEVO de este mismo remitente
+    const { data: newerMessages } = await supabase
+      .from('whatsapp_chats')
+      .select('id')
+      .eq('owner_id', uid)
+      .eq('phone_number', sender)
+      .eq('role', 'user')
+      .gt('created_at', thisMsgTime)
+      .limit(1);
+
+    if (newerMessages && newerMessages.length > 0) {
+      console.log(`[WEBHOOK] ⏭️ Debounce: hay un mensaje más nuevo. Este handler se omite.`);
+      return NextResponse.json({ success: true, ignored: true, reason: "Debounce - rafága de mensajes" });
+    }
+
+    console.log(`[WEBHOOK] ✅ Debounce: este es el último mensaje. Generando respuesta...`);
+
+    // =====================================================
     // DETECCIÓN DE RECARGAS + CRUCE CON ESTAFADORES
     // =====================================================
     const rechargeKeywords = ['recarga', 'recargar', 'deposito', 'depositar', 'cargar', 'carga'];
@@ -365,9 +399,8 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
     const aiResponse = result.response.text();
     console.log("[WEBHOOK] Respuesta IA generada:", aiResponse.substring(0, 150));
 
-    // C. Guardar la nueva conversación (User + Model) en la Base de Datos
+    // C. Guardar SOLO la respuesta del modelo (el mensaje del usuario ya fue guardado antes del debounce)
     const { error: insertError } = await supabase.from('whatsapp_chats').insert([
-      { owner_id: uid, phone_number: sender, role: 'user', content: messageText },
       { owner_id: uid, phone_number: sender, role: 'model', content: aiResponse }
     ]);
     
