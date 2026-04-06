@@ -7,121 +7,61 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const geminiKey = process.env.GEMINI_API_KEY;
-const PAUSE_MINUTES = 10; // Minutos que el bot se pausa cuando el agente humano responde
+const PAUSE_MINUTES = 30; // Minutos que el bot se pausa cuando el agente humano responde
 
 export async function POST(request: Request) {
   console.log("[WEBHOOK] ========== NUEVA PETICIÓN ==========");
-  
+
   try {
     // 1. Obtener UID del query param
     const { searchParams } = new URL(request.url);
     const uid = searchParams.get("uid");
-    console.log("[WEBHOOK] uid:", uid);
-
     if (!uid) {
-      console.log("[WEBHOOK] ERROR: Missing uid");
       return NextResponse.json({ error: "Missing uid parameter" }, { status: 400 });
     }
 
     // 2. Extraer el Payload del Webhook (Green-API format)
     const payload = await request.json();
     const webhookType = payload.typeWebhook;
-    console.log("[WEBHOOK] typeWebhook:", webhookType);
+    console.log("[WEBHOOK] typeWebhook:", webhookType, "| uid:", uid);
 
     // =====================================================
-    // DETECCIÓN DE MENSAJE SALIENTE (El agente humano habló)
+    // IGNORAR TIPOS QUE NO NOS INTERESAN
     // =====================================================
-    if (webhookType === "outgoingMessage" || webhookType === "outgoingMessageReceived") {
-      // Para mensajes salientes, el chatId es el DESTINATARIO (hacia quien se envió)
-      // Green-API lo manda en diferentes campos según la versión:
-      const recipient = 
-        payload.senderData?.chatId ||
-        payload.chatId ||
-        payload.messageData?.chatId ||
-        null;
-
-      // Obtener el texto del mensaje para analizar si es un comando (#bot, #pausa)
-      const typeMessage = payload.messageData?.typeMessage;
-      let humanMsg = "";
-      if (typeMessage === "textMessage") {
-          humanMsg = payload.messageData?.textMessageData?.textMessage || "";
-      } else if (typeMessage === "extendedTextMessage") {
-          humanMsg = payload.messageData?.extendedTextMessageData?.text || "";
-      }
-
-      const lowerHumanMsg = humanMsg.trim().toLowerCase();
-      console.log(`[WEBHOOK] Mensaje SALIENTE detectado. Recipient: ${recipient}, Texto: "${humanMsg.substring(0,50)}"`);
-
-      // Ignorar si el destinatario es un grupo o no hay recipient
-      if (!recipient || recipient.includes("@g.us")) {
-        return NextResponse.json({ success: true, action: "outgoing_ignored_group" });
-      }
-
-      if (lowerHumanMsg === '#bot') {
-          await supabase.from('whatsapp_pauses').delete().eq('owner_id', uid).eq('phone_number', recipient);
-          console.log(`[WEBHOOK] 🤖 Bot REACTIVADO manualmente para ${recipient}`);
-          return NextResponse.json({ success: true, action: "bot_reactivated" });
-      }
-
-      let pauseMinutes = PAUSE_MINUTES;
-      if (lowerHumanMsg === '#pausa') {
-          pauseMinutes = PAUSE_MINUTES;
-      }
-
-      const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
-      
-      const { data: existingPause } = await supabase
-        .from('whatsapp_pauses')
-        .select('id')
-        .eq('owner_id', uid)
-        .eq('phone_number', recipient)
-        .maybeSingle();
-
-      if (existingPause) {
-        await supabase.from('whatsapp_pauses').update({ paused_until: pauseUntil }).eq('id', existingPause.id);
-      } else {
-        await supabase.from('whatsapp_pauses').insert({ owner_id: uid, phone_number: recipient, paused_until: pauseUntil });
-      }
-      
-      console.log(`[WEBHOOK] 🛑 Bot PAUSADO para ${recipient} por ${pauseMinutes} minutos.`);
-
-      // Registrar la intervención humana en el historial
-      const contentToSave = humanMsg || "[Intervención de Agente Humano]";
-      await supabase.from('whatsapp_chats').insert({
-        owner_id: uid, 
-        phone_number: recipient, 
-        role: 'agent', 
-        content: contentToSave
-      });
-
-      return NextResponse.json({ success: true, action: "pause_registered" });
-    }
-
-    // IGNORAR mensajes enviados por la API (el propio bot respondiendo)
+    // Ignorar mensajes salientes del bot enviados via API (evita loops infinitos)
     if (webhookType === "outgoingAPIMessageReceived") {
-        console.log("[WEBHOOK] Ignorado - Mensaje enviado por la API (Bot).");
-        return NextResponse.json({ success: true, ignored: true, reason: "Mensaje propio del bot" });
+      return NextResponse.json({ success: true, ignored: true, reason: "Mensaje propio del bot" });
     }
 
-    // =====================================================
-    // SOLO PROCESAMOS MENSAJES ENTRANTES
-    // =====================================================
+    // Solo procesamos mensajes entrantes de chat (texto del cliente)
     if (webhookType !== "incomingMessageReceived") {
-      console.log("[WEBHOOK] Ignorado - no es incomingMessageReceived");
-      return NextResponse.json({ success: true, ignored: true });
+      console.log("[WEBHOOK] Ignorado - tipo no procesable:", webhookType);
+      return NextResponse.json({ success: true, ignored: true, reason: "Tipo no procesable" });
     }
 
-    // Extraer datos clave
-    const sender = payload.senderData?.sender;
-    const senderName = payload.senderData?.senderName || "Cliente";
-    
+    // =====================================================
+    // EXTRAER DATOS CLAVE DEL MENSAJE ENTRANTE
+    // =====================================================
+    const sender: string = payload.senderData?.sender || "";
+    const senderName: string = payload.senderData?.senderName || "Cliente";
+    const messageId: string = payload.idMessage || "";
+
     // Ignorar mensajes propios o de grupos
-    if (sender === payload.instanceData?.wid || sender?.includes("@g.us")) {
-      console.log("[WEBHOOK] Ignorado - mensaje propio o grupo");
+    if (!sender || sender.includes("@g.us") || sender === payload.instanceData?.wid) {
       return NextResponse.json({ success: true, ignored: true, reason: "Mensaje propio o grupo" });
     }
 
-    // Detectar tipo de mensaje (no retornar aún - necesitamos config para responder amablemente)
+    // Ignorar mensajes viejos (más de 2 minutos, posibles webhooks retenidos por Vercel)
+    const msgTimestamp: number = payload.messageData?.timestamp || payload.timestamp || 0;
+    if (msgTimestamp) {
+      const msgAge = Date.now() / 1000 - msgTimestamp;
+      if (msgAge > 120) {
+        console.log(`[WEBHOOK] ⏭️ Ignorado por antiguo (${Math.round(msgAge)}s de edad)`);
+        return NextResponse.json({ success: true, ignored: true, reason: "Mensaje retenido/viejo" });
+      }
+    }
+
+    // Extraer texto del mensaje
     const typeMessage = payload.messageData?.typeMessage;
     let messageText = "";
     let isNonTextMessage = false;
@@ -132,297 +72,254 @@ export async function POST(request: Request) {
       messageText = payload.messageData?.extendedTextMessageData?.text || "";
     } else {
       isNonTextMessage = true;
-      console.log("[WEBHOOK] Tipo de mensaje no-texto:", typeMessage);
     }
 
     if (!messageText && !isNonTextMessage) {
-      console.log("[WEBHOOK] Ignorado - mensaje vacío");
       return NextResponse.json({ success: true, ignored: true, reason: "Mensaje vacío" });
     }
 
-    console.log("[WEBHOOK] Mensaje recibido de", senderName, ":", messageText.substring(0, 100));
+    console.log(`[WEBHOOK] Mensaje de ${senderName} (${sender}): "${messageText.substring(0, 80)}"`);
 
     // =====================================================
-    // IGNORAR MENSAJES VIEJOS / RETENIDOS (más de 2 min)
+    // ANTI-DUPLICADOS: Idempotency Key por messageId
+    // Si este messageId ya fue procesado, ignorar inmediatamente.
+    // Protege contra retries de Vercel y envíos dobles de Green API.
     // =====================================================
-    const msgTimestamp = payload.messageData?.timestamp || payload.timestamp;
-    if (msgTimestamp) {
-      const msgAge = Date.now() / 1000 - msgTimestamp;
-      if (msgAge > 120) { // Más de 2 minutos de antigüedad
-        console.log(`[WEBHOOK] ⏭️ Mensaje IGNORADO por antiguo (${Math.round(msgAge)}s de edad)`);
-        return NextResponse.json({ success: true, ignored: true, reason: "Mensaje retenido/viejo ignorado" });
+    if (messageId) {
+      // Intentar insertar — si ya existe lanzará un error de duplicate key
+      const { error: dedupError } = await supabase
+        .from("whatsapp_processed_messages")
+        .insert({ message_id: messageId });
+
+      if (dedupError) {
+        // El código 23505 es "unique_violation" en Postgres
+        if (dedupError.code === "23505") {
+          console.log(`[WEBHOOK] ⏭️ DUPLICADO ignorado. messageId ya procesado: ${messageId}`);
+          return NextResponse.json({ success: true, ignored: true, reason: "Mensaje duplicado" });
+        }
+        // Otro error de BD — continuar igual (la idempotencia es best-effort)
+        console.warn("[WEBHOOK] Advertencia en dedup:", dedupError.message);
       }
     }
 
     // =====================================================
-    // COMANDOS ESPECIALES DEL AGENTE (desde el propio WhatsApp)
+    // CARGAR CONFIGURACIÓN DEL AGENTE EN CLERK
     // =====================================================
-    const lowerMsg = messageText.trim().toLowerCase();
-    
-    // #pausa → Pausar bot 1 hora para todos los clientes de este agente
-    // #bot → Reactivar bot (borrar pausa para este número)
-    // Nota: estos comandos los enviaría el cliente, pero realmente
-    // el agente los usa desde su propio teléfono vía outgoing.
-    // Sin embargo, si el agente quiere pausar DESDE el chat,
-    // estos comandos se pueden activar también.
-
-    // =====================================================
-    // 3. BUSCAR CONFIGURACIÓN DEL USUARIO EN CLERK
-    // =====================================================
-    console.log("[WEBHOOK] Buscando usuario en Clerk con uid:", uid);
+    console.log("[WEBHOOK] Buscando usuario en Clerk:", uid);
     const client = await clerkClient();
     const user = await client.users.getUser(uid);
-    
-    if (!user) {
-      console.log("[WEBHOOK] ERROR: Usuario no encontrado en Clerk");
-      throw new Error("Usuario no encontrado");
-    }
-    console.log("[WEBHOOK] Usuario encontrado:", user.primaryEmailAddress?.emailAddress);
+
+    if (!user) throw new Error("Usuario no encontrado en Clerk");
 
     const settings = user.publicMetadata?.whatsappSettings as any;
-    
+
     if (!settings || !settings.isActive) {
-      console.log("[WEBHOOK] Ignorado - El Agente IA está apagado o no configurado");
-      return NextResponse.json({ success: true, ignored: true, reason: "El Agente IA está apagado o no configurado" });
+      return NextResponse.json({ success: true, ignored: true, reason: "Agente IA desactivado" });
     }
 
-    // Extraer Configuración
     const { providerConfig, aiPersona, knowledgeBase } = settings;
     if (!providerConfig?.apiUrl || !providerConfig?.idInstance || !providerConfig?.apiTokenInstance) {
-      console.log("[WEBHOOK] ERROR: API de telefonía no configurada");
-      return NextResponse.json({ success: true, ignored: true, reason: "API de telefonía no configurada" });
+      return NextResponse.json({ success: true, ignored: true, reason: "API telefonía no configurada" });
     }
 
-    // Helper: enviar mensaje de WhatsApp con retry y timeout
     const waBaseUrl = providerConfig.apiUrl.replace(/\/$/, "");
-    const waSendEndpoint = `${waBaseUrl}/waInstance${providerConfig.idInstance}/sendMessage/${providerConfig.apiTokenInstance}`;
-    
+
+    // Helper: enviar mensaje de WhatsApp (con 2 intentos)
     const sendWAMessage = async (message: string): Promise<boolean> => {
+      const endpoint = `${waBaseUrl}/waInstance${providerConfig.idInstance}/sendMessage/${providerConfig.apiTokenInstance}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const res = await fetch(waSendEndpoint, {
+          const res = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ chatId: sender, message }),
-            signal: AbortSignal.timeout(12000) // 12s timeout por intento
+            signal: AbortSignal.timeout(12000),
           });
           if (res.ok) return true;
           console.warn(`[WEBHOOK] Green-API intento ${attempt + 1} falló: ${res.status}`);
         } catch (e: any) {
           console.warn(`[WEBHOOK] Green-API intento ${attempt + 1} excepción: ${e.message}`);
         }
-        if (attempt === 0) await new Promise(r => setTimeout(r, 2500));
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 2500));
       }
       return false;
     };
 
-    // === MANEJO DE MENSAJES NO-TEXTO (imágenes, audio, stickers, etc.) ===
+    // =====================================================
+    // COMANDOS ESPECIALES #pause / #bot
+    // El AGENTE los envía desde su propio teléfono al cliente.
+    // Como los webhooks "outgoing from phone" pueden no estar activos,
+    // la alternativa es que el agente envíe el comando en un chat con
+    // su propio número (self-chat), o bien lo reconocemos si viene
+    // del wid de la instancia.
+    // NUEVO: También detectamos si el mensaje entrante proviene del
+    // número del propio agente (el wid de la instancia de Green API).
+    // Green API a veces enruta esos mensajes como "incomingMessageReceived"
+    // cuando el agente escribe desde otro teléfono conectado a la misma cuenta.
+    // =====================================================
+    const instanceWid: string = payload.instanceData?.wid || "";
+    const isFromAgent = sender === instanceWid || sender.replace("@c.us", "") === instanceWid.replace("@c.us", "");
+    const lowerMsg = messageText.trim().toLowerCase();
+
+    if (isFromAgent) {
+      // Comandos del propio agente
+      if (lowerMsg === "#bot") {
+        await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid);
+        console.log(`[WEBHOOK] 🤖 Bot REACTIVADO globalmente por el agente`);
+        return NextResponse.json({ success: true, action: "bot_reactivated_global" });
+      }
+      if (lowerMsg.startsWith("#pause") || lowerMsg === "#pausa") {
+        // #pause o #pause 60 (minutos opcionales)
+        const parts = lowerMsg.split(" ");
+        const customMin = parts[1] ? parseInt(parts[1]) : PAUSE_MINUTES;
+        const minutes = isNaN(customMin) ? PAUSE_MINUTES : customMin;
+        const pauseUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+        // Pausa global: borra todas las pausas de este agente e inserta una para ""
+        await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", "GLOBAL");
+        await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: "GLOBAL", paused_until: pauseUntil });
+        console.log(`[WEBHOOK] 🛑 Bot PAUSADO globalmente por ${minutes} minutos.`);
+        return NextResponse.json({ success: true, action: "bot_paused_global" });
+      }
+      // Mensaje normal del agente (no es comando) → ignorar para no auto-responderse
+      return NextResponse.json({ success: true, ignored: true, reason: "Mensaje del propio agente" });
+    }
+
+    // =====================================================
+    // VERIFICAR PAUSA GLOBAL O POR NÚMERO
+    // =====================================================
+    // Pausa global
+    const { data: globalPause } = await supabase
+      .from("whatsapp_pauses")
+      .select("paused_until")
+      .eq("owner_id", uid)
+      .eq("phone_number", "GLOBAL")
+      .maybeSingle();
+
+    if (globalPause?.paused_until && new Date(globalPause.paused_until) > new Date()) {
+      const minutesLeft = Math.ceil((new Date(globalPause.paused_until).getTime() - Date.now()) / 60000);
+      console.log(`[WEBHOOK] 🛑 Bot pausado GLOBALMENTE — quedan ${minutesLeft} min.`);
+      return NextResponse.json({ success: true, ignored: true, reason: `Bot pausado globalmente. Reanuda en ${minutesLeft} min.` });
+    }
+
+    // Pausa por número específico
+    const { data: pauseData } = await supabase
+      .from("whatsapp_pauses")
+      .select("paused_until")
+      .eq("owner_id", uid)
+      .eq("phone_number", sender)
+      .maybeSingle();
+
+    if (pauseData?.paused_until && new Date(pauseData.paused_until) > new Date()) {
+      const minutesLeft = Math.ceil((new Date(pauseData.paused_until).getTime() - Date.now()) / 60000);
+      console.log(`[WEBHOOK] 🛑 Bot pausado para ${sender} — quedan ${minutesLeft} min.`);
+      return NextResponse.json({ success: true, ignored: true, reason: `Bot pausado para este número. Reanuda en ${minutesLeft} min.` });
+    }
+
+    // =====================================================
+    // MENSAJES NO-TEXTO (imágenes, audio, etc.)
+    // =====================================================
     if (isNonTextMessage) {
-      console.log("[WEBHOOK] Mensaje no-texto, enviando respuesta amigable.");
-      const nonTextReply = "🤖 Solo puedo responder *mensajes de texto*. Si necesitas ayuda, escríbeme tu consulta y con gusto te atiendo.";
-      await sendWAMessage(nonTextReply);
+      await sendWAMessage("🤖 Solo puedo responder *mensajes de texto*. Si necesitas ayuda, escríbeme tu consulta.");
       return NextResponse.json({ success: true, action: "non_text_reply_sent" });
     }
 
     // =====================================================
-    // VERIFICAR SI EL BOT ESTÁ PAUSADO PARA ESTE NÚMERO
+    // GUARDAR MENSAJE DEL CLIENTE EN HISTORIAL
     // =====================================================
-    // Medida 1: Usar maybeSingle() para evitar caídas si no hay registros
-    const { data: pauseData } = await supabase
-      .from('whatsapp_pauses')
-      .select('paused_until')
-      .eq('owner_id', uid)
-      .eq('phone_number', sender)
-      .maybeSingle();
-
-    if (pauseData?.paused_until) {
-      const pausedUntil = new Date(pauseData.paused_until);
-      if (pausedUntil > new Date()) {
-        const minutesLeft = Math.ceil((pausedUntil.getTime() - Date.now()) / 60000);
-        console.log(`[WEBHOOK] 🛑 Bot PAUSADO para ${sender} — quedan ${minutesLeft} min. El agente humano está atendiendo.`);
-        return NextResponse.json({ 
-          success: true, 
-          ignored: true, 
-          reason: `Bot pausado por agente humano. Reanuda en ${minutesLeft} min.` 
-        });
-      }
-    }
-
-    // Medida 2: Redundancia - Verificar el historial reciente en whatsapp_chats
-    const tenMinutesAgo = new Date(Date.now() - PAUSE_MINUTES * 60 * 1000).toISOString();
-    const { data: recentAgentMessage } = await supabase
-      .from('whatsapp_chats')
-      .select('created_at')
-      .eq('owner_id', uid)
-      .eq('phone_number', sender)
-      .eq('role', 'agent')
-      .gte('created_at', tenMinutesAgo)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (recentAgentMessage) {
-       console.log(`[WEBHOOK] 🛑 Bot PAUSADO por medida redundante (Historial reciente del agente).`);
-       return NextResponse.json({ 
-          success: true, 
-          ignored: true, 
-          reason: `Bot pausado por intervención reciente en historial.` 
-       });
-    }
-
-    // =====================================================
-    // DEBOUNCE: Guardar mensaje AHORA, esperar rafága
-    // =====================================================
-    // Guardar el mensaje del usuario en la BD ANTES de esperar,
-    // así todos los mensajes de la rafága quedan registrados.
-    const { data: savedMsg } = await supabase
-      .from('whatsapp_chats')
-      .insert({ owner_id: uid, phone_number: sender, role: 'user', content: messageText })
-      .select('created_at')
-      .single();
-
-    const thisMsgTime = savedMsg?.created_at || new Date().toISOString();
-
-    // Esperar 4 segundos (debounce)
-    console.log(`[WEBHOOK] ⏳ Debounce: esperando 4s para ver si hay más mensajes en rafága...`);
-    await new Promise(resolve => setTimeout(resolve, 4000));
-
-    // Verificar si llegó un mensaje MÁS NUEVO de este mismo remitente
-    const { data: newerMessages } = await supabase
-      .from('whatsapp_chats')
-      .select('id')
-      .eq('owner_id', uid)
-      .eq('phone_number', sender)
-      .eq('role', 'user')
-      .gt('created_at', thisMsgTime)
-      .limit(1);
-
-    if (newerMessages && newerMessages.length > 0) {
-      console.log(`[WEBHOOK] ⏭️ Debounce: hay un mensaje más nuevo. Este handler se omite.`);
-      return NextResponse.json({ success: true, ignored: true, reason: "Debounce - rafága de mensajes" });
-    }
-
-    console.log(`[WEBHOOK] ✅ Debounce: este es el último mensaje. Generando respuesta...`);
-
-    // Enviar indicador de escritura (⋯) para UX inmediata
-    try {
-      await fetch(`${waBaseUrl}/waInstance${providerConfig.idInstance}/sendAction/${providerConfig.apiTokenInstance}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId: sender, action: "typing" }),
-        signal: AbortSignal.timeout(5000)
-      });
-    } catch {
-      // Ignorar: el indicador de escritura es opcional, no crítico
-    }
+    await supabase.from("whatsapp_chats").insert({
+      owner_id: uid,
+      phone_number: sender,
+      role: "user",
+      content: messageText,
+    });
 
     // =====================================================
     // DETECCIÓN DE RECARGAS + CRUCE CON ESTAFADORES
     // =====================================================
-    const rechargeKeywords = ['recarga', 'recargar', 'deposito', 'depositar', 'cargar', 'carga'];
-    const lowerMessage = messageText.toLowerCase();
-    const isRechargeRequest = rechargeKeywords.some(kw => lowerMessage.includes(kw));
-    
-    // Extraer monto si existe (busca patrones como $15, 15 usd, 15 dólares, 15 dolares, etc.)
+    const rechargeKeywords = ["recarga", "recargar", "deposito", "depositar", "cargar", "carga"];
+    const isRechargeRequest = rechargeKeywords.some((kw) => messageText.toLowerCase().includes(kw));
     const amountMatch = messageText.match(/\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:usd|USD|dolar|dólares|dolares)?/);
     const detectedAmount = amountMatch ? parseFloat(amountMatch[1]) : null;
 
     if (isRechargeRequest) {
-      // Cruzar número con base de datos de estafadores
-      const cleanPhone = sender.replace('@c.us', '');
+      const cleanPhone = sender.replace("@c.us", "");
       const { data: scammerData } = await supabase
-        .from('scammers')
-        .select('id, name')
+        .from("scammers")
+        .select("id")
         .or(`phone_number.eq.${cleanPhone},phone_number.eq.0${cleanPhone.slice(-10)},phone_number.eq.593${cleanPhone.slice(-10)}`)
         .limit(1);
 
       const isScammer = scammerData && scammerData.length > 0;
 
       if (isScammer) {
-        console.log(`[WEBHOOK] 🚨 ESTAFADOR DETECTADO: ${sender} intentó recargar`);
-        
-        // Registrar intento de recarga como rechazado
-        await supabase.from('whatsapp_recargas').insert({
-          owner_id: uid,
-          phone_number: sender,
-          client_name: senderName,
-          amount: detectedAmount,
-          status: 'rejected',
-          is_scammer: true
-        });
-
-        // Enviar mensaje de rechazo
-        const rejectMsg = "Lo sentimos, no podemos procesar su solicitud en este momento. Para más información, comuníquese directamente con soporte.";
-        const cleanUrl = providerConfig.apiUrl.replace(/\/$/, "");
-        const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMessage/${providerConfig.apiTokenInstance}`;
-        
-        await fetch(sendEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatId: sender, message: rejectMsg })
-        });
-
+        console.log(`[WEBHOOK] 🚨 ESTAFADOR DETECTADO: ${sender}`);
+        await supabase.from("whatsapp_recargas").insert({ owner_id: uid, phone_number: sender, client_name: senderName, amount: detectedAmount, status: "rejected", is_scammer: true });
+        await sendWAMessage("Lo sentimos, no podemos procesar su solicitud en este momento. Para más información, comuníquese directamente con soporte.");
         return NextResponse.json({ success: true, action: "scammer_rejected" });
       }
 
-      // No es estafador → registrar recarga como pendiente
-      await supabase.from('whatsapp_recargas').insert({
-        owner_id: uid,
-        phone_number: sender,
-        client_name: senderName,
-        amount: detectedAmount,
-        status: 'pending',
-        is_scammer: false
-      });
-      console.log(`[WEBHOOK] 💰 Recarga pendiente registrada: ${senderName} - $${detectedAmount || '?'}`);
+      await supabase.from("whatsapp_recargas").insert({ owner_id: uid, phone_number: sender, client_name: senderName, amount: detectedAmount, status: "pending", is_scammer: false });
+      console.log(`[WEBHOOK] 💰 Recarga pendiente: ${senderName} - $${detectedAmount || "?"}`);
     }
 
     // =====================================================
-    // 4. PROCESAR RESPUESTA CON GEMINI IA (con retry)
+    // INDICADOR DE ESCRITURA (UX)
+    // =====================================================
+    try {
+      await fetch(`${waBaseUrl}/waInstance${providerConfig.idInstance}/sendAction/${providerConfig.apiTokenInstance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId: sender, action: "typing" }),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch { /* No crítico */ }
+
+    // =====================================================
+    // GENERAR RESPUESTA CON GEMINI IA
     // =====================================================
     if (!geminiKey) {
-      await sendWAMessage("🤖 El asistente tiene un problema de configuración. Por favor contacta a soporte.");
+      await sendWAMessage("🤖 El asistente tiene un problema de configuración. Contacta a soporte.");
       return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
     }
 
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+      generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
     });
 
     const systemPrompt = `Eres un asistente de Inteligencia Artificial respondiendo a clientes vía WhatsApp.
 Tus instrucciones de comportamiento e identidad son:
 ${aiPersona}
 
-A continuación tienes tu Base de Conocimiento (reglas, enlaces útiles, precios, políticas), usa SOLO esta información si se te pregunta algo relacionado. Si te preguntan algo fuera de este conocimiento, deriva amablemente a soporte humano.
-BASE DE CONOCIMIENTO:
+BASE DE CONOCIMIENTO (usa SOLO este conocimiento para consultas relacionadas. Si te preguntan algo fuera, deriva amablemente a soporte humano):
 ${knowledgeBase}
 
-El usuario que te escribe se llama: ${senderName}.
-Usa formato compatible con WhatsApp (puedes usar *negrita* o _cursiva_).
-No seas excesivamente robótico, mantén el tono de comportamiento indicado.`;
+El cliente se llama: ${senderName}.
+Usa formato compatible con WhatsApp (*negrita*, _cursiva_). Respuestas cortas y directas.
+IMPORTANTE: Responde SOLO con el mensaje para el cliente, sin comentarios ni meta-textos.`;
 
-    // Recuperar historial (incluye todos los mensajes de la rafága)
+    // Recuperar historial reciente
     const { data: pastMessages } = await supabase
-      .from('whatsapp_chats')
-      .select('role, content')
-      .eq('owner_id', uid)
-      .eq('phone_number', sender)
-      .order('created_at', { ascending: false })
-      .limit(12);
+      .from("whatsapp_chats")
+      .select("role, content")
+      .eq("owner_id", uid)
+      .eq("phone_number", sender)
+      .order("created_at", { ascending: false })
+      .limit(10);
 
     const chronologicalHistory = (pastMessages || []).reverse();
 
-    const chatHistory = [
+    const chatHistory: any[] = [
       { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Entendido. Responderé basado en las reglas anteriores y el conocimiento limitado." }]}
+      { role: "model", parts: [{ text: "Entendido. Responderé según las instrucciones anteriores." }] },
     ];
+
     for (const msg of chronologicalHistory) {
-      if (msg.role === 'agent') continue; // omitir mensajes del agente humano del contexto
+      if (msg.role === "agent") continue; // Omitir mensajes del agente humano
       chatHistory.push({
-        role: msg.role === 'model' ? 'model' : 'user',
-        parts: [{ text: msg.content }]
+        role: msg.role === "model" ? "model" : "user",
+        parts: [{ text: msg.content }],
       });
     }
 
@@ -434,71 +331,52 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.`;
       try {
         const chat = model.startChat({ history: chatHistory });
         const result = await chat.sendMessage(messageText);
-
-        // Detectar bloqueo por filtros de seguridad de Gemini
         const finishReason = result.response?.candidates?.[0]?.finishReason;
-        if (finishReason === 'SAFETY' || finishReason === 'OTHER') {
-          console.warn(`[WEBHOOK] Gemini bloqueó respuesta (${finishReason})`);
+        if (finishReason === "SAFETY" || finishReason === "OTHER") {
           aiResponse = "Lo siento, no puedo responder esa consulta. Por favor contáctate directamente con soporte.";
           break;
         }
-
         const candidate = result.response.text()?.trim();
-        if (candidate) {
-          aiResponse = candidate;
-          break;
-        }
-
+        if (candidate) { aiResponse = candidate; break; }
         console.warn(`[WEBHOOK] Gemini intento ${attempt + 1}: respuesta vacía`);
       } catch (gemErr: any) {
         console.error(`[WEBHOOK] Gemini ERROR intento ${attempt + 1}:`, gemErr.message);
       }
-      if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
     }
 
-    if (!aiResponse) {
-      console.error("[WEBHOOK] Gemini falló en todos los intentos. Enviando fallback.");
-      aiResponse = FALLBACK_MSG;
-    }
+    if (!aiResponse) aiResponse = FALLBACK_MSG;
 
-    console.log("[WEBHOOK] Respuesta IA generada:", aiResponse.substring(0, 150));
+    console.log("[WEBHOOK] Respuesta IA:", aiResponse.substring(0, 150));
 
     // Guardar respuesta del modelo en BD
-    await supabase.from('whatsapp_chats').insert([
-      { owner_id: uid, phone_number: sender, role: 'model', content: aiResponse }
-    ]);
+    await supabase.from("whatsapp_chats").insert({
+      owner_id: uid,
+      phone_number: sender,
+      role: "model",
+      content: aiResponse,
+    });
 
-    // Enviar respuesta vía Green-API (con retry)
-    console.log("[WEBHOOK] Enviando respuesta vía Green-API a:", sender);
+    // Enviar respuesta vía Green-API
     const sent = await sendWAMessage(aiResponse);
-
     if (!sent) {
-      console.error("[WEBHOOK] ❌ Green-API falló en todos los intentos. Respuesta NO enviada al cliente.");
+      console.error("[WEBHOOK] ❌ Green-API falló. Respuesta NO enviada.");
       return NextResponse.json({ success: false, error: "Green-API no disponible" }, { status: 503 });
     }
 
-    console.log("[WEBHOOK] ✅ Mensaje respondido exitosamente");
-    return NextResponse.json({ success: true, message: "Mensaje respondido con IA correctamente." });
+    console.log("[WEBHOOK] ✅ Respondido exitosamente");
+    return NextResponse.json({ success: true, message: "Mensaje respondido con IA." });
 
   } catch (error: any) {
     console.error("[WEBHOOK] ❌ ERROR GENERAL:", error.message || String(error));
-    // Intentar notificar al cliente del error (best effort, sin await para no colgar)
-    try {
-      const errPayload = await request.json().catch(() => ({}));
-      const errSender = errPayload?.senderData?.sender;
-      if (errSender) {
-        // No podemos enviar sin config, solo logueamos
-        console.error("[WEBHOOK] No se pudo notificar al cliente del error (config no disponible).");
-      }
-    } catch {}
-    return NextResponse.json({ error: "Error procesando webhook", details: error.message || String(error) }, { status: 500 });
+    return NextResponse.json({ error: "Error procesando webhook", details: error.message }, { status: 500 });
   }
 }
 
 // GET para verificar que el endpoint está vivo
 export async function GET() {
-  return NextResponse.json({ 
-    status: "ok", 
+  return NextResponse.json({
+    status: "ok",
     timestamp: new Date().toISOString(),
     geminiKeyPresent: !!process.env.GEMINI_API_KEY,
     clerkKeyPresent: !!process.env.CLERK_SECRET_KEY,
