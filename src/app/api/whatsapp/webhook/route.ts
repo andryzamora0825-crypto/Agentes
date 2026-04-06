@@ -2,39 +2,50 @@ import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Inicializa Gemini (asegúrate de que en el .env coincida el nombre de la variable de entorno)
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+// DIAGNOSTIC: verificar que la key existe al cargar el módulo
+const geminiKey = process.env.GEMINI_API_KEY;
+console.log("[WEBHOOK MODULE LOAD] GEMINI_API_KEY present:", !!geminiKey);
 
 export async function POST(request: Request) {
+  console.log("[WEBHOOK] ========== NUEVA PETICIÓN ==========");
+  
   try {
-    // 1. Validar el destino y la URL (Buscamos el User ID)
+    // 1. Obtener UID del query param
     const { searchParams } = new URL(request.url);
     const uid = searchParams.get("uid");
+    console.log("[WEBHOOK] uid:", uid);
 
     if (!uid) {
+      console.log("[WEBHOOK] ERROR: Missing uid");
       return NextResponse.json({ error: "Missing uid parameter" }, { status: 400 });
     }
 
     // 2. Extraer el Payload del Webhook (Green-API format)
     const payload = await request.json();
+    console.log("[WEBHOOK] typeWebhook:", payload.typeWebhook);
+    console.log("[WEBHOOK] sender:", payload.senderData?.sender);
+    console.log("[WEBHOOK] typeMessage:", payload.messageData?.typeMessage);
 
     // Validar si es una notificación de mensaje entrante
     if (payload.typeWebhook !== "incomingMessageReceived") {
-      // Respondemos OK para otras notificaciones (estado de mensaje, device status, etc) para que Green API no intente reenviar.
+      console.log("[WEBHOOK] Ignorado - no es incomingMessageReceived");
       return NextResponse.json({ success: true, ignored: true });
     }
 
     // Extraer datos clave
-    const sender = payload.senderData?.sender; // ej. 1234567890@c.us
+    const sender = payload.senderData?.sender;
     const senderName = payload.senderData?.senderName || "Cliente";
     
-    // Ignorar si el mensaje fue enviado por el propio bot/usuario desde el celular (evitar loop infinito)
-    // O ignorar si proviene de un grupo (@g.us)
+    // Ignorar mensajes propios o de grupos
     if (sender === payload.instanceData?.wid || sender?.includes("@g.us")) {
-       return NextResponse.json({ success: true, ignored: true, reason: "Mensaje propio o grupo" });
+      console.log("[WEBHOOK] Ignorado - mensaje propio o grupo");
+      return NextResponse.json({ success: true, ignored: true, reason: "Mensaje propio o grupo" });
     }
 
-    // Obtener texto. Green API puede enviar texto o extended text (si tiene link)
+    // Obtener texto
     const typeMessage = payload.messageData?.typeMessage;
     let messageText = "";
 
@@ -43,33 +54,66 @@ export async function POST(request: Request) {
     } else if (typeMessage === "extendedTextMessage") {
       messageText = payload.messageData?.extendedTextMessageData?.text;
     } else {
-      // Ignorar audios, imágenes, stickers por ahora
+      console.log("[WEBHOOK] Ignorado - tipo de mensaje no soportado:", typeMessage);
       return NextResponse.json({ success: true, ignored: true, reason: "No es un mensaje de texto" });
     }
 
     if (!messageText) {
+      console.log("[WEBHOOK] Ignorado - mensaje vacío");
       return NextResponse.json({ success: true, ignored: true, reason: "Mensaje vacío" });
     }
 
+    console.log("[WEBHOOK] Mensaje recibido de", senderName, ":", messageText.substring(0, 100));
+
     // 3. Buscar la configuración del usuario en Clerk
+    console.log("[WEBHOOK] Buscando usuario en Clerk con uid:", uid);
     const client = await clerkClient();
     const user = await client.users.getUser(uid);
-    if (!user) throw new Error("Usuario no encontrado");
+    
+    if (!user) {
+      console.log("[WEBHOOK] ERROR: Usuario no encontrado en Clerk");
+      throw new Error("Usuario no encontrado");
+    }
+    console.log("[WEBHOOK] Usuario encontrado:", user.primaryEmailAddress?.emailAddress);
 
     const settings = user.publicMetadata?.whatsappSettings as any;
+    console.log("[WEBHOOK] Settings:", JSON.stringify({
+      isActive: settings?.isActive,
+      isUnlocked: settings?.isUnlocked,
+      hasProviderConfig: !!settings?.providerConfig,
+      hasApiUrl: !!settings?.providerConfig?.apiUrl,
+      hasIdInstance: !!settings?.providerConfig?.idInstance,
+      hasToken: !!settings?.providerConfig?.apiTokenInstance,
+      hasPersona: !!settings?.aiPersona,
+      hasKnowledge: !!settings?.knowledgeBase
+    }));
     
     if (!settings || !settings.isActive) {
+      console.log("[WEBHOOK] Ignorado - El Agente IA está apagado o no configurado");
       return NextResponse.json({ success: true, ignored: true, reason: "El Agente IA está apagado o no configurado" });
     }
 
     // Extraer Configuración
     const { providerConfig, aiPersona, knowledgeBase } = settings;
     if (!providerConfig?.apiUrl || !providerConfig?.idInstance || !providerConfig?.apiTokenInstance) {
+      console.log("[WEBHOOK] ERROR: API de telefonía no configurada", {
+        apiUrl: !!providerConfig?.apiUrl,
+        idInstance: !!providerConfig?.idInstance,
+        apiTokenInstance: !!providerConfig?.apiTokenInstance
+      });
       return NextResponse.json({ success: true, ignored: true, reason: "API de telefonía no configurada" });
     }
 
     // 4. Procesar Respuesta con GEMINI IA
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    console.log("[WEBHOOK] Generando respuesta con Gemini...");
+    
+    if (!geminiKey) {
+      console.error("[WEBHOOK] ERROR FATAL: GEMINI_API_KEY no está configurada en las variables de entorno");
+      return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(geminiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const systemPrompt = `
 Eres un asistente de Inteligencia Artificial respondiendo a clientes vía WhatsApp.
@@ -94,13 +138,12 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
 
     const result = await chat.sendMessage(messageText);
     const aiResponse = result.response.text();
+    console.log("[WEBHOOK] Respuesta IA generada:", aiResponse.substring(0, 150));
 
     // 5. Enviar Mensaje de Vuelta vía Green-API
-    // URL format: https://{apiUrl}/waInstance{idInstance}/sendMessage/{apiTokenInstance}
-    
-    // Limpiar la url por si acaso
     const cleanUrl = providerConfig.apiUrl.replace(/\/$/, "");
     const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMessage/${providerConfig.apiTokenInstance}`;
+    console.log("[WEBHOOK] Enviando respuesta vía Green-API a:", sender);
 
     const sendRes = await fetch(sendEndpoint, {
       method: "POST",
@@ -112,14 +155,27 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
     });
 
     if (!sendRes.ok) {
-       console.error("Error enviando mensaje vía Green API", await sendRes.text());
-       throw new Error("Green API falló");
+      const errorText = await sendRes.text();
+      console.error("[WEBHOOK] ERROR enviando mensaje vía Green API:", sendRes.status, errorText);
+      throw new Error(`Green API falló: ${sendRes.status}`);
     }
 
+    console.log("[WEBHOOK] ✅ Mensaje respondido exitosamente");
     return NextResponse.json({ success: true, message: "Mensaje respondido con IA correctamente." });
 
   } catch (error: any) {
-    console.error("WhatsApp Webhook Error:", error);
+    console.error("[WEBHOOK] ❌ ERROR:", error.message || String(error));
+    console.error("[WEBHOOK] Stack:", error.stack);
     return NextResponse.json({ error: "Error procesando webhook", details: error.message || String(error) }, { status: 500 });
   }
+}
+
+// GET para verificar que el endpoint está vivo (útil para diagnosticar)
+export async function GET() {
+  return NextResponse.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    geminiKeyPresent: !!process.env.GEMINI_API_KEY,
+    clerkKeyPresent: !!process.env.CLERK_SECRET_KEY,
+  });
 }
