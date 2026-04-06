@@ -113,7 +113,13 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash",
+      generationConfig: {
+        maxOutputTokens: 250,
+        temperature: 0.7
+      }
+    });
 
     const systemPrompt = `
 Eres un asistente de Inteligencia Artificial respondiendo a clientes vía WhatsApp.

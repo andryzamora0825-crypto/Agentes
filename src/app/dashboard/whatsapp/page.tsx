@@ -167,29 +167,41 @@ export default function WhatsAppAgentPage() {
 
           <div className="space-y-6 flex flex-col">
             <div className="flex flex-col">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                Identidad de tu Agencia (System Prompt)
-              </label>
+              <div className="flex justify-between items-end mb-2">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  Identidad de tu Agencia (System Prompt)
+                </label>
+                <span className={`text-[10px] font-bold ${aiPersona.length > 900 ? 'text-red-400' : 'text-gray-500'}`}>
+                  {aiPersona.length} / 1000
+                </span>
+              </div>
               <textarea
                 className="w-full min-h-[120px] bg-[#111111] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFDE00] focus:ring-1 focus:ring-[#FFDE00] transition-all text-sm resize-none"
                 value={aiPersona}
                 onChange={(e) => setAiPersona(e.target.value)}
+                maxLength={1000}
                 placeholder="Ej: Eres un experto en ventas de la agencia X. Responde siempre de forma corta, amable y directa."
                 required
               />
             </div>
 
             <div className="flex flex-col">
-              <label className="flex flex-col gap-1 mb-2">
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                  <Database className="w-3 h-3" /> Base de Conocimiento Clandestina
+              <div className="flex justify-between items-start mb-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <Database className="w-3 h-3" /> Base de Conocimiento Clandestina
+                  </span>
+                  <span className="text-[10px] text-gray-500">¿Qué debe responder la IA cuando pregunten precios, horarios, o links? Dicta las respuestas aquí.</span>
+                </label>
+                <span className={`text-[10px] font-bold mt-1 ${knowledgeBase.length > 3800 ? 'text-red-400' : 'text-gray-500'}`}>
+                  {knowledgeBase.length} / 4000
                 </span>
-                <span className="text-[10px] text-gray-500">¿Qué debe responder la IA cuando pregunten precios, horarios, o links? Dicta las respuestas aquí.</span>
-              </label>
+              </div>
               <textarea
                   className="w-full min-h-[220px] bg-[#111111] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFDE00] focus:ring-1 focus:ring-[#FFDE00] transition-all text-sm resize-none"
                   value={knowledgeBase}
                   onChange={(e) => setKnowledgeBase(e.target.value)}
+                  maxLength={4000}
                   placeholder="Regla 1: El precio VIP es $100.&#10;Regla 2: El link oficial para registrarse es https://...&#10;Regla 3: Si preguntan por pagos, di que aceptamos Binance."
                   required
               />
