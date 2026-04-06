@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +14,62 @@ export default function AdminPanelPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Estados del modal de WhatsApp
+  const [editingWa, setEditingWa] = useState<any | null>(null);
+  const [waForm, setWaForm] = useState({ isUnlocked: false, apiUrl: "", idInstance: "", apiTokenInstance: "" });
+
+  // Sincronizar el formulario cuando abrimos el modal
+  useEffect(() => {
+    if (editingWa) {
+      setWaForm({
+        isUnlocked: editingWa.whatsappSettings?.isUnlocked || false,
+        apiUrl: editingWa.whatsappSettings?.providerConfig?.apiUrl || "",
+        idInstance: editingWa.whatsappSettings?.providerConfig?.idInstance || "",
+        apiTokenInstance: editingWa.whatsappSettings?.providerConfig?.apiTokenInstance || ""
+      });
+    }
+  }, [editingWa]);
+
+  const saveWaSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWa) return;
+    
+    setProcessingId(editingWa.id);
+    try {
+      const res = await fetch("/api/admin/whatsapp-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: editingWa.id,
+          isUnlocked: waForm.isUnlocked,
+          providerConfig: {
+            apiUrl: waForm.apiUrl,
+            idInstance: waForm.idInstance,
+            apiTokenInstance: waForm.apiTokenInstance
+          }
+        })
+      });
+
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === editingWa.id ? { 
+          ...u, 
+          whatsappSettings: { 
+            isUnlocked: waForm.isUnlocked, 
+            providerConfig: { apiUrl: waForm.apiUrl, idInstance: waForm.idInstance, apiTokenInstance: waForm.apiTokenInstance } 
+          } 
+        } : u));
+        setEditingWa(null); // Cerrar modal
+      } else {
+        alert("Error guardando config de telefonía");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de red");
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   useEffect(() => {
     // Si la página carga y no es admin, échalo
@@ -231,9 +287,106 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
+                {/* Sección 3: Opciones del Admin (WhatsApp) */}
+                <div className="mt-4 flex justify-between items-center border-t border-white/5 pt-4">
+                   <div className="text-[11px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" /> Módulo WhatsApp (IA)
+                   </div>
+                   <button
+                     onClick={() => setEditingWa(u)}
+                     className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${u.whatsappSettings?.isUnlocked ? 'bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 hover:bg-[#25D366]/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
+                   >
+                     {u.whatsappSettings?.isUnlocked ? 'ACTIVO (Gestionar)' : 'VENDER / ACTIVAR'}
+                   </button>
+                </div>
+
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* MODAL CONFIGURACIÓN WHATSAPP */}
+      {editingWa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+           <div className="bg-[#111111] border border-white/10 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-md w-full relative">
+              <button onClick={() => setEditingWa(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white">
+                <Minus className="w-6 h-6 rotate-45" />
+              </button>
+              
+              <div className="w-12 h-12 bg-gradient-to-br from-[#25D366] to-[#128C7E] rounded-xl flex items-center justify-center shadow-lg mb-4">
+                 <MessageSquare className="w-6 h-6 text-white" />
+              </div>
+              
+              <h3 className="text-xl font-black text-white mb-2">WhatsApp IA para {editingWa.name}</h3>
+              <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                Aquí conectas el servicio de telefonía. El usuario te pagó los $25 mensuales. Tú configuras su línea técnica de Green-API aquí, y a él mágicamente se le habilitará la interfaz para "Entrenar" al bot.
+              </p>
+
+              <div className="bg-[#FFDE00]/10 border border-[#FFDE00]/20 p-3 rounded-xl mb-6">
+                <span className="block text-[10px] font-black uppercase text-[#FFDE00] mb-1">Copia este Webhook en Green-API:</span>
+                <code className="block w-full bg-black/50 p-2 rounded text-xs text-white font-mono break-all select-all">
+                  {typeof window !== 'undefined' ? `${window.location.origin}` : 'https://zamtools.vercel.app'}/api/whatsapp/webhook?uid={editingWa.id}
+                </code>
+              </div>
+
+              <form onSubmit={saveWaSettings} className="space-y-4">
+                 <label className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10 cursor-pointer hover:bg-white/10">
+                    <input 
+                      type="checkbox" 
+                      className="w-5 h-5 accent-[#25D366]"
+                      checked={waForm.isUnlocked}
+                      onChange={e => setWaForm({ ...waForm, isUnlocked: e.target.checked })}
+                    />
+                    <span className={`text-sm font-bold ${waForm.isUnlocked ? 'text-[#25D366]' : 'text-gray-400'}`}>
+                      {waForm.isUnlocked ? 'MÓDULO DESBLOQUEADO' : 'DESBLOQUEAR ESTE MÓDULO AL CLIENTE'}
+                    </span>
+                 </label>
+
+                 {waForm.isUnlocked && (
+                   <div className="space-y-3 bg-[#0A0A0A] p-4 rounded-xl border border-[#25D366]/20">
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">API URL (Green API)</label>
+                       <input 
+                         type="text" 
+                         value={waForm.apiUrl}
+                         onChange={e => setWaForm({ ...waForm, apiUrl: e.target.value })}
+                         placeholder="Ej: https://7103.api.greenapi.com"
+                         className="w-full bg-[#1A1A1A] text-white text-xs px-3 py-2 rounded-lg border border-white/5 focus:border-[#25D366] outline-none font-mono"
+                       />
+                     </div>
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">ID INSTANCE</label>
+                       <input 
+                         type="text" 
+                         value={waForm.idInstance}
+                         onChange={e => setWaForm({ ...waForm, idInstance: e.target.value })}
+                         placeholder="Ej: 7103123456"
+                         className="w-full bg-[#1A1A1A] text-white text-xs px-3 py-2 rounded-lg border border-white/5 focus:border-[#25D366] outline-none font-mono"
+                       />
+                     </div>
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">API TOKEN SECRETO</label>
+                       <input 
+                         type="text" 
+                         value={waForm.apiTokenInstance}
+                         onChange={e => setWaForm({ ...waForm, apiTokenInstance: e.target.value })}
+                         placeholder="Token alfanumérico largo..."
+                         className="w-full bg-[#1A1A1A] text-white text-xs px-3 py-2 rounded-lg border border-white/5 focus:border-[#25D366] outline-none font-mono"
+                       />
+                     </div>
+                   </div>
+                 )}
+
+                 <button 
+                   type="submit"
+                   disabled={processingId === editingWa.id}
+                   className="w-full bg-[#25D366] hover:bg-[#1DA851] text-black font-black uppercase tracking-widest py-3 rounded-xl mt-4 transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                 >
+                   {processingId === editingWa.id ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar y Desplegar'}
+                 </button>
+              </form>
+           </div>
         </div>
       )}
     </div>

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { currentUser } from "@clerk/nextjs/server";
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const user = await currentUser();
@@ -68,7 +70,7 @@ export async function GET(request: Request) {
       // Obtenemos todos los chats donde receiver es admin o sender es admin
       const { data, error } = await supabase
         .from("chats")
-        .select("sender_email, sender_name, sender_avatar, receiver_email, created_at, content")
+        .select("sender_email, sender_name, sender_avatar, receiver_email, is_read, created_at, content")
         .or(`receiver_email.eq.${email},sender_email.eq.${email}`)
         .order("created_at", { ascending: false });
 
@@ -85,12 +87,32 @@ export async function GET(request: Request) {
             name: msg.sender_email === contactEmail ? msg.sender_name : (msg.receiver_email===contactEmail ? "Usuario" : msg.sender_name),
             avatar: msg.sender_email === contactEmail ? msg.sender_avatar : null, // Simplificado
             lastMessage: msg.content,
-            time: msg.created_at
+            time: msg.created_at,
+            unread: 0
           });
+        }
+        
+        // Sumar mensajes no leídos para este contacto
+        if (msg.receiver_email === email && msg.is_read === false) {
+          const contact = contactsMap.get(contactEmail);
+          if (contact) {
+            contact.unread += 1;
+          }
         }
       });
 
       return NextResponse.json({ success: true, contacts: Array.from(contactsMap.values()) });
+    }
+
+    // Acción: Obtener contador de mensajes no leídos para el usuario actual
+    if (action === "unread_count") {
+      const { count, error } = await supabase
+        .from("chats")
+        .select('*', { count: 'exact', head: true })
+        .eq("receiver_email", email)
+        .eq("is_read", false);
+      if (error) throw error;
+      return NextResponse.json({ success: true, count: count || 0 });
     }
 
     // Acción General: Cargar la conversación entre 2 personas
@@ -100,6 +122,14 @@ export async function GET(request: Request) {
     if (!isAdmin && targetEmail !== "andryzamora0825@gmail.com") {
       return NextResponse.json({ error: "Restringido" }, { status: 403 });
     }
+
+    // Marcar los mensajes como leídos si yo soy el receptor
+    await supabase
+      .from("chats")
+      .update({ is_read: true })
+      .eq("receiver_email", email)
+      .eq("sender_email", targetEmail)
+      .eq("is_read", false);
 
     const { data, error } = await supabase
       .from("chats")

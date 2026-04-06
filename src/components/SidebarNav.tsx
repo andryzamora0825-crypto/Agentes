@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Newspaper, ShieldAlert, LayoutDashboard, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck } from "lucide-react";
+import { FileText, Newspaper, ShieldAlert, LayoutDashboard, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
@@ -35,10 +35,10 @@ export default function SidebarNav() {
     { name: "Notas de Retiro",     href: "/dashboard",              exact: true,  icon: FileText,      adminOnly: false, vipOnly: true  },
     { name: "Panel Admin",         href: "/dashboard/admin",         exact: false, icon: ShieldCheck,   adminOnly: true,  vipOnly: false },
     { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true  },
+    { name: "Bot WhatsApp AI",     href: "/dashboard/whatsapp",      exact: false, icon: MessageSquare, adminOnly: false, vipOnly: true  },
     { name: "Tienda",              href: "/dashboard/tienda",         exact: false, icon: ShoppingCart,  adminOnly: false, vipOnly: false },
     { name: "Novedades (Muro)",    href: "/dashboard/feed",           exact: false, icon: Newspaper,     adminOnly: false, vipOnly: true  },
     { name: "Alertas / Estafadores", href: "/dashboard/estafadores", exact: false, icon: ShieldAlert,   adminOnly: false, vipOnly: true  },
-    { name: "Soporte Chat",        href: "/dashboard/chat",           exact: false, icon: LayoutDashboard, adminOnly: false, vipOnly: false },
     { name: "Configuración",       href: "/dashboard/configuracion",  exact: false, icon: Settings,      adminOnly: false, vipOnly: false },
   ];
 

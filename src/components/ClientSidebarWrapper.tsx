@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, MessageSquare } from "lucide-react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 
 export default function ClientSidebarWrapper({ 
   userButton, 
@@ -14,11 +15,36 @@ export default function ClientSidebarWrapper({
   children: React.ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const pathname = usePathname();
 
   // Cerrar el menú automáticamente si se navega a otra ruta en celular
   useEffect(() => {
     setIsOpen(false);
+  }, [pathname]);
+
+  // Polling de mensajes no leídos
+  useEffect(() => {
+    const fetchUnread = () => {
+      fetch(`/api/chat?action=unread_count&t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache'
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setUnreadCount(data.count);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchUnread(); // Primera vez
+    const interval = setInterval(fetchUnread, 15000); // Cada 15 segundos
+    return () => clearInterval(interval);
   }, [pathname]);
 
   return (
@@ -85,6 +111,28 @@ export default function ClientSidebarWrapper({
       <main className="flex-1 overflow-y-auto pt-16 lg:pt-0 h-[100dvh]">
         {children}
       </main>
+
+      {/* Botón Flotante Soporte Chat */}
+      <Link 
+        href={pathname === "/dashboard/chat" ? "/dashboard" : "/dashboard/chat"}
+        className="fixed bottom-6 right-6 lg:bottom-10 lg:right-10 bg-[#FFDE00] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(255,222,0,0.4)] hover:bg-[#FFC107] hover:scale-110 transition-all z-50 group"
+        title={pathname === "/dashboard/chat" ? "Cerrar Chat" : "Soporte Técnico"}
+      >
+        {pathname === "/dashboard/chat" ? (
+          <X className="w-7 h-7" />
+        ) : (
+          <>
+            <MessageSquare className="w-6 h-6 fill-black" />
+            {/* Badge de notificaciones (Solo punto rojo sin número) */}
+            {unreadCount > 0 && (
+              <span className="absolute top-0 right-0 bg-red-500 w-3.5 h-3.5 rounded-full border-2 border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            )}
+          </>
+        )}
+        <span className="absolute -top-10 right-0 bg-[#1A1A1A] text-white text-xs font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-white/10 shadow-xl">
+          {pathname === "/dashboard/chat" ? "Cerrar Chat" : "Soporte Chat"}
+        </span>
+      </Link>
     </div>
   );
 }

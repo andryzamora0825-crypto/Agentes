@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
-import { ArrowLeft, Clock, Loader2, Send, MessageSquare } from "lucide-react";
+import { ArrowLeft, Clock, Loader2, Send, MessageSquare, X } from "lucide-react";
+import Link from "next/link";
 
 export default function ChatPage() {
   const { user } = useUser();
@@ -96,11 +97,18 @@ export default function ChatPage() {
                   <MessageSquare className="w-4 h-4 text-black" />
                 </div>
                 <span className="font-black text-white tracking-tight">Chats Activos</span>
-                {contacts.length > 0 && (
-                  <span className="ml-auto bg-[#FFDE00] text-black text-xs font-black px-2 py-0.5 rounded-full">
-                    {contacts.length}
-                  </span>
-                )}
+                
+                <div className="ml-auto flex items-center gap-3">
+                  {contacts.length > 0 && (
+                    <span className="bg-[#FFDE00] text-black text-xs font-black px-2 py-0.5 rounded-full">
+                      {contacts.length}
+                    </span>
+                  )}
+                  {/* Close Chat in Contact List View */}
+                  <Link href="/dashboard" className="p-1.5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors">
+                    <X className="w-5 h-5" />
+                  </Link>
+                </div>
               </div>
 
               {/* Lista contactos */}
@@ -132,6 +140,9 @@ export default function ChatPage() {
                         </div>
                         <div className="text-xs text-gray-600 truncate">{c.lastMessage}</div>
                       </div>
+                      {c.unread > 0 && selectedContact !== c.email && (
+                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full shrink-0 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                      )}
                     </button>
                   ))
                 )}
@@ -180,6 +191,11 @@ export default function ChatPage() {
                   </p>
                 )}
               </div>
+              
+              {/* Close Chat typical X */}
+              <Link href="/dashboard" className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-gray-400 hover:text-white transition-all shrink-0 ml-auto">
+                <X className="w-5 h-5" />
+              </Link>
             </div>
 
             {/* Mensajes */}
