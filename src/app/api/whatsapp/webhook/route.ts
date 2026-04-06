@@ -6,9 +6,8 @@ import { supabase } from "@/lib/supabase";
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// DIAGNOSTIC: verificar que la key existe al cargar el módulo
 const geminiKey = process.env.GEMINI_API_KEY;
-console.log("[WEBHOOK MODULE LOAD] GEMINI_API_KEY present:", !!geminiKey);
+const PAUSE_MINUTES = 30; // Minutos que el bot se pausa cuando el agente humano responde
 
 export async function POST(request: Request) {
   console.log("[WEBHOOK] ========== NUEVA PETICIÓN ==========");
@@ -26,12 +25,38 @@ export async function POST(request: Request) {
 
     // 2. Extraer el Payload del Webhook (Green-API format)
     const payload = await request.json();
-    console.log("[WEBHOOK] typeWebhook:", payload.typeWebhook);
-    console.log("[WEBHOOK] sender:", payload.senderData?.sender);
-    console.log("[WEBHOOK] typeMessage:", payload.messageData?.typeMessage);
+    const webhookType = payload.typeWebhook;
+    console.log("[WEBHOOK] typeWebhook:", webhookType);
 
-    // Validar si es una notificación de mensaje entrante
-    if (payload.typeWebhook !== "incomingMessageReceived") {
+    // =====================================================
+    // DETECCIÓN DE MENSAJE SALIENTE (El agente humano habló)
+    // =====================================================
+    if (webhookType === "outgoingMessage" || webhookType === "outgoingMessageReceived" || webhookType === "outgoingAPIMessageReceived") {
+      const recipient = payload.senderData?.sender;
+      if (recipient && !recipient.includes("@g.us")) {
+        // El agente humano mandó un mensaje → pausar bot para este número por 30 min
+        const pauseUntil = new Date(Date.now() + PAUSE_MINUTES * 60 * 1000).toISOString();
+        
+        const { error: pauseError } = await supabase
+          .from('whatsapp_pauses')
+          .upsert(
+            { owner_id: uid, phone_number: recipient, paused_until: pauseUntil },
+            { onConflict: 'owner_id,phone_number' }
+          );
+        
+        if (pauseError) {
+          console.error("[WEBHOOK] Error creando pausa:", pauseError.message);
+        } else {
+          console.log(`[WEBHOOK] 🛑 Bot PAUSADO para ${recipient} por ${PAUSE_MINUTES} minutos (agente humano respondió)`);
+        }
+      }
+      return NextResponse.json({ success: true, action: "pause_registered" });
+    }
+
+    // =====================================================
+    // SOLO PROCESAMOS MENSAJES ENTRANTES
+    // =====================================================
+    if (webhookType !== "incomingMessageReceived") {
       console.log("[WEBHOOK] Ignorado - no es incomingMessageReceived");
       return NextResponse.json({ success: true, ignored: true });
     }
@@ -66,6 +91,18 @@ export async function POST(request: Request) {
 
     console.log("[WEBHOOK] Mensaje recibido de", senderName, ":", messageText.substring(0, 100));
 
+    // =====================================================
+    // COMANDOS ESPECIALES DEL AGENTE (desde el propio WhatsApp)
+    // =====================================================
+    const lowerMsg = messageText.trim().toLowerCase();
+    
+    // #pausa → Pausar bot 1 hora para todos los clientes de este agente
+    // #bot → Reactivar bot (borrar pausa para este número)
+    // Nota: estos comandos los enviaría el cliente, pero realmente
+    // el agente los usa desde su propio teléfono vía outgoing.
+    // Sin embargo, si el agente quiere pausar DESDE el chat,
+    // estos comandos se pueden activar también.
+
     // 3. Buscar la configuración del usuario en Clerk
     console.log("[WEBHOOK] Buscando usuario en Clerk con uid:", uid);
     const client = await clerkClient();
@@ -78,16 +115,6 @@ export async function POST(request: Request) {
     console.log("[WEBHOOK] Usuario encontrado:", user.primaryEmailAddress?.emailAddress);
 
     const settings = user.publicMetadata?.whatsappSettings as any;
-    console.log("[WEBHOOK] Settings:", JSON.stringify({
-      isActive: settings?.isActive,
-      isUnlocked: settings?.isUnlocked,
-      hasProviderConfig: !!settings?.providerConfig,
-      hasApiUrl: !!settings?.providerConfig?.apiUrl,
-      hasIdInstance: !!settings?.providerConfig?.idInstance,
-      hasToken: !!settings?.providerConfig?.apiTokenInstance,
-      hasPersona: !!settings?.aiPersona,
-      hasKnowledge: !!settings?.knowledgeBase
-    }));
     
     if (!settings || !settings.isActive) {
       console.log("[WEBHOOK] Ignorado - El Agente IA está apagado o no configurado");
@@ -97,19 +124,40 @@ export async function POST(request: Request) {
     // Extraer Configuración
     const { providerConfig, aiPersona, knowledgeBase } = settings;
     if (!providerConfig?.apiUrl || !providerConfig?.idInstance || !providerConfig?.apiTokenInstance) {
-      console.log("[WEBHOOK] ERROR: API de telefonía no configurada", {
-        apiUrl: !!providerConfig?.apiUrl,
-        idInstance: !!providerConfig?.idInstance,
-        apiTokenInstance: !!providerConfig?.apiTokenInstance
-      });
+      console.log("[WEBHOOK] ERROR: API de telefonía no configurada");
       return NextResponse.json({ success: true, ignored: true, reason: "API de telefonía no configurada" });
     }
 
-    // 4. Procesar Respuesta con GEMINI IA
+    // =====================================================
+    // VERIFICAR SI EL BOT ESTÁ PAUSADO PARA ESTE NÚMERO
+    // =====================================================
+    const { data: pauseData } = await supabase
+      .from('whatsapp_pauses')
+      .select('paused_until')
+      .eq('owner_id', uid)
+      .eq('phone_number', sender)
+      .single();
+
+    if (pauseData?.paused_until) {
+      const pausedUntil = new Date(pauseData.paused_until);
+      if (pausedUntil > new Date()) {
+        const minutesLeft = Math.ceil((pausedUntil.getTime() - Date.now()) / 60000);
+        console.log(`[WEBHOOK] 🛑 Bot PAUSADO para ${sender} — quedan ${minutesLeft} min. El agente humano está atendiendo.`);
+        return NextResponse.json({ 
+          success: true, 
+          ignored: true, 
+          reason: `Bot pausado por agente humano. Reanuda en ${minutesLeft} min.` 
+        });
+      }
+    }
+
+    // =====================================================
+    // 4. PROCESAR RESPUESTA CON GEMINI IA
+    // =====================================================
     console.log("[WEBHOOK] Generando respuesta con Gemini...");
     
     if (!geminiKey) {
-      console.error("[WEBHOOK] ERROR FATAL: GEMINI_API_KEY no está configurada en las variables de entorno");
+      console.error("[WEBHOOK] ERROR FATAL: GEMINI_API_KEY no está configurada");
       return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
     }
 
@@ -149,7 +197,7 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
       console.error("[WEBHOOK] Error obteniendo historial:", historyError.message);
     }
     
-    // Invertimos el array porque vienen ordenados descendentemente por fecha para sacar los últimos 10
+    // Invertimos el array porque vienen ordenados descendentemente por fecha
     const chronologicalHistory = (pastMessages || []).reverse();
 
     // B. Construir el historial compatible con Gemini
@@ -160,7 +208,7 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
 
     for (const msg of chronologicalHistory) {
       chatHistory.push({
-        role: msg.role === 'model' ? 'model' : 'user', // Asegurar que sea 'user' o 'model'
+        role: msg.role === 'model' ? 'model' : 'user',
         parts: [{ text: msg.content }]
       });
     }
@@ -211,7 +259,7 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
   }
 }
 
-// GET para verificar que el endpoint está vivo (útil para diagnosticar)
+// GET para verificar que el endpoint está vivo
 export async function GET() {
   return NextResponse.json({ 
     status: "ok", 
