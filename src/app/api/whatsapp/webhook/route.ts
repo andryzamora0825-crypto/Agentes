@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const geminiKey = process.env.GEMINI_API_KEY;
-const PAUSE_MINUTES = 30; // Minutos que el bot se pausa cuando el agente humano responde
+const PAUSE_MINUTES = 10; // Minutos que el bot se pausa cuando el agente humano responde
 
 export async function POST(request: Request) {
   console.log("[WEBHOOK] ========== NUEVA PETICIÓN ==========");
