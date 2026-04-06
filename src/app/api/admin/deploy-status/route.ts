@@ -3,6 +3,8 @@ import { currentUser } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
+export const maxDuration = 60; // Evitar timeouts de Vercel (Hobby permite hasta 60s)
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
 const ADAPTATION_MODEL = "gemini-2.5-flash";
