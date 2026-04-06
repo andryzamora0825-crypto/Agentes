@@ -304,8 +304,8 @@ export default function DashboardPage() {
                <Loader2 className="w-10 h-10 text-[#FFDE00] animate-spin mb-4" />
                <span className="text-gray-400 font-bold tracking-widest text-sm uppercase">Cargando Plataforma...</span>
             </div>
-            {/* The actual scaled iframe */}
-            <div className="absolute top-0 left-0 z-10 ecuabet-frame">
+            {/* The actual iframe - fills the container */}
+            <div className="absolute inset-0 z-10">
               <iframe 
                 src="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" 
                 className="w-full h-full border-none bg-white"
