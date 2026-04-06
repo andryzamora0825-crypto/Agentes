@@ -122,6 +122,8 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
          const uploadData = await uploadRes.json();
          if (uploadData.urlFile) {
             finalUrlFile = uploadData.urlFile;
+         } else if (uploadData.url) {
+            finalUrlFile = uploadData.url;
          }
       } else {
          console.warn("Retrying with direct URL, GreenAPI upload failed:", await uploadRes.text());
@@ -150,8 +152,7 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           urlFile: finalUrlFile,
-          fileName: `status_image.${ext}`,
-          caption: "✨ Generado por IA\n" + basePrompt 
+          fileName: `status_image.${ext}`
         }),
         signal: sendController.signal
       });
