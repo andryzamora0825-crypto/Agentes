@@ -106,7 +106,8 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         urlFile: publicUrl,
-        fileName: `status_video.${ext}` // Usamos fileName estandar (GreenAPI a veces lo necesita)
+        fileName: `status_image.${ext}`,
+        caption: "✨ Generado por Nano Banana\n" + basePrompt 
       })
     });
 
