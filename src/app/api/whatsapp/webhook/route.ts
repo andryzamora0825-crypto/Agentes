@@ -32,9 +32,11 @@ export async function POST(request: Request) {
     // DETECCIÓN DE MENSAJE SALIENTE (El agente humano habló)
     // =====================================================
     if (webhookType === "outgoingMessage" || webhookType === "outgoingMessageReceived" || webhookType === "outgoingAPIMessageReceived") {
-      const recipient = payload.senderData?.sender;
+      // Green-API usa diferentes campos según el tipo de webhook saliente
+      const recipient = payload.senderData?.chatId || payload.senderData?.sender || payload.chatId;
+      console.log("[WEBHOOK] Mensaje SALIENTE detectado hacia:", recipient);
+      
       if (recipient && !recipient.includes("@g.us")) {
-        // El agente humano mandó un mensaje → pausar bot para este número por 30 min
         const pauseUntil = new Date(Date.now() + PAUSE_MINUTES * 60 * 1000).toISOString();
         
         const { error: pauseError } = await supabase
@@ -90,6 +92,18 @@ export async function POST(request: Request) {
     }
 
     console.log("[WEBHOOK] Mensaje recibido de", senderName, ":", messageText.substring(0, 100));
+
+    // =====================================================
+    // IGNORAR MENSAJES VIEJOS / RETENIDOS (más de 2 min)
+    // =====================================================
+    const msgTimestamp = payload.messageData?.timestamp || payload.timestamp;
+    if (msgTimestamp) {
+      const msgAge = Date.now() / 1000 - msgTimestamp;
+      if (msgAge > 120) { // Más de 2 minutos de antigüedad
+        console.log(`[WEBHOOK] ⏭️ Mensaje IGNORADO por antiguo (${Math.round(msgAge)}s de edad)`);
+        return NextResponse.json({ success: true, ignored: true, reason: "Mensaje retenido/viejo ignorado" });
+      }
+    }
 
     // =====================================================
     // COMANDOS ESPECIALES DEL AGENTE (desde el propio WhatsApp)
