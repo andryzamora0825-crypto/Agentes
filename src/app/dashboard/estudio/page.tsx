@@ -110,10 +110,11 @@ export default function EstudioIAPage() {
     }
   };
 
-  // Descarga forzada sorteando CORS
+  // Descarga forzada sorteando CORS (Optimizado para Safari)
   const forceDownload = async (url: string, filename: string) => {
     try {
       const response = await fetch(url);
+      if (!response.ok) throw new Error("Fallo en fetch");
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -122,9 +123,16 @@ export default function EstudioIAPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(blobUrl);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
     } catch (err) {
-      window.open(url, '_blank');
+      // Fallback nativo
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     }
   };
 

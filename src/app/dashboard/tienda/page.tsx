@@ -71,6 +71,21 @@ export default function TiendaPage() {
       iconBg: "bg-white/5 border border-white/10",
       badge: "🎬 NUEVO SERVICIO IA",
       isService: true,
+    },
+    {
+      id: "whatsapp_bot",
+      price: 15, // Suggested price for bot
+      name: "Bot de WhatsApp Automatizado",
+      description: "Implementamos un Bot de WhatsApp con IA en tu propio número para atender clientes 24/7.",
+      features: ["Atención al cliente 24/7", "Integración con tu base de conocimientos", "Traspaso a agente humano", "Sin límites de chats"],
+      cardClass: "bg-[#0b0b0b] border border-[#25D366]/30 hover:border-[#25D366]/80 hover:shadow-[0_0_30px_rgba(37,211,102,0.15)] relative overflow-hidden group hover:-translate-y-2",
+      textColor: "text-white",
+      buttonClass: "bg-[#25D366] text-white font-black hover:bg-[#128C7E] hover:scale-[1.02] active:scale-95 transition-all text-lg",
+      iconColor: "text-[#25D366] drop-shadow-[0_0_10px_rgba(37,211,102,0.4)]",
+      iconBg: "bg-white/5 border border-white/10",
+      badge: "💬 AUTOMATIZACIÓN",
+      isService: true,
+      priceInCredits: 0
     }
   ];
 
@@ -82,7 +97,11 @@ export default function TiendaPage() {
       let message = "";
       
       if (selectedPackage.isService) {
-        message = `🎬 ¡Hola equipo! Quiero solicitar la creación de un *${selectedPackage.name}* utilizando mis créditos (${selectedPackage.priceInCredits.toLocaleString()} créditos). Espero indicaciones y envío detalles.`;
+        if (selectedPackage.priceInCredits > 0) {
+            message = `🎬 ¡Hola equipo! Quiero solicitar el servicio *${selectedPackage.name}* utilizando mis créditos (${selectedPackage.priceInCredits.toLocaleString()} créditos). Espero indicaciones.`;
+        } else {
+            message = `💬 Hola equipo, quiero contratar el servicio *${selectedPackage.name}* por *$${selectedPackage.price} USD*. ¿A dónde transfiero?`;
+        }
       } else if (selectedPackage.isVip) {
         message = `👋 Hola administrador, confirmo mi intención de comprar el *${selectedPackage.name}* por *$${selectedPackage.price} USD*. ¿A dónde transfiero?`;
       } else {

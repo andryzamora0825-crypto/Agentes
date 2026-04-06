@@ -48,12 +48,25 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    if (!isAdmin) {
-      loadMessages();
-    } else if (isAdmin && selectedContact) {
-      loadMessages();
+    if (!isAdmin && !selectedContact && user) {
+       // Regular users start with standard support email automatically
+       loadMessages();
+    } else if (selectedContact) {
+       loadMessages();
     }
-  }, [isAdmin, selectedContact]);
+    
+    // Polling every 7 seconds to get new messages without reload
+    const interval = setInterval(() => {
+      if (selectedContact) {
+        fetch(`/api/chat?targetEmail=${selectedContact}`)
+          .then(res => res.json())
+          .then(data => { if (data.success) setMessages(data.messages); })
+          .catch(() => {});
+      }
+    }, 7000);
+    
+    return () => clearInterval(interval);
+  }, [isAdmin, selectedContact, user]);
 
   const handleSelectContact = (email: string) => {
     setSelectedContact(email);

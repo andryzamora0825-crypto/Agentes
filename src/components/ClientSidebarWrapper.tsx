@@ -112,27 +112,23 @@ export default function ClientSidebarWrapper({
         {children}
       </main>
 
-      {/* Botón Flotante Soporte Chat */}
-      <Link 
-        href={pathname === "/dashboard/chat" ? "/dashboard" : "/dashboard/chat"}
-        className="fixed bottom-6 right-6 lg:bottom-10 lg:right-10 bg-[#FFDE00] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(255,222,0,0.4)] hover:bg-[#FFC107] hover:scale-110 transition-all z-50 group"
-        title={pathname === "/dashboard/chat" ? "Cerrar Chat" : "Soporte Técnico"}
-      >
-        {pathname === "/dashboard/chat" ? (
-          <X className="w-7 h-7" />
-        ) : (
-          <>
-            <MessageSquare className="w-6 h-6 fill-black" />
-            {/* Badge de notificaciones (Solo punto rojo sin número) */}
-            {unreadCount > 0 && (
-              <span className="absolute top-0 right-0 bg-red-500 w-3.5 h-3.5 rounded-full border-2 border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-            )}
-          </>
-        )}
-        <span className="absolute -top-10 right-0 bg-[#1A1A1A] text-white text-xs font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-white/10 shadow-xl">
-          {pathname === "/dashboard/chat" ? "Cerrar Chat" : "Soporte Chat"}
-        </span>
-      </Link>
+      {/* Botón Flotante Soporte Chat - Oculto en la página de chat para no tapar el botón de enviar */}
+      {pathname !== "/dashboard/chat" && (
+        <Link 
+          href="/dashboard/chat"
+          className="fixed bottom-6 right-6 lg:bottom-10 lg:right-10 bg-[#FFDE00] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(255,222,0,0.4)] hover:bg-[#FFC107] hover:scale-110 transition-all z-50 group"
+          title="Soporte Técnico"
+        >
+          <MessageSquare className="w-6 h-6 fill-black" />
+          {/* Badge de notificaciones (Solo punto rojo sin número) */}
+          {unreadCount > 0 && (
+            <span className="absolute top-0 right-0 bg-red-500 w-3.5 h-3.5 rounded-full border-2 border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+          )}
+          <span className="absolute -top-10 right-0 bg-[#1A1A1A] text-white text-xs font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-white/10 shadow-xl">
+            Soporte Chat
+          </span>
+        </Link>
+      )}
     </div>
   );
 }

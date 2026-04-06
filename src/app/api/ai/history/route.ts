@@ -10,6 +10,7 @@ export async function GET(request: Request) {
     const { data: posts, error } = await supabase
       .from("ai_images")
       .select("*")
+      .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) throw error;

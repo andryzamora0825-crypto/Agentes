@@ -18,7 +18,6 @@ export default function VipGate({ children }: VipGateProps) {
 
   const [plan, setPlan] = useState<string | null>(null);
   const [daysLeft, setDaysLeft] = useState<number>(0);
-  const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [justExpired, setJustExpired] = useState(false); // Estaba VIP y expiró ahora
 
@@ -40,13 +39,6 @@ export default function VipGate({ children }: VipGateProps) {
 
         setPlan(newPlan);
         setDaysLeft(data.daysLeft || 0);
-
-        // Calcular segundos restantes aproximados
-        if (data.daysLeft > 0) {
-          setSecondsLeft(data.daysLeft * 24 * 60 * 60);
-        } else {
-          setSecondsLeft(0);
-        }
       } else {
         setPlan("FREE");
       }
@@ -76,22 +68,7 @@ export default function VipGate({ children }: VipGateProps) {
     return () => clearInterval(interval);
   }, [isLoaded, user, isAdmin, checkPlan]);
 
-  // Countdown de segundos (tick each second)
-  useEffect(() => {
-    if (plan !== "VIP" || secondsLeft <= 0 || isAdmin) return;
-    const timer = setInterval(() => {
-      setSecondsLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          // Forzar re-check del servidor al llegar a 0
-          checkPlan(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [plan, secondsLeft, isAdmin]);
+  // Eliminado el timer aquí para no re-renderizar todo el componente padre cada segundo.
 
   /* ─────────────────── ESTADOS DE CARGA ─────────────────── */
   if (!isLoaded || loading) {
@@ -152,27 +129,7 @@ export default function VipGate({ children }: VipGateProps) {
       <div>
         {/* Banner de días restantes — solo VIP no admin con poco tiempo */}
         {!isAdmin && daysLeft <= 5 && daysLeft > 0 && (
-          <div className="mx-4 mt-4 sm:mx-8 mb-2">
-            <div className="bg-[#FFDE00]/5 border border-[#FFDE00]/20 rounded-2xl px-4 py-3 flex items-center gap-3">
-              <Clock className="w-4 h-4 text-[#FFDE00] shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-black text-[#FFDE00] uppercase tracking-widest">
-                  VIP expira en {daysLeft} {daysLeft === 1 ? 'día' : 'días'}
-                </p>
-                {secondsLeft > 0 && (
-                  <p className="text-[10px] text-gray-500 font-mono mt-0.5">
-                    {formatCountdown(secondsLeft)}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => router.push("/dashboard/tienda")}
-                className="text-[10px] font-black text-black bg-[#FFDE00] hover:bg-[#FFC107] px-3 py-1.5 rounded-lg uppercase tracking-widest shrink-0 transition-colors"
-              >
-                Renovar
-              </button>
-            </div>
-          </div>
+          <CountdownBanner daysLeft={daysLeft} checkPlan={checkPlan} />
         )}
 
         {/* Badge admin permanente */}
@@ -267,4 +224,48 @@ function formatCountdown(totalSeconds: number): string {
     return `${days}d ${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function CountdownBanner({ daysLeft, checkPlan }: { daysLeft: number, checkPlan: (silent?: boolean) => void }) {
+  const router = useRouter();
+  const [secondsLeft, setSecondsLeft] = useState<number>(daysLeft * 24 * 60 * 60);
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const timer = setInterval(() => {
+      setSecondsLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          checkPlan(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [secondsLeft, checkPlan]);
+
+  return (
+    <div className="mx-4 mt-4 sm:mx-8 mb-2">
+      <div className="bg-[#FFDE00]/5 border border-[#FFDE00]/20 rounded-2xl px-4 py-3 flex items-center gap-3">
+        <Clock className="w-4 h-4 text-[#FFDE00] shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-black text-[#FFDE00] uppercase tracking-widest">
+            VIP expira en {daysLeft} {daysLeft === 1 ? 'día' : 'días'}
+          </p>
+          {secondsLeft > 0 && (
+            <p className="text-[10px] text-gray-500 font-mono mt-0.5">
+              {formatCountdown(secondsLeft)}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => router.push("/dashboard/tienda")}
+          className="text-[10px] font-black text-black bg-[#FFDE00] hover:bg-[#FFC107] px-3 py-1.5 rounded-lg uppercase tracking-widest shrink-0 transition-colors"
+        >
+          Renovar
+        </button>
+      </div>
+    </div>
+  );
 }
