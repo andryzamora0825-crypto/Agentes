@@ -133,8 +133,9 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
       console.warn("Upload indirecto falló, usando url directa.", err.message);
     }
 
-    // 4.2 Enviar el Status 
-    const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMediaStatus/${providerConfig.apiTokenInstance}`;
+    // 4.2 Enviar estado via sendFileByUrl a status@broadcast (método estable)
+    // sendMediaStatus es beta y devuelve idMessage en vez de sentStatusId (falla silenciosa)
+    const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendFileByUrl/${providerConfig.apiTokenInstance}`;
     console.log("[deploy-status] Sending to:", sendEndpoint);
     console.log("[deploy-status] urlFile:", finalUrlFile);
     
@@ -149,6 +150,7 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          chatId: "status@broadcast",
           urlFile: finalUrlFile,
           fileName: `status_image.${ext}`,
           caption: "✨ Generado por IA\n" + basePrompt 
