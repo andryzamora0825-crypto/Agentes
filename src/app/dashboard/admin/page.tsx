@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +14,11 @@ export default function AdminPanelPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Estados de Campaña de Estados Nano Banana
+  const [promptsText, setPromptsText] = useState("");
+  const [deployingStatus, setDeployingStatus] = useState(false);
+  const [deployProgress, setDeployProgress] = useState({ total: 0, current: 0, logs: [] as string[] });
 
   // Estados del modal de WhatsApp
   const [editingWa, setEditingWa] = useState<any | null>(null);
@@ -151,6 +156,84 @@ export default function AdminPanelPage() {
     }
   };
 
+  const deployStatusCampaign = async () => {
+    const rawPrompts = promptsText.split('\n').filter(p => p.trim() !== "");
+    if (rawPrompts.length === 0) {
+      alert("Por favor ingresa al menos un prompt.");
+      return;
+    }
+
+    if (!confirm("¿Deseas desplegar esta campaña de estados? Esto generará imágenes IA para todos los agentes activos y las subirá a sus WhatsApp de forma inmediata.")) return;
+
+    setDeployingStatus(true);
+    setDeployProgress({ total: 0, current: 0, logs: ["Obteniendo lista de agentes activos..."] });
+
+    try {
+      const res = await fetch("/api/admin/active-agents");
+      const data = await res.json();
+      
+      if (!data.success || !data.agents) {
+        throw new Error("No se pudo obtener la lista de agentes");
+      }
+
+      const agents = data.agents;
+      
+      if (agents.length === 0) {
+        setDeployProgress(p => ({ ...p, logs: [...p.logs, "❌ No hay agentes con WhatsApp activo configurado."] }));
+        setDeployingStatus(false);
+        return;
+      }
+
+      setDeployProgress(p => ({ ...p, total: agents.length, logs: [...p.logs, `✅ ${agents.length} agentes encontrados. Iniciando despliegue secuencial...`] }));
+
+      for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
+        
+        setDeployProgress(p => ({ 
+          ...p, 
+          current: i + 1, 
+          logs: [...p.logs, `⏳ Procesando a ${agent.name}...`] 
+        }));
+
+        try {
+          const randomPrompt = rawPrompts[Math.floor(Math.random() * rawPrompts.length)];
+          
+          const deployRes = await fetch("/api/admin/deploy-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agent, basePrompt: randomPrompt })
+          });
+
+          const deployData = await deployRes.json();
+          
+          if (deployRes.ok && deployData.success) {
+            setDeployProgress(p => ({ 
+              ...p, 
+              logs: [...p.logs, `✅ ${agent.name}: Estado subido con éxito!`] 
+            }));
+          } else {
+             setDeployProgress(p => ({ 
+              ...p, 
+              logs: [...p.logs, `❌ ${agent.name}: Error - ${deployData.error}`] 
+            }));
+          }
+        } catch (err: any) {
+          setDeployProgress(p => ({ 
+             ...p, 
+             logs: [...p.logs, `❌ ${agent.name}: Falló conexión - ${err.message}`] 
+          }));
+        }
+      }
+
+      setDeployProgress(p => ({ ...p, logs: [...p.logs, "🎉 ¡Despliegue finalizado!"] }));
+
+    } catch (err: any) {
+      setDeployProgress(p => ({ ...p, logs: [...p.logs, `❌ Error crítico: ${err.message}`] }));
+    } finally {
+      setDeployingStatus(false);
+    }
+  };
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(search.toLowerCase()) || 
     u.email.toLowerCase().includes(search.toLowerCase())
@@ -183,6 +266,80 @@ export default function AdminPanelPage() {
             <div className="bg-white/10 border border-white/5 p-4 rounded-2xl text-center min-w-[120px]">
                <div className="text-3xl font-black text-[#FFDE00]">{totalVips}</div>
                <div className="text-xs text-gray-400 uppercase tracking-widest font-bold">VIPs</div>
+            </div>
+         </div>
+      </div>
+
+      {/* Campaña de Estados Masiva */}
+      <div className="bg-[#121212] border border-white/5 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+         <div className="flex items-start gap-4 z-10 relative">
+            <div className="bg-purple-500/20 p-3 rounded-2xl hidden sm:block">
+              <Zap className="w-8 h-8 text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+                <span className="sm:hidden"><Zap className="w-6 h-6 text-purple-400" /></span>
+                Desplegar Estados Nano Banana (Campañas IA)
+              </h2>
+              <p className="text-gray-400 text-sm mb-6 max-w-2xl">
+                Ingresa uno o múltiples *prompts* base. Nano Banana se encargará de adaptar el prompt usando la Identidad de Agencia de cada usuario activo, generará la imagen y la publicará en los estados de sus WhatsApp (Sin cobrarles créditos).
+              </p>
+
+              <div className="space-y-4">
+                <textarea 
+                  value={promptsText}
+                  onChange={e => setPromptsText(e.target.value)}
+                  placeholder="Escribe tus prompts aquí (uno por línea)...&#10;Ej: Un cachorro dorado saltando billetes.&#10;Ej: Una mansión futurista con carros voladores."
+                  className="w-full bg-[#0A0A0A] text-white border border-white/10 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-y min-h-[120px] text-sm"
+                  disabled={deployingStatus}
+                />
+                
+                <button 
+                  onClick={deployStatusCampaign}
+                  disabled={deployingStatus || !promptsText.trim()}
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50"
+                  title="Esto NO consumirá créditos de los usuarios"
+                >
+                  {deployingStatus ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  {deployingStatus ? "Procesando Campaña..." : "Iniciar Campaña y Distribuir"}
+                </button>
+              </div>
+
+              {/* Logs de Despliegue */}
+              {deployProgress.logs.length > 0 && (
+                <div className="mt-6 bg-[#0A0A0A] border border-white/5 rounded-2xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-black uppercase text-gray-500 tracking-widest">Progreso del Despliegue</span>
+                    {deployProgress.total > 0 && (
+                      <span className="text-xs font-bold text-purple-400">{deployProgress.current} / {deployProgress.total} Agentes</span>
+                    )}
+                  </div>
+                  
+                  {deployProgress.total > 0 && (
+                    <div className="w-full bg-white/5 h-2 rounded-full mb-4 overflow-hidden">
+                      <div 
+                        className="bg-purple-500 h-full transition-all duration-500" 
+                        style={{ width: `${(deployProgress.current / deployProgress.total) * 100}%` }}
+                      ></div>
+                    </div>
+                  )}
+
+                  <div className="max-h-60 overflow-y-auto space-y-2 text-xs font-mono pr-2 custom-scrollbar">
+                    {deployProgress.logs.map((log, idx) => (
+                      <div key={idx} className={log.includes('✅') ? 'text-green-400' : log.includes('❌') ? 'text-red-400' : 'text-gray-400'}>
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {!deployingStatus && deployProgress.logs.some(l => l.includes('finalizado')) && (
+                     <button onClick={() => { setDeployingStatus(false); setDeployProgress({total:0, current:0, logs:[]}); }} className="mt-4 text-xs font-bold text-gray-500 hover:text-white underline">
+                       Cerrar y Limpiar
+                     </button>
+                  )}
+                </div>
+              )}
             </div>
          </div>
       </div>
