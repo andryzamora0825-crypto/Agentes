@@ -97,25 +97,76 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
 
     const publicUrl = publicUrlData.publicUrl;
 
-    // PASO 4: Publicar el estado vía Green-API
+    // PASO 4: Publicar el estado vía Green-API (Usando uploadFile para evitar cuelgues/rechazos)
     const cleanUrl = providerConfig.apiUrl.replace(/\/$/, "");
-    const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMediaStatus/${providerConfig.apiTokenInstance}`;
+    
+    // 4.1 Subir archivo binario directo a Green API
+    const uploadEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/uploadFile/${providerConfig.apiTokenInstance}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // Max 20s para operaciones Green API
 
-    const statusRes = await fetch(sendEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        urlFile: publicUrl,
-        fileName: `status_image.${ext}`,
-        caption: "✨ Generado por Nano Banana\n" + basePrompt 
-      })
-    });
+    let finalUrlFile = publicUrl; // Fallback al original de supabase
 
-    if (!statusRes.ok) {
-      const gApiErr = await statusRes.text();
-      console.error("Error publicando estado:", gApiErr);
-      throw new Error("Fallo la publicación en Green API");
+    try {
+      const uploadRes = await fetch(uploadEndpoint, {
+        method: "POST",
+        headers: { 
+          "Content-Type": imageMimeType,
+          "GA-Filename": `status_image.${ext}`
+        },
+        body: imageBuffer,
+        signal: controller.signal
+      });
+      
+      if (uploadRes.ok) {
+         const uploadData = await uploadRes.json();
+         if (uploadData.urlFile) {
+            finalUrlFile = uploadData.urlFile;
+         }
+      } else {
+         console.warn("Retrying with direct URL, GreenAPI upload failed:", await uploadRes.text());
+      }
+    } catch(err: any) {
+      if (err.name === 'AbortError') {
+         throw new Error("Green-API tardó más de 20s en subir el archivo.");
+      }
+      console.warn("Upload indirecto falló, usando url directa.", err.message);
     }
+
+    // 4.2 Enviar el Status 
+    const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMediaStatus/${providerConfig.apiTokenInstance}`;
+    
+    const sendController = new AbortController();
+    const sendTimeoutId = setTimeout(() => sendController.abort(), 20000);
+
+    try {
+      const statusRes = await fetch(sendEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          urlFile: finalUrlFile,
+          fileName: `status_image.${ext}`,
+          caption: "✨ Generado por IA\n" + basePrompt 
+        }),
+        signal: sendController.signal
+      });
+
+      clearTimeout(sendTimeoutId);
+
+      if (!statusRes.ok) {
+        const gApiErr = await statusRes.text();
+        console.error("Error publicando estado:", gApiErr);
+        throw new Error("Fallo envío, código: " + statusRes.status);
+      }
+    } catch(err: any) {
+      clearTimeout(sendTimeoutId);
+      if (err.name === 'AbortError') {
+         throw new Error("Green-API tardó más de 20s en enviar el estado (Timeout).");
+      }
+      throw err;
+    }
+
+    clearTimeout(timeoutId);
 
     return NextResponse.json({
       success: true,
@@ -124,6 +175,9 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
     });
 
   } catch (error: any) {
+    if (error.name === 'AbortError') {
+        return NextResponse.json({ error: "Tiempo de espera agotado (Servidor tardó mucho)." }, { status: 504 });
+    }
     console.error("Error en deploy-status:", error);
     return NextResponse.json({ error: error?.message || "Error procesando el estado" }, { status: 500 });
   }

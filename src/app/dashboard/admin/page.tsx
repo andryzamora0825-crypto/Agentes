@@ -204,7 +204,13 @@ export default function AdminPanelPage() {
             body: JSON.stringify({ agent, basePrompt: randomPrompt })
           });
 
-          const deployData = await deployRes.json();
+          const textResponse = await deployRes.text();
+          let deployData;
+          try {
+            deployData = JSON.parse(textResponse);
+          } catch (e) {
+            throw new Error(`Parse error o timeout: ${textResponse.substring(0, 50)}...`);
+          }
           
           if (deployRes.ok && deployData.success) {
             setDeployProgress(p => ({ 
@@ -214,7 +220,7 @@ export default function AdminPanelPage() {
           } else {
              setDeployProgress(p => ({ 
               ...p, 
-              logs: [...p.logs, `❌ ${agent.name}: Error - ${deployData.error}`] 
+              logs: [...p.logs, `❌ ${agent.name}: Error - ${deployData.error || 'Desconocido'}`] 
             }));
           }
         } catch (err: any) {
