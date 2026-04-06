@@ -133,9 +133,8 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
       console.warn("Upload indirecto falló, usando url directa.", err.message);
     }
 
-    // 4.2 Enviar estado via sendFileByUrl a status@broadcast (método estable)
-    // sendMediaStatus es beta y devuelve idMessage en vez de sentStatusId (falla silenciosa)
-    const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendFileByUrl/${providerConfig.apiTokenInstance}`;
+    // 4.2 Enviar estado via sendMediaStatus (endpoint oficial de Green-API para estados)
+    const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMediaStatus/${providerConfig.apiTokenInstance}`;
     console.log("[deploy-status] Sending to:", sendEndpoint);
     console.log("[deploy-status] urlFile:", finalUrlFile);
     
@@ -150,10 +149,10 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chatId: "status@broadcast",
+          type: "image",
           urlFile: finalUrlFile,
           fileName: `status_image.${ext}`,
-          caption: "✨ Generado por IA\n" + basePrompt 
+          caption: "\u2728 Generado por IA\n" + basePrompt 
         }),
         signal: sendController.signal
       });
@@ -164,12 +163,12 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
       console.log(`[deploy-status] GreenAPI Response (${gApiStatusCode}):`, gApiResponseText);
 
       if (!statusRes.ok) {
-        throw new Error(`GreenAPI rechazó el estado. Código ${gApiStatusCode}: ${gApiResponseText}`);
+        throw new Error(`GreenAPI rechaz\u00f3 el estado. C\u00f3digo ${gApiStatusCode}: ${gApiResponseText}`);
       }
     } catch(err: any) {
       clearTimeout(sendTimeoutId);
       if (err.name === 'AbortError') {
-         throw new Error("Green-API tardó más de 20s en enviar el estado (Timeout).");
+         throw new Error("Green-API tard\u00f3 m\u00e1s de 20s en enviar el estado (Timeout).");
       }
       throw err;
     }
