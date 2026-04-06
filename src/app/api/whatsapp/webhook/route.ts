@@ -152,6 +152,67 @@ export async function POST(request: Request) {
     }
 
     // =====================================================
+    // DETECCIÓN DE RECARGAS + CRUCE CON ESTAFADORES
+    // =====================================================
+    const rechargeKeywords = ['recarga', 'recargar', 'deposito', 'depositar', 'cargar', 'carga'];
+    const lowerMessage = messageText.toLowerCase();
+    const isRechargeRequest = rechargeKeywords.some(kw => lowerMessage.includes(kw));
+    
+    // Extraer monto si existe (busca patrones como $15, 15 usd, 15 dólares, 15 dolares, etc.)
+    const amountMatch = messageText.match(/\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:usd|USD|dolar|dólares|dolares)?/);
+    const detectedAmount = amountMatch ? parseFloat(amountMatch[1]) : null;
+
+    if (isRechargeRequest) {
+      // Cruzar número con base de datos de estafadores
+      const cleanPhone = sender.replace('@c.us', '');
+      const { data: scammerData } = await supabase
+        .from('scammers')
+        .select('id, name')
+        .or(`phone_number.eq.${cleanPhone},phone_number.eq.0${cleanPhone.slice(-10)},phone_number.eq.593${cleanPhone.slice(-10)}`)
+        .limit(1);
+
+      const isScammer = scammerData && scammerData.length > 0;
+
+      if (isScammer) {
+        console.log(`[WEBHOOK] 🚨 ESTAFADOR DETECTADO: ${sender} intentó recargar`);
+        
+        // Registrar intento de recarga como rechazado
+        await supabase.from('whatsapp_recargas').insert({
+          owner_id: uid,
+          phone_number: sender,
+          client_name: senderName,
+          amount: detectedAmount,
+          status: 'rejected',
+          is_scammer: true
+        });
+
+        // Enviar mensaje de rechazo
+        const rejectMsg = "Lo sentimos, no podemos procesar su solicitud en este momento. Para más información, comuníquese directamente con soporte.";
+        const cleanUrl = providerConfig.apiUrl.replace(/\/$/, "");
+        const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMessage/${providerConfig.apiTokenInstance}`;
+        
+        await fetch(sendEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chatId: sender, message: rejectMsg })
+        });
+
+        return NextResponse.json({ success: true, action: "scammer_rejected" });
+      }
+
+      // No es estafador → registrar recarga como pendiente
+      await supabase.from('whatsapp_recargas').insert({
+        owner_id: uid,
+        phone_number: sender,
+        client_name: senderName,
+        amount: detectedAmount,
+        status: 'pending',
+        is_scammer: false
+      });
+      console.log(`[WEBHOOK] 💰 Recarga pendiente registrada: ${senderName} - $${detectedAmount || '?'}`);
+    }
+
+    // =====================================================
     // 4. PROCESAR RESPUESTA CON GEMINI IA
     // =====================================================
     console.log("[WEBHOOK] Generando respuesta con Gemini...");
