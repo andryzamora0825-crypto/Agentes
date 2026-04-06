@@ -99,7 +99,7 @@ export async function POST(request: Request) {
     const msgTimestamp = payload.messageData?.timestamp || payload.timestamp;
     if (msgTimestamp) {
       const msgAge = Date.now() / 1000 - msgTimestamp;
-      if (msgAge > 120) { // Más de 2 minutos de antigüedad
+      if (msgAge > 30) { // Más de 30 segundos de antigüedad
         console.log(`[WEBHOOK] ⏭️ Mensaje IGNORADO por antiguo (${Math.round(msgAge)}s de edad)`);
         return NextResponse.json({ success: true, ignored: true, reason: "Mensaje retenido/viejo ignorado" });
       }
