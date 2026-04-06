@@ -120,6 +120,6 @@ No seas excesivamente robótico, mantén el tono de comportamiento indicado.
 
   } catch (error: any) {
     console.error("WhatsApp Webhook Error:", error);
-    return NextResponse.json({ error: "Error procesando webhook" }, { status: 500 });
+    return NextResponse.json({ error: "Error procesando webhook", details: error.message || String(error) }, { status: 500 });
   }
 }
