@@ -149,10 +149,9 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "image",
           urlFile: finalUrlFile,
           fileName: `status_image.${ext}`,
-          caption: "\u2728 Generado por IA\n" + basePrompt 
+          caption: "✨ Generado por IA\n" + basePrompt 
         }),
         signal: sendController.signal
       });

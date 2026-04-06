@@ -32,58 +32,68 @@ export async function POST(request: Request) {
     // DETECCIÓN DE MENSAJE SALIENTE (El agente humano habló)
     // =====================================================
     if (webhookType === "outgoingMessage" || webhookType === "outgoingMessageReceived") {
-      // Green-API usa diferentes campos según el tipo de webhook saliente
-      const recipient = payload.senderData?.chatId || payload.senderData?.sender || payload.chatId;
-      console.log("[WEBHOOK] Mensaje SALIENTE (Agente humano) detectado hacia:", recipient);
-      
-      if (recipient && !recipient.includes("@g.us")) {
-        // Extraer texto del mensaje si está disponible
-        const typeMessage = payload.messageData?.typeMessage;
-        let humanMsg = "";
-        if (typeMessage === "textMessage") {
-            humanMsg = payload.messageData?.textMessageData?.textMessage || "";
-        } else if (typeMessage === "extendedTextMessage") {
-            humanMsg = payload.messageData?.extendedTextMessageData?.text || "";
-        }
+      // Para mensajes salientes, el chatId es el DESTINATARIO (hacia quien se envió)
+      // Green-API lo manda en diferentes campos según la versión:
+      const recipient = 
+        payload.senderData?.chatId ||
+        payload.chatId ||
+        payload.messageData?.chatId ||
+        null;
 
-        let pauseMinutes = PAUSE_MINUTES;
-        const lowerHumanMsg = humanMsg.trim().toLowerCase();
-
-        if (lowerHumanMsg === '#bot') {
-            await supabase.from('whatsapp_pauses').delete().eq('owner_id', uid).eq('phone_number', recipient);
-            console.log(`[WEBHOOK] 🤖 Bot REACTIVADO manualmente para ${recipient}`);
-            return NextResponse.json({ success: true, action: "bot_reactivated" });
-        } else if (lowerHumanMsg === '#pausa') {
-            pauseMinutes = PAUSE_MINUTES; // 10 minutos (por defecto ya es PAUSE_MINUTES, pero lo forzamos acá también)
-        }
-
-        const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
-        
-        // 1. Usar select + insert/update para mayor seguridad si no hay uniques configurados
-        const { data: existingPause } = await supabase
-          .from('whatsapp_pauses')
-          .select('id')
-          .eq('owner_id', uid)
-          .eq('phone_number', recipient)
-          .maybeSingle();
-
-        if (existingPause) {
-          await supabase.from('whatsapp_pauses').update({ paused_until: pauseUntil }).eq('id', existingPause.id);
-        } else {
-          await supabase.from('whatsapp_pauses').insert({ owner_id: uid, phone_number: recipient, paused_until: pauseUntil });
-        }
-        
-        console.log(`[WEBHOOK] 🛑 Bot PAUSADO para ${recipient} por ${pauseMinutes} minutos.`);
-
-        // 2. Registrar la intervención humana en el historial (también sirve como medida redundante)
-        const contentToSave = humanMsg || "[Intervención de Agente Humano]";
-        await supabase.from('whatsapp_chats').insert({
-          owner_id: uid, 
-          phone_number: recipient, 
-          role: 'agent', 
-          content: contentToSave
-        });
+      // Obtener el texto del mensaje para analizar si es un comando (#bot, #pausa)
+      const typeMessage = payload.messageData?.typeMessage;
+      let humanMsg = "";
+      if (typeMessage === "textMessage") {
+          humanMsg = payload.messageData?.textMessageData?.textMessage || "";
+      } else if (typeMessage === "extendedTextMessage") {
+          humanMsg = payload.messageData?.extendedTextMessageData?.text || "";
       }
+
+      const lowerHumanMsg = humanMsg.trim().toLowerCase();
+      console.log(`[WEBHOOK] Mensaje SALIENTE detectado. Recipient: ${recipient}, Texto: "${humanMsg.substring(0,50)}"`);
+
+      // Ignorar si el destinatario es un grupo o no hay recipient
+      if (!recipient || recipient.includes("@g.us")) {
+        return NextResponse.json({ success: true, action: "outgoing_ignored_group" });
+      }
+
+      if (lowerHumanMsg === '#bot') {
+          await supabase.from('whatsapp_pauses').delete().eq('owner_id', uid).eq('phone_number', recipient);
+          console.log(`[WEBHOOK] 🤖 Bot REACTIVADO manualmente para ${recipient}`);
+          return NextResponse.json({ success: true, action: "bot_reactivated" });
+      }
+
+      let pauseMinutes = PAUSE_MINUTES;
+      if (lowerHumanMsg === '#pausa') {
+          pauseMinutes = PAUSE_MINUTES;
+      }
+
+      const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
+      
+      const { data: existingPause } = await supabase
+        .from('whatsapp_pauses')
+        .select('id')
+        .eq('owner_id', uid)
+        .eq('phone_number', recipient)
+        .maybeSingle();
+
+      if (existingPause) {
+        await supabase.from('whatsapp_pauses').update({ paused_until: pauseUntil }).eq('id', existingPause.id);
+      } else {
+        await supabase.from('whatsapp_pauses').insert({ owner_id: uid, phone_number: recipient, paused_until: pauseUntil });
+      }
+      
+      console.log(`[WEBHOOK] 🛑 Bot PAUSADO para ${recipient} por ${pauseMinutes} minutos.`);
+
+      // Registrar la intervención humana en el historial
+      const contentToSave = humanMsg || "[Intervención de Agente Humano]";
+      await supabase.from('whatsapp_chats').insert({
+        owner_id: uid, 
+        phone_number: recipient, 
+        role: 'agent', 
+        content: contentToSave
+      });
+
       return NextResponse.json({ success: true, action: "pause_registered" });
     }
 
