@@ -135,9 +135,14 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
 
     // 4.2 Enviar el Status 
     const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMediaStatus/${providerConfig.apiTokenInstance}`;
+    console.log("[deploy-status] Sending to:", sendEndpoint);
+    console.log("[deploy-status] urlFile:", finalUrlFile);
     
     const sendController = new AbortController();
     const sendTimeoutId = setTimeout(() => sendController.abort(), 20000);
+
+    let gApiResponseText = "";
+    let gApiStatusCode = 0;
 
     try {
       const statusRes = await fetch(sendEndpoint, {
@@ -152,11 +157,12 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
       });
 
       clearTimeout(sendTimeoutId);
+      gApiStatusCode = statusRes.status;
+      gApiResponseText = await statusRes.text();
+      console.log(`[deploy-status] GreenAPI Response (${gApiStatusCode}):`, gApiResponseText);
 
       if (!statusRes.ok) {
-        const gApiErr = await statusRes.text();
-        console.error("Error publicando estado:", gApiErr);
-        throw new Error("Fallo envío, código: " + statusRes.status);
+        throw new Error(`GreenAPI rechazó el estado. Código ${gApiStatusCode}: ${gApiResponseText}`);
       }
     } catch(err: any) {
       clearTimeout(sendTimeoutId);
@@ -171,7 +177,9 @@ INSTRUCCIONES PARA EL PROMPT DE GENERACIÓN:
     return NextResponse.json({
       success: true,
       imageUrl: publicUrl,
-      adaptedPrompt
+      adaptedPrompt,
+      gApiStatus: gApiStatusCode,
+      gApiResponse: gApiResponseText
     });
 
   } catch (error: any) {

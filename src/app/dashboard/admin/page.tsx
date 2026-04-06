@@ -213,9 +213,10 @@ export default function AdminPanelPage() {
           }
           
           if (deployRes.ok && deployData.success) {
+            const gApiInfo = deployData.gApiResponse ? ` [GreenAPI: ${deployData.gApiResponse.substring(0, 80)}]` : '';
             setDeployProgress(p => ({ 
               ...p, 
-              logs: [...p.logs, `✅ ${agent.name}: Estado subido con éxito!`] 
+              logs: [...p.logs, `✅ ${agent.name}: OK (HTTP ${deployData.gApiStatus})${gApiInfo}`] 
             }));
           } else {
              setDeployProgress(p => ({ 
