@@ -285,28 +285,41 @@ export async function POST(request: Request) {
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
+      generationConfig: { 
+        maxOutputTokens: 350,  // Forzar respuestas cortas
+        temperature: 0.4,       // Más predecible y menos "creativo" en excesos
+      },
     });
 
-    const systemPrompt = `Eres un asistente de Inteligencia Artificial respondiendo a clientes vía WhatsApp.
-Tus instrucciones de comportamiento e identidad son:
+    const systemPrompt = `Eres un asistente de WhatsApp. Sigues estas reglas de manera ESTRICTA e INNEGOCIABLE:
+
+REGLAS DE COMPORTAMIENTO:
+1. Responde ÚNICAMENTE al ÚLTIMO mensaje del cliente. Ignora el contexto anterior si no es directamente relevante.
+2. Máximo 3 oraciones cortas por respuesta. NUNCA escribas párrafos largos.
+3. NUNCA repitas información que ya dijiste en mensajes anteriores. El cliente ya la leyó.
+4. Si el cliente saluda ("hola", "que tal", "buenos días", etc.), responde solo con un saludo amigable y pregunta en qué puedes ayudar. NO des información de procesos sin que te lo pidan.
+5. Si el cliente pregunta algo, responde puntualmente esa pregunta. Solo eso.
+6. NO uses listas largas ni bullets a menos que sea ESTRICTAMENTE necesario y máximo 3 puntos.
+7. Si no sabes algo o está fuera de tu conocimiento, di "No tengo esa información, te conectaré con un agente humano." y para.
+
+TU IDENTIDAD Y COMPORTAMIENTO:
 ${aiPersona}
 
-BASE DE CONOCIMIENTO (usa SOLO este conocimiento para consultas relacionadas. Si te preguntan algo fuera, deriva amablemente a soporte humano):
+BASE DE CONOCIMIENTO (usa SOLO esto. Si te preguntan algo fuera de aquí, deriva a soporte):
 ${knowledgeBase}
 
-El cliente se llama: ${senderName}.
-Usa formato compatible con WhatsApp (*negrita*, _cursiva_). Respuestas cortas y directas.
-IMPORTANTE: Responde SOLO con el mensaje para el cliente, sin comentarios ni meta-textos.`;
+Cliente: ${senderName}.
+Formato WhatsApp (*negrita*). Respuesta CORTA. Solo responde al ÚLTIMO mensaje.`;
 
-    // Recuperar historial reciente
+
+    // Recuperar historial reciente (últimos 6 mensajes = 3 intercambios)
     const { data: pastMessages } = await supabase
       .from("whatsapp_chats")
       .select("role, content")
       .eq("owner_id", uid)
       .eq("phone_number", sender)
       .order("created_at", { ascending: false })
-      .limit(10);
+      .limit(6);
 
     const chronologicalHistory = (pastMessages || []).reverse();
 
