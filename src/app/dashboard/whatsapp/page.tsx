@@ -171,15 +171,15 @@ export default function WhatsAppAgentPage() {
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
                   Identidad de tu Agencia (System Prompt)
                 </label>
-                <span className={`text-[10px] font-bold ${aiPersona.length > 900 ? 'text-red-400' : 'text-gray-500'}`}>
-                  {aiPersona.length} / 1000
+                <span className={`text-[10px] font-bold ${aiPersona.length > 3800 ? 'text-red-400' : 'text-gray-500'}`}>
+                  {aiPersona.length} / 4000
                 </span>
               </div>
               <textarea
                 className="w-full min-h-[120px] bg-[#111111] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFDE00] focus:ring-1 focus:ring-[#FFDE00] transition-all text-sm resize-none"
                 value={aiPersona}
                 onChange={(e) => setAiPersona(e.target.value)}
-                maxLength={1000}
+                maxLength={4000}
                 placeholder="Ej: Eres un experto en ventas de la agencia X. Responde siempre de forma corta, amable y directa."
                 required
               />
