@@ -3,8 +3,6 @@ import { currentUser } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-// Nota: maxDuration requiere plan Pro en Vercel.
-// El flujo fue optimizado para terminar en <10s eliminando el paso uploadFile.
 export const maxDuration = 60;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -30,7 +28,7 @@ export async function POST(request: Request) {
 
     // PASO 1: Adaptar el prompt al estilo del agente
     const promptAdaptationInstruction = `Eres un director de arte de marketing.
-Voy a darte una IDEA PARA UN ESTADO y quiero que generes un PROMPT EN INGLÉS perfecto para generación de imágenes IA, adaptado exclusivamente para la marca de este agente/negocio.
+Genera un PROMPT EN INGLÉS para generación de imágenes IA (modelo generativo), adaptado para la marca de este agente/negocio.
 
 IDENTIDAD DEL AGENTE:
 - Personalidad: ${aiPersona}
@@ -41,7 +39,7 @@ IDEA BASE: "${basePrompt}"
 
 INSTRUCCIONES:
 - Escribe SOLO el prompt en inglés crudo. Sin saludos ni código.
-- Incluye y prioriza los colores representativos de manera elegante.
+- Prioriza los colores representativos de manera elegante en fondos, ropas o ambientes.
 - El estilo debe reflejar la personalidad indicada.
 - Formato Vertical 9:16 portrait.`;
 
@@ -74,7 +72,7 @@ INSTRUCCIONES:
       throw new Error(`Google AI no devolvió imagen. Prompt: ${adaptedPrompt.substring(0, 50)}...`);
     }
 
-    // PASO 3: Subir a Supabase Storage (URL pública directa)
+    // PASO 3: Subir a Supabase Storage
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
     const fileName = `status_camp_${agent.id}_${Date.now()}.${ext}`;
@@ -89,30 +87,53 @@ INSTRUCCIONES:
       .from("ai-generations")
       .getPublicUrl(fileName);
 
-    const publicUrl = publicUrlData.publicUrl;
-    console.log("[deploy-status] Imagen subida a Supabase:", publicUrl);
+    const supabaseUrl = publicUrlData.publicUrl;
+    console.log("[deploy-status] Imagen generada y subida a Supabase:", supabaseUrl);
 
-    // PASO 4: Publicar el estado vía Green-API usando la URL pública de Supabase.
-    // Se omite el paso previo de uploadFile a Green-API (era el cuello de botella de ~20s).
-    // Supabase devuelve URLs con Content-Type correcto que Green-API acepta directamente.
+    // PASO 4: UploadFile a Green API (desde servidor, obtiene urlFile interna de Green-API)
+    // Nota: usamos el imageBase64 directamente para evitar problemas con la URL de Supabase.
     const cleanUrl = providerConfig.apiUrl.replace(/\/$/, "");
+    const uploadEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/uploadFile/${providerConfig.apiTokenInstance}`;
+    
+    console.log("[deploy-status] Subiendo binario a Green-API uploadFile...");
+    
+    const uploadRes = await fetch(uploadEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": imageMimeType,
+        "GA-Filename": `status_image.${ext}`,
+      },
+      body: imageBuffer,
+      signal: AbortSignal.timeout(25000), // 25s máximo para upload
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      throw new Error(`Green-API uploadFile falló (${uploadRes.status}): ${errText}`);
+    }
+
+    const uploadData = await uploadRes.json();
+    const greenApiUrl: string = uploadData.urlFile || uploadData.url || supabaseUrl;
+    console.log("[deploy-status] Green-API urlFile obtenida:", greenApiUrl);
+
+    // PASO 5: Publicar el estado con la URL de Green-API (enlace directo garantizado)
     const sendEndpoint = `${cleanUrl}/waInstance${providerConfig.idInstance}/sendMediaStatus/${providerConfig.apiTokenInstance}`;
 
-    console.log("[deploy-status] Enviando a Green-API sendMediaStatus:", sendEndpoint);
+    console.log("[deploy-status] Enviando sendMediaStatus...");
 
     const statusRes = await fetch(sendEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        urlFile: publicUrl,
+        urlFile: greenApiUrl,
         fileName: `status_image.${ext}`,
       }),
-      signal: AbortSignal.timeout(15000), // 15s máximo
+      signal: AbortSignal.timeout(15000),
     });
 
     const gApiStatusCode = statusRes.status;
     const gApiResponseText = await statusRes.text();
-    console.log(`[deploy-status] GreenAPI Response (${gApiStatusCode}):`, gApiResponseText);
+    console.log(`[deploy-status] sendMediaStatus Response (${gApiStatusCode}):`, gApiResponseText);
 
     if (!statusRes.ok) {
       throw new Error(`GreenAPI rechazó el estado. Código ${gApiStatusCode}: ${gApiResponseText}`);
@@ -120,7 +141,8 @@ INSTRUCCIONES:
 
     return NextResponse.json({
       success: true,
-      imageUrl: publicUrl,
+      imageUrl: supabaseUrl,
+      greenApiUrl,
       adaptedPrompt,
       gApiStatus: gApiStatusCode,
       gApiResponse: gApiResponseText,
@@ -128,7 +150,7 @@ INSTRUCCIONES:
 
   } catch (error: any) {
     if (error.name === "AbortError") {
-      return NextResponse.json({ error: "Tiempo de espera agotado con Green-API (>15s)." }, { status: 504 });
+      return NextResponse.json({ error: "Tiempo de espera agotado con Green-API. Intenta de nuevo." }, { status: 504 });
     }
     console.error("[deploy-status] Error:", error?.message || error);
     return NextResponse.json({ error: error?.message || "Error procesando el estado" }, { status: 500 });
