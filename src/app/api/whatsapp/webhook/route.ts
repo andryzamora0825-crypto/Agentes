@@ -239,9 +239,16 @@ export async function POST(request: Request) {
       }
 
       const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
-      await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
-      await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
+      const { error: delErr } = await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
+      if (delErr) {
+        console.error(`[WEBHOOK] ❌ Error eliminando pausa anterior:`, delErr);
+      }
       
+      const { error: insErr } = await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
+      if (insErr) {
+        console.error(`[WEBHOOK] ❌ Error insertando pausa en DB:`, insErr);
+      }
+
       if (outText !== "#contact" && outText !== "#pause") {
         console.log(`[WEBHOOK] 🛑 Humano intervino. Pausa de ${pauseMinutes}min para ${chatId}`);
       }
