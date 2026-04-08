@@ -26,7 +26,7 @@ export default function EstudioIAPage() {
   const [refImages, setRefImages] = useState<File[]>([]);
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [useAgencyIdentity, setUseAgencyIdentity] = useState(true);
-  const [useAgencyCharacter, setUseAgencyCharacter] = useState(true);
+  const [useAgencyCharacter, setUseAgencyCharacter] = useState(false);
   const [imageFormat, setImageFormat] = useState('square');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
