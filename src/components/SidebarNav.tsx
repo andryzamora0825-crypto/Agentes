@@ -12,6 +12,7 @@ export default function SidebarNav() {
   const [credits, setCredits] = useState<number | null>(null);
   const [plan, setPlan] = useState<string>('FREE');
   const [daysLeft, setDaysLeft] = useState<number>(0);
+  const [hasWhatsappBot, setHasWhatsappBot] = useState(false);
   
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
 
@@ -24,6 +25,7 @@ export default function SidebarNav() {
           setCredits(data.credits);
           setPlan(data.plan);
           setDaysLeft(data.daysLeft);
+          setHasWhatsappBot(data.hasWhatsappBot || false);
         }
       })
       .catch(console.error);
@@ -32,15 +34,15 @@ export default function SidebarNav() {
   const isVip = isAdmin || plan === 'VIP';
 
   const navItems = [
-    { name: "Notas de Retiro",     href: "/dashboard",              exact: true,  icon: FileText,      adminOnly: false, vipOnly: true  },
-    { name: "Panel Admin",         href: "/dashboard/admin",         exact: false, icon: ShieldCheck,   adminOnly: true,  vipOnly: false },
-    { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true  },
-    { name: "Bot WhatsApp AI",     href: "/dashboard/whatsapp",      exact: false, icon: MessageSquare, adminOnly: false, vipOnly: true  },
-    { name: "Recargas",            href: "/dashboard/recargas",      exact: false, icon: DollarSign,    adminOnly: false, vipOnly: true  },
-    { name: "Tienda",              href: "/dashboard/tienda",         exact: false, icon: ShoppingCart,  adminOnly: false, vipOnly: false },
-    { name: "Novedades (Muro)",    href: "/dashboard/feed",           exact: false, icon: Newspaper,     adminOnly: false, vipOnly: true  },
-    { name: "Alertas / Estafadores", href: "/dashboard/estafadores", exact: false, icon: ShieldAlert,   adminOnly: false, vipOnly: true  },
-    { name: "Configuración",       href: "/dashboard/configuracion",  exact: false, icon: Settings,      adminOnly: false, vipOnly: false },
+    { name: "Notas de Retiro",     href: "/dashboard",              exact: true,  icon: FileText,      adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Panel Admin",         href: "/dashboard/admin",         exact: false, icon: ShieldCheck,   adminOnly: true,  vipOnly: false, requiresBot: false },
+    { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Bot WhatsApp AI",     href: "/dashboard/whatsapp",      exact: false, icon: MessageSquare, adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Recargas",            href: "/dashboard/recargas",      exact: false, icon: DollarSign,    adminOnly: false, vipOnly: true,  requiresBot: true  },
+    { name: "Tienda",              href: "/dashboard/tienda",         exact: false, icon: ShoppingCart,  adminOnly: false, vipOnly: false, requiresBot: false },
+    { name: "Novedades (Muro)",    href: "/dashboard/feed",           exact: false, icon: Newspaper,     adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Alertas / Estafadores", href: "/dashboard/estafadores", exact: false, icon: ShieldAlert,   adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Configuración",       href: "/dashboard/configuracion",  exact: false, icon: Settings,      adminOnly: false, vipOnly: false, requiresBot: false },
   ];
 
   return (
@@ -48,6 +50,7 @@ export default function SidebarNav() {
       {navItems.map((item) => {
         if (item.adminOnly && !isAdmin) return null;
         if (item.vipOnly && !isVip) return null;
+        if (item.requiresBot && !hasWhatsappBot && !isAdmin) return null;
 
         const Icon = item.icon;
         const isActive = item.exact 

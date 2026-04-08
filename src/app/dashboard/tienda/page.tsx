@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Coins, Zap, ShieldCheck, ChevronRight, Check, PlayCircle, X } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,21 @@ export default function TiendaPage() {
   const [selectedPackage, setSelectedPackage] = useState<any>(null);
   const [processing, setProcessing] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [isVip, setIsVip] = useState(false);
+  const [hasWhatsappBot, setHasWhatsappBot] = useState(false);
+
+  // Verificar estado del usuario
+  useEffect(() => {
+    fetch("/api/user/sync")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setIsVip(data.plan === 'VIP');
+          setHasWhatsappBot(data.hasWhatsappBot || false);
+        }
+      })
+      .catch(console.error);
+  });
 
   const packages = [
     {
@@ -74,9 +89,9 @@ export default function TiendaPage() {
     },
     {
       id: "whatsapp_bot",
-      price: 15, // Suggested price for bot
+      price: 25,
       name: "Bot de WhatsApp Automatizado",
-      description: "Implementamos un Bot de WhatsApp con IA en tu propio número para atender clientes 24/7.",
+      description: "Implementamos un Bot de WhatsApp con IA en tu propio número para atender clientes 24/7. Costo mensual recurrente.",
       features: ["Atención al cliente 24/7", "Integración con tu base de conocimientos", "Traspaso a agente humano", "Sin límites de chats"],
       cardClass: "bg-[#0b0b0b] border border-[#25D366]/30 hover:border-[#25D366]/80 hover:shadow-[0_0_30px_rgba(37,211,102,0.15)] relative overflow-hidden group hover:-translate-y-2",
       textColor: "text-white",
@@ -131,7 +146,12 @@ export default function TiendaPage() {
 
   const vipPackage = packages.find(p => p.isVip);
   const creditPackages = packages.filter(p => !p.isVip && !p.isService);
-  const servicePackages = packages.filter(p => p.isService);
+  const servicePackages = packages.filter(p => {
+    if (!p.isService) return false;
+    // Ocultar Bot WhatsApp si ya lo tiene
+    if (p.id === 'whatsapp_bot' && hasWhatsappBot) return false;
+    return true;
+  });
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-12">
@@ -147,8 +167,8 @@ export default function TiendaPage() {
         </p>
       </div>
 
-      {/* ─── BANNER VIP (Destacado Principal) ─── */}
-      {vipPackage && (
+      {/* ─── BANNER VIP (Destacado Principal) — Solo si NO es VIP ─── */}
+      {!isVip && vipPackage && (
         <div className="relative w-full rounded-[2.5rem] bg-[#0a0a09] border border-[#FFDE00]/30 shadow-[0_0_50px_rgba(255,222,0,0.1)] hover:shadow-[0_0_80px_rgba(255,222,0,0.15)] hover:border-[#FFDE00]/60 transition-all duration-700 overflow-hidden mb-20 group">
           {/* Fondos y Efectos del VIP */}
           <div className="absolute -top-32 -right-32 w-[30rem] h-[30rem] bg-[#FFDE00]/15 blur-[120px] rounded-full group-hover:bg-[#FFDE00]/25 transition-all duration-700 pointer-events-none"></div>
@@ -305,8 +325,18 @@ export default function TiendaPage() {
                   <p className="text-gray-400 text-sm mb-6 leading-relaxed">{pkg.description}</p>
                   
                   <div className={`flex items-start gap-1 pb-6 mb-8 border-b border-white/10 ${pkg.textColor}`}>
-                    <span className="text-5xl font-black text-shadow-sm tracking-tighter">{pkg.priceInCredits?.toLocaleString() || 0}</span>
-                    <span className="text-lg font-bold mt-auto mb-1 opacity-70">Créditos</span>
+                    {pkg.priceInCredits && pkg.priceInCredits > 0 ? (
+                      <>
+                        <span className="text-5xl font-black text-shadow-sm tracking-tighter">{pkg.priceInCredits?.toLocaleString() || 0}</span>
+                        <span className="text-lg font-bold mt-auto mb-1 opacity-70">Créditos</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-3xl font-bold mt-1.5 opacity-90">$</span>
+                        <span className="text-5xl font-black text-shadow-sm tracking-tighter">{pkg.price}</span>
+                        <span className="text-lg font-bold mt-auto mb-1 opacity-70">USD/mes</span>
+                      </>
+                    )}
                   </div>
 
                   <ul className="space-y-4 mb-10">

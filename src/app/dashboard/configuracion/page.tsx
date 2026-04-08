@@ -208,6 +208,7 @@ function AiSettingsForm() {
     agencyLogoUrl: "",
     inspLogoUrl: "",
     brandLogoUrl: "",
+    characterImageUrl: "",
     aiEnabled: true,
   });
 
@@ -328,7 +329,8 @@ function AiSettingsForm() {
         {[
           { key: 'agencyLogoUrl', label: 'Logo Principal', desc: 'Sube tu logo para que la IA lo vea' },
           { key: 'inspLogoUrl', label: 'Referencia de Inspiración', desc: 'Una imagen de las chicas o estilo que quieres' },
-          { key: 'brandLogoUrl', label: 'Logo de Marca Extra', desc: 'Alguna otra marca que quieres que aparezca' }
+          { key: 'brandLogoUrl', label: 'Logo de Marca Extra', desc: 'Alguna otra marca que quieres que aparezca' },
+          { key: 'characterImageUrl', label: '👤 Personaje / Representante', desc: 'Sube la foto de la persona o personaje que representa tu agencia. Aparecerá en las imágenes generadas cuando actives "Usar Personaje de Agencia".' }
         ].map((item) => {
           const hasImage = (form[item.key as keyof typeof form] as string) !== "";
           return (

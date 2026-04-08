@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     const contentType = request.headers.get("content-type") || "";
     let prompt = "";
     let useAgencyIdentity = false;
+    let useAgencyCharacter = false;
     let imageFormat = "square";
     let referenceImages: { base64: string; mimeType: string }[] = [];
 
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
       const formData = await request.formData();
       prompt = formData.get("prompt") as string;
       useAgencyIdentity = formData.get("useAgencyIdentity") === "true";
+      useAgencyCharacter = formData.get("useAgencyCharacter") === "true";
       imageFormat = (formData.get("imageFormat") as string) || "square";
 
       // Hasta 3 imágenes de referencia directas desde el formulario
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
       const body = await request.json();
       prompt = body.prompt;
       useAgencyIdentity = body.useAgencyIdentity === true;
+      useAgencyCharacter = body.useAgencyCharacter === true;
       imageFormat = body.imageFormat || "square";
     }
 
@@ -94,11 +97,33 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
       }
     }
 
+    // --- INYECCIÓN DE PERSONAJE DE AGENCIA ---
+    if (useAgencyCharacter && user.publicMetadata?.aiSettings) {
+      const aiSettings: any = user.publicMetadata.aiSettings;
+      if (aiSettings.characterImageUrl) {
+        try {
+          const res = await fetch(aiSettings.characterImageUrl);
+          if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            referenceImages.push({
+              base64: Buffer.from(arrayBuffer).toString("base64"),
+              mimeType: res.headers.get('content-type') || "image/png"
+            });
+          }
+        } catch (e) {
+          console.error("Error trayendo imagen de personaje:", e);
+        }
+        finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada. Mantén su apariencia, rasgos faciales y estilo reconocibles en la escena generada. El personaje debe ser protagonista o estar visible de forma clara en la imagen.`;
+      }
+    }
+
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
     // Pro cuesta 150 créditos, Flash 100
     const hasRefImages = referenceImages.length > 0;
-    const cost = hasRefImages ? 150 : 100;
+    const baseCost = hasRefImages ? 150 : 100;
+    const characterExtra = useAgencyCharacter ? 50 : 0;
+    const cost = baseCost + characterExtra;
 
     if (currentCredits < cost) {
       return NextResponse.json({

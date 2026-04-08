@@ -49,12 +49,15 @@ export async function GET() {
     }
 
     // Retorno normal
+    const hasWhatsappBot = !!(user.publicMetadata as any)?.whatsappSettings?.isUnlocked;
+    
     return NextResponse.json({ 
       success: true, 
       credits: Number(currentCredits), 
       isNew: false, 
       plan: currentPlan,
-      daysLeft: daysLeft
+      daysLeft: daysLeft,
+      hasWhatsappBot
     });
 
   } catch (error: any) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import VipGate from "@/components/VipGate";
 import {
   FileText,
@@ -13,6 +13,7 @@ import {
   Hash,
   KeyRound,
   Zap,
+  Clipboard,
 } from "lucide-react";
 
 interface ExtractedData {
@@ -107,6 +108,25 @@ export default function DashboardPage() {
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  // Paste image handler
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const f = item.getAsFile();
+        if (f) handleFile(f);
+        break;
+      }
+    }
+  }, [handleFile]);
+
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [handlePaste]);
+
   const handleSubmit = async () => {
     if (!file) return;
     setLoading(true);
@@ -195,12 +215,35 @@ export default function DashboardPage() {
                   <UploadCloud className="w-10 h-10 text-[#FFDE00]" />
                 </div>
                 <div className="text-center">
-                  <p className="text-white font-semibold text-lg drop-shadow-sm">Arrastra tu comprobante aquí</p>
-                  <p className="text-gray-400 text-sm mt-1">o haz clic para seleccionar la foto</p>
+                  <p className="text-white font-semibold text-lg drop-shadow-sm">Arrastra, selecciona o <span className="text-[#FFDE00]">pega (Ctrl+V)</span> tu comprobante</p>
+                  <p className="text-gray-400 text-sm mt-1">También funciona copiar y pegar desde iPhone</p>
                 </div>
-                <span className="text-xs text-gray-400 font-bold px-3 py-1 bg-black/50 rounded-full border border-white/5 uppercase tracking-wider">
-                  JPG, PNG, WEBP
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 font-bold px-3 py-1 bg-black/50 rounded-full border border-white/5 uppercase tracking-wider">
+                    JPG, PNG, WEBP
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        const clipboardItems = await navigator.clipboard.read();
+                        for (const item of clipboardItems) {
+                          const imageType = item.types.find(t => t.startsWith('image/'));
+                          if (imageType) {
+                            const blob = await item.getType(imageType);
+                            const f = new File([blob], `pasted_${Date.now()}.png`, { type: imageType });
+                            handleFile(f);
+                            break;
+                          }
+                        }
+                      } catch {}
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-purple-400 transition-colors px-3 py-1 bg-black/50 hover:bg-purple-500/10 rounded-full border border-white/5 hover:border-purple-500/30"
+                  >
+                    <Clipboard className="w-3 h-3" /> Pegar imagen
+                  </button>
+                </div>
               </div>
             )}
           </div>

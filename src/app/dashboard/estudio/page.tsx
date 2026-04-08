@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
@@ -26,11 +26,17 @@ export default function EstudioIAPage() {
   const [refImages, setRefImages] = useState<File[]>([]);
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [useAgencyIdentity, setUseAgencyIdentity] = useState(true);
+  const [useAgencyCharacter, setUseAgencyCharacter] = useState(true);
   const [imageFormat, setImageFormat] = useState('square');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
+
+  // Calcular costo dinámico
+  const baseCost = refImages.length > 0 ? 150 : 100;
+  const characterCost = useAgencyCharacter ? 50 : 0;
+  const totalCost = baseCost + characterCost;
 
   const loadHistory = async () => {
     try {
@@ -72,6 +78,27 @@ export default function EstudioIAPage() {
     setRefImages(prev => prev.filter((_, idx) => idx !== i));
   };
 
+  // Paste image handler
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          setRefImages(prev => [...prev, file].slice(0, 3));
+        }
+        break;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [handlePaste]);
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
@@ -83,6 +110,7 @@ export default function EstudioIAPage() {
       const fd = new FormData();
       fd.append("prompt", prompt);
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
+      fd.append("useAgencyCharacter", String(useAgencyCharacter));
       fd.append("imageFormat", imageFormat);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
@@ -97,7 +125,7 @@ export default function EstudioIAPage() {
       } else {
         if (res.status === 402) {
           setErrorMsg(
-            `No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || (refImages.length > 0 ? 150 : 100)}. Recarga en la tienda.`
+            `No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`
           );
         } else {
           setErrorMsg(data.error || "Nano Banana no respondió. Intenta de nuevo.");
@@ -178,7 +206,7 @@ export default function EstudioIAPage() {
         {/* Panel de Generación */}
         <div className="bg-[#121212] rounded-3xl border border-white/5 p-5 sm:p-8 shadow-2xl">
           {/* Indicador de Modelo Activo */}
-          <div className="flex items-center gap-2 mb-5">
+          <div className="flex items-center gap-2 mb-5 flex-wrap">
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border transition-all ${refImages.length > 0
                 ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
                 : 'bg-[#FFDE00]/10 border-[#FFDE00]/20 text-[#FFDE00]'
@@ -186,11 +214,12 @@ export default function EstudioIAPage() {
               <span>🍌</span>
               {refImages.length > 0 ? 'Nano Banana Pro — Con Referencia' : 'Nano Banana 2 — Texto a Imagen'}
             </div>
-            <div className={`ml-auto text-xs font-black px-3 py-1.5 rounded-full border transition-all ${refImages.length > 0
+            <div className={`ml-auto text-xs font-black px-3 py-1.5 rounded-full border transition-all ${totalCost > 100
                 ? 'bg-purple-500/10 border-purple-500/20 text-purple-300'
                 : 'bg-white/5 border-white/10 text-gray-400'
               }`}>
-              Costo: {refImages.length > 0 ? '150' : '100'} créditos
+              Costo: {totalCost} créditos
+              {useAgencyCharacter && <span className="ml-1 text-[10px] opacity-70">(+50 personaje)</span>}
             </div>
           </div>
 
@@ -221,6 +250,23 @@ export default function EstudioIAPage() {
               </div>
               <div className={`w-12 h-6 rounded-full relative transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]' : 'bg-gray-700'}`}>
                 <div className={`absolute top-1 left-1 w-4 h-4 bg-black rounded-full transition-transform ${useAgencyIdentity ? 'translate-x-6' : 'translate-x-0'}`}></div>
+              </div>
+            </div>
+
+            {/* Switch de Personaje de Agencia */}
+            <div className="flex items-center justify-between bg-black/40 border border-purple-500/10 rounded-2xl p-4 cursor-pointer hover:bg-black/60 transition-colors" onClick={() => setUseAgencyCharacter(!useAgencyCharacter)}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg transition-colors ${useAgencyCharacter ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-gray-500'}`}>
+                  <UserCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className={`font-bold text-sm ${useAgencyCharacter ? 'text-white' : 'text-gray-400'}`}>Usar Personaje de Agencia</p>
+                  <p className="text-xs text-gray-500">Incluye al representante/personaje de tu agencia en la imagen generada.</p>
+                  <p className={`text-[10px] font-black mt-0.5 ${useAgencyCharacter ? 'text-purple-400' : 'text-gray-600'}`}>+50 créditos extra</p>
+                </div>
+              </div>
+              <div className={`w-12 h-6 rounded-full relative transition-colors ${useAgencyCharacter ? 'bg-purple-500' : 'bg-gray-700'}`}>
+                <div className={`absolute top-1 left-1 w-4 h-4 bg-black rounded-full transition-transform ${useAgencyCharacter ? 'translate-x-6' : 'translate-x-0'}`}></div>
               </div>
             </div>
 
@@ -285,17 +331,41 @@ export default function EstudioIAPage() {
 
             {/* Zona de Imágenes de Referencia (Opcional) */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <ImageIcon className="w-4 h-4 text-gray-500" />
                 <span className="text-xs text-gray-500 font-black uppercase tracking-widest">Imágenes de referencia (opcional, máx. 3)</span>
                 {refImages.length < 3 && (
-                  <button
-                    type="button"
-                    onClick={() => refInputRef.current?.click()}
-                    className="ml-auto flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-[#FFDE00] transition-colors px-3 py-1.5 bg-white/5 hover:bg-[#FFDE00]/10 border border-white/10 hover:border-[#FFDE00]/30 rounded-lg"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Agregar
-                  </button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const clipboardItems = await navigator.clipboard.read();
+                          for (const item of clipboardItems) {
+                            const imageType = item.types.find(t => t.startsWith('image/'));
+                            if (imageType) {
+                              const blob = await item.getType(imageType);
+                              const file = new File([blob], `pasted_${Date.now()}.png`, { type: imageType });
+                              setRefImages(prev => [...prev, file].slice(0, 3));
+                              break;
+                            }
+                          }
+                        } catch {
+                          // Fallback: el usuario puede usar Ctrl+V
+                        }
+                      }}
+                      className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-purple-400 transition-colors px-3 py-1.5 bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/30 rounded-lg"
+                    >
+                      <Clipboard className="w-3.5 h-3.5" /> Pegar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => refInputRef.current?.click()}
+                      className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-[#FFDE00] transition-colors px-3 py-1.5 bg-white/5 hover:bg-[#FFDE00]/10 border border-white/10 hover:border-[#FFDE00]/30 rounded-lg"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Subir
+                    </button>
+                  </div>
                 )}
                 <input
                   ref={refInputRef}
@@ -315,9 +385,9 @@ export default function EstudioIAPage() {
                 >
                   <ImageIcon className="w-7 h-7 text-gray-600 group-hover:text-[#FFDE00] mx-auto mb-2 transition-colors" />
                   <p className="text-xs text-gray-600 group-hover:text-gray-400 font-semibold transition-colors">
-                    Sube una imagen para que Nano Banana Pro la use como referencia de estilo o personaje
+                    Sube o pega (Ctrl+V) una imagen para que Nano Banana Pro la use como referencia
                   </p>
-                  <p className="text-[10px] text-gray-700 mt-1 uppercase tracking-widest">JPG · PNG · WEBP</p>
+                  <p className="text-[10px] text-gray-700 mt-1 uppercase tracking-widest">JPG · PNG · WEBP · O PEGA DESDE EL PORTAPAPELES</p>
                 </button>
               ) : (
                 <div className="flex flex-wrap gap-3">

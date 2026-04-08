@@ -1,0 +1,10 @@
+﻿commit e62ffd8d6399e4ae863141607f23506a03cd4c67
+Author: Andry Zamtools <andry@zamtools.com>
+Date:   Mon Apr 6 21:41:20 2026 -0500
+
+    feat(estudio): add brand figure - upload persona photo, toggle in generator, strict face rules
+
+ src/app/api/ai/generate/route.ts         | 41 ++++++++++++++++++++++++--
+ src/app/dashboard/configuracion/page.tsx | 50 ++++++++++++++++++++++++++++++++
+ src/app/dashboard/estudio/page.tsx       | 28 ++++++++++++++++++
+ 3 files changed, 116 insertions(+), 3 deletions(-)

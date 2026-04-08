@@ -224,34 +224,57 @@ export async function POST(request: Request) {
       if (!chatId) return NextResponse.json({ success: true, ignored: true });
       
       const outText = (payload.messageData?.textMessageData?.textMessage || payload.messageData?.extendedTextMessageData?.text || "").toLowerCase().trim();
-      let pauseMinutes = PAUSE_HUMAN_MINUTES; // 10 minutos por defecto para respuestas normales
 
+      // ── COMANDOS EXPLÍCITOS (procesar y salir inmediatamente) ──
       if (outText === "#contact") {
-        pauseMinutes = 52560000; // 100 años (para siempre)
-        console.log(`[WEBHOOK] 🛑 Comando #contact: Bot pausado para siempre en ${chatId}`);
-      } else if (outText === "#pause") {
-        pauseMinutes = 10;
-        console.log(`[WEBHOOK] 🛑 Comando #pause: Bot pausado 10 min en ${chatId}`);
-      } else if (outText === "#resume") {
+        // Pausa permanente (100 años)
+        const pauseUntil = new Date(Date.now() + 52560000 * 60 * 1000).toISOString();
+        await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
+        await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
+        console.log(`[WEBHOOK] 🛑 Comando #contact: Bot pausado PERMANENTEMENTE en ${chatId}`);
+        return NextResponse.json({ success: true, action: "paused_permanent" });
+      }
+      
+      if (outText === "#pause") {
+        const pauseUntil = new Date(Date.now() + PAUSE_HUMAN_MINUTES * 60 * 1000).toISOString();
+        await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
+        await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
+        console.log(`[WEBHOOK] ⏸ Comando #pause: Bot pausado ${PAUSE_HUMAN_MINUTES} min en ${chatId}`);
+        return NextResponse.json({ success: true, action: "paused_temp" });
+      }
+
+      if (outText === "#resume") {
         await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
         console.log(`[WEBHOOK] ▶️ Comando #resume: Bot reactivado para ${chatId}`);
         return NextResponse.json({ success: true, action: "resumed" });
       }
 
-      const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
-      const { error: delErr } = await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
-      if (delErr) {
-        console.error(`[WEBHOOK] ❌ Error eliminando pausa anterior:`, delErr);
-      }
-      
-      const { error: insErr } = await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
-      if (insErr) {
-        console.error(`[WEBHOOK] ❌ Error insertando pausa en DB:`, insErr);
+      // ── MENSAJE NORMAL DEL AGENTE HUMANO ──
+      // Verificar si ya existe una pausa de larga duración (>24h) para este chat.
+      // Si existe, NO la sobreescribimos (protege la pausa de #contact).
+      const { data: existingPause } = await supabase
+        .from("whatsapp_pauses")
+        .select("paused_until")
+        .eq("owner_id", uid)
+        .eq("phone_number", chatId)
+        .limit(1)
+        .single();
+
+      if (existingPause) {
+        const timeLeftMs = new Date(existingPause.paused_until).getTime() - Date.now();
+        const hoursLeft = timeLeftMs / (1000 * 60 * 60);
+        if (hoursLeft > 24) {
+          // Hay una pausa de larga duración activa (#contact o similar). No sobreescribir.
+          console.log(`[WEBHOOK] 🔒 Pausa permanente activa para ${chatId} (${Math.round(hoursLeft)}h restantes). No sobreescribir.`);
+          return NextResponse.json({ success: true, action: "long_pause_preserved" });
+        }
       }
 
-      if (outText !== "#contact" && outText !== "#pause") {
-        console.log(`[WEBHOOK] 🛑 Humano intervino. Pausa de ${pauseMinutes}min para ${chatId}`);
-      }
+      // Auto-pausa corta por intervención manual del humano
+      const pauseUntil = new Date(Date.now() + PAUSE_HUMAN_MINUTES * 60 * 1000).toISOString();
+      await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
+      await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
+      console.log(`[WEBHOOK] 🛑 Humano intervino. Pausa de ${PAUSE_HUMAN_MINUTES}min para ${chatId}`);
       return NextResponse.json({ success: true, action: "auto_paused" });
     }
 
