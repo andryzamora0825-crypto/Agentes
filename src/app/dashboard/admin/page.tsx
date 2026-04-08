@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -28,6 +28,7 @@ export default function AdminPanelPage() {
   const [galleryUser, setGalleryUser] = useState<any | null>(null);
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
   const [loadingGallery, setLoadingGallery] = useState(false);
+  const [lightboxAdminUrl, setLightboxAdminUrl] = useState<string | null>(null);
 
   // Sincronizar el formulario cuando abrimos el modal
   useEffect(() => {
@@ -634,7 +635,12 @@ export default function AdminPanelPage() {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {galleryImages.map(img => (
                       <div key={img.id} className="bg-black border border-white/5 rounded-xl overflow-hidden group">
-                        <img src={img.image_url} className="w-full h-auto aspect-square object-cover" alt="Gen" />
+                        <img 
+                           src={img.image_url} 
+                           onClick={() => setLightboxAdminUrl(img.image_url)}
+                           className="w-full h-auto aspect-square object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                           alt="Gen" 
+                        />
                         <div className="p-3 text-[10px] text-gray-400 italic line-clamp-3 leading-tight border-t border-white/5">
                            "{img.prompt}"
                         </div>
@@ -644,6 +650,27 @@ export default function AdminPanelPage() {
                 )}
               </div>
            </div>
+        </div>
+      )}
+
+      {/* MODAL LIGHTBOX (PANTALLA COMPLETA ADMIN) */}
+      {lightboxAdminUrl && (
+        <div
+          className="fixed inset-0 bg-black/95 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setLightboxAdminUrl(null)}
+        >
+          <button
+            className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-colors z-[70]"
+            onClick={() => setLightboxAdminUrl(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxAdminUrl}
+            alt="Vista completa"
+            className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
