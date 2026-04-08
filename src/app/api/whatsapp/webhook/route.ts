@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 45;
 
-const geminiKey = process.env.GEMINI_API_KEY;
 const PAUSE_HUMAN_MINUTES = 10;    // Auto-pausa por intervención del agente humano
 const ESCALATION_PAUSE_MIN = 30;   // Pausa cuando el bot escala a humano
 
 // =====================================================
 // TIPOS DE INTENCIÓN
 // =====================================================
-type Intent = 'greeting' | 'recarga' | 'retiro' | 'comprobante' | 'queja' | 'button_reply' | 'consulta';
+type Intent = 'greeting' | 'recarga' | 'retiro' | 'comprobante' | 'queja' | 'button_reply' | 'escalacion' | 'consulta';
 
 function classifyIntent(text: string, typeMessage: string): Intent {
   // Respuesta a botón interactivo de WhatsApp
@@ -24,6 +23,12 @@ function classifyIntent(text: string, typeMessage: string): Intent {
 
   const lower = text.toLowerCase().trim();
   const is = (words: string[]) => words.some(w => lower.includes(w));
+
+  // Escalación: cliente pide hablar con humano
+  if (is(['hablar con un humano', 'hablar con humano', 'hablar con una persona', 'quiero un humano',
+    'no quiero robot', 'no quiero un robot', 'no quiero que me responda un robot', 'no quiero bot',
+    'agente humano', 'persona real', 'asesor humano', 'necesito un humano', 'pásame con alguien',
+    'operador', 'quiero hablar con alguien'])) return 'escalacion';
 
   if (is(['hola', 'buenas', 'buenos', 'buen dia', 'buen día', 'hi ', 'hey', 'ey ', 'saludos', 'buenas noches', 'buenas tardes']) || lower === 'hola' || lower === 'hi') return 'greeting';
   if (is(['recarga', 'recargar', 'depositar', 'deposito', 'cargar saldo', 'quiero cargar'])) return 'recarga';
@@ -91,46 +96,53 @@ function makeWASender(waBaseUrl: string, idInstance: string, apiToken: string, c
 }
 
 // =====================================================
-// HERRAMIENTAS GEMINI (FUNCTION CALLING)
+// HERRAMIENTAS OPENAI (FUNCTION CALLING)
 // =====================================================
-const BOT_TOOLS: any[] = [{
-  functionDeclarations: [
-    {
+const BOT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
       name: "registrar_recarga",
       description: "Registra una solicitud de recarga del cliente en el sistema. Llama a esta herramienta SOLO cuando el cliente haya confirmado el monto Y el banco. No inventes datos.",
       parameters: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: {
-          monto: { type: SchemaType.NUMBER, description: "Monto en USD que el cliente quiere recargar" },
-          banco: { type: SchemaType.STRING, description: "Nombre del banco que el cliente eligió" },
+          monto: { type: "number", description: "Monto en USD que el cliente quiere recargar" },
+          banco: { type: "string", description: "Nombre del banco que el cliente eligió" },
         },
         required: ["monto", "banco"],
       },
     },
-    {
+  },
+  {
+    type: "function",
+    function: {
       name: "etiquetar_contacto",
       description: "Etiqueta al contacto para organización interna. Úsala cuando quede claro el estado del cliente.",
       parameters: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: {
-          tag: { type: SchemaType.STRING, description: "Etiqueta: 'lead', 'vip', 'recarga_pendiente', 'retiro_pendiente', 'escalado'" },
+          tag: { type: "string", description: "Etiqueta: 'lead', 'vip', 'recarga_pendiente', 'retiro_pendiente', 'escalado'" },
         },
         required: ["tag"],
       },
     },
-    {
+  },
+  {
+    type: "function",
+    function: {
       name: "escalar_a_humano",
       description: "Transfiere la conversación a un agente humano cuando el bot no puede resolver el problema, o cuando el cliente pide hablar con una persona. Después de escalar, avisa al cliente.",
       parameters: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: {
-          motivo: { type: SchemaType.STRING, description: "Razón breve de la escalación para el registro interno" },
+          motivo: { type: "string", description: "Razón breve de la escalación para el registro interno" },
         },
         required: ["motivo"],
       },
     },
-  ],
-}];
+  },
+];
 
 // =====================================================
 // EJECUTOR DE HERRAMIENTAS
@@ -305,6 +317,18 @@ export async function POST(request: Request) {
     } else if (typeMessage === "buttonsResponseMessage") {
       // Respuesta a un botón interactivo
       messageText = payload.messageData?.buttonsResponseMessage?.selectedDisplayText || "";
+    } else if (typeMessage === "contactMessage" || typeMessage === "contactsArrayMessage") {
+      // ── CONTACTO REENVIADO (vCard) ──
+      const vcard = payload.messageData?.contactMessageData?.vcard
+        || payload.messageData?.contactMessage?.vcard || "";
+      const displayName = payload.messageData?.contactMessageData?.displayName
+        || payload.messageData?.contactMessage?.displayName || "Contacto";
+      // Extraer teléfono del vCard
+      const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s-]+)/i);
+      const phone = phoneMatch ? phoneMatch[1].replace(/[\s-]/g, "") : "";
+      messageText = phone
+        ? `[CONTACTO_REENVIADO] Nombre: ${displayName}, Teléfono: ${phone}`
+        : `[CONTACTO_REENVIADO] Nombre: ${displayName}`;
     } else if (['imageMessage', 'documentMessage'].includes(typeMessage)) {
       isComprobante = true;
       messageText = "[COMPROBANTE_ENVIADO]";
@@ -424,7 +448,7 @@ export async function POST(request: Request) {
     for (const msg of rawHistory) {
       if (msg.role === "agent") continue;
 
-      const roleStr = msg.role === "model" ? "model" : "user";
+      const roleStr = msg.role === "model" ? "assistant" : "user";
       if (unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === roleStr) {
         // Sumar al globo anterior
         unifiedHistory[unifiedHistory.length - 1].content += `\n${msg.content}`;
@@ -448,6 +472,19 @@ export async function POST(request: Request) {
       await sendButtons(customMenu, ["Recargar", "Retirar", "Soporte"]);
       await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: customMenu });
       return NextResponse.json({ success: true, action: "greeting_with_buttons" });
+    }
+
+    // ── ESCALACIÓN DIRECTA (sin pasar por IA) ──
+    if (intent === 'escalacion') {
+      // Ejecutar la herramienta de escalación directamente
+      await executeTool("escalar_a_humano", { motivo: "El cliente pidió hablar con un humano" }, {
+        uid, sender, senderName, adminEmail, waBaseUrl,
+        idInstance: providerConfig.idInstance, apiToken: providerConfig.apiTokenInstance,
+      });
+      const escResponse = "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda. 🙏";
+      await send(escResponse);
+      await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: escResponse });
+      return NextResponse.json({ success: true, action: "escalated_to_human" });
     }
 
     // ── PROMPT CONTEXTUAL POR INTENCIÓN ──
@@ -485,6 +522,9 @@ Interpreta su elección y actúa de inmediato según la opción elegida.`;
 9. ESCALACIÓN INVISIBLE: Si usas "escalar_a_humano", dile al cliente: "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda." PROHIBIDO decir "escalado" o "agente".
 10. AUDIOS: Si el mensaje del usuario dice "[NOTA_DE_VOZ_RECIBIDA]", respóndele brevemente que no puedes escuchar notas de voz y pídele que te escriba en texto.
 11. BREVEDAD PARA SALUDOS: Si el cliente solo te dice "hola" o algo vago y no salta el menú automático, responde con una sola línea amigable (ej. "¡Hola! ¿En qué te ayudo?"). No despliegues información no pedida.
+12. CONTACTOS: Si el mensaje dice "[CONTACTO_REENVIADO]", el cliente te está compartiendo datos de contacto. Extrae el nombre y teléfono y úsalos como ID del cliente para la operación en curso.
+13. NÚMEROS E IDS: Si el cliente envía un número largo (ID de cuenta, número de teléfono, comprobante), REPRODÚCELO COMPLETO, nunca lo trunces ni lo resumas.
+14. NO REPITAS INFORMACIÓN: Si ya pediste el monto y banco, y el cliente te responde con algo nuevo, procesa lo nuevo. No vuelvas a pedir lo mismo.
 
 IDENTIDAD Y PERSONALIDAD:
 ${aiPersona || "Asistente amigable y profesional."}
@@ -495,71 +535,104 @@ ${intentContext}
 
 Nombre del cliente: ${senderName}`;
 
-    // ── GENERACIÓN CON GEMINI + FUNCTION CALLING ──
-    if (!geminiKey) return NextResponse.json({ error: "No Gemini Key" }, { status: 500 });
-    const genAI = new GoogleGenerativeAI(geminiKey);
+    // ── GENERACIÓN CON OPENAI (ChatGPT) + FUNCTION CALLING ──
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) return NextResponse.json({ error: "No OpenAI Key" }, { status: 500 });
 
-    const chatHistory: any[] = [
-      { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Entendido. Aplicaré todas las reglas y responderé a continuación." }] },
+    const openai = new OpenAI({ apiKey: openaiKey });
+
+    // Construir mensajes para OpenAI
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: "system", content: systemPrompt },
     ];
 
     // Extraer todos excepto el último (que es el usuario actual unificado)
     const historyWithoutLastUser = unifiedHistory.slice(0, -1);
     for (const msg of historyWithoutLastUser) {
-      chatHistory.push({ role: msg.role, parts: [{ text: msg.content }] });
+      messages.push({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      });
     }
+
+    // Agregar el mensaje actual del usuario
+    messages.push({ role: "user", content: finalUserMessage });
 
     let aiResponse = "";
     try {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+      let completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages,
         tools: BOT_TOOLS,
-        generationConfig: { maxOutputTokens: 280, temperature: 0.3 },
+        tool_choice: "auto",
+        max_tokens: 300,
+        temperature: 0.3,
       });
-      const chat = model.startChat({ history: chatHistory });
 
-      // Enviamos el bloque FINAL (el texto consolidado)
-      let result = await chat.sendMessage(finalUserMessage);
+      // ── MANEJAR FUNCTION CALLS (tool_calls, máx 3 rondas) ──
+      for (let round = 0; round < 3; round++) {
+        const choice = completion.choices[0];
 
-      // ── MANEJAR FUNCTION CALLS (máx 2 rondas) ──
-      for (let round = 0; round < 2; round++) {
-        const candidate = result.response.candidates?.[0];
-        const part = candidate?.content?.parts?.[0];
+        if (choice.finish_reason === "tool_calls" || choice.message.tool_calls?.length) {
+          const toolCalls = choice.message.tool_calls || [];
 
-        if (part?.functionCall) {
-          const { name, args } = part.functionCall;
-          console.log(`[WEBHOOK] 🔧 Tool call: ${name}`, args);
+          // Agregar el mensaje del asistente con los tool_calls al historial
+          messages.push(choice.message);
 
-          const toolResult = await executeTool(name, args as Record<string, any>, {
-            uid, sender, senderName, adminEmail, waBaseUrl,
-            idInstance: providerConfig.idInstance, apiToken: providerConfig.apiTokenInstance,
+          // Ejecutar cada tool call
+          for (const toolCall of toolCalls) {
+            // Solo procesamos function tool calls (no custom)
+            if (toolCall.type !== 'function') continue;
+            const fnName = toolCall.function.name;
+            let fnArgs: Record<string, any> = {};
+            try {
+              fnArgs = JSON.parse(toolCall.function.arguments);
+            } catch {
+              fnArgs = {};
+            }
+
+            console.log(`[WEBHOOK] 🔧 Tool call: ${fnName}`, fnArgs);
+
+            const toolResult = await executeTool(fnName, fnArgs, {
+              uid, sender, senderName, adminEmail, waBaseUrl,
+              idInstance: providerConfig.idInstance, apiToken: providerConfig.apiTokenInstance,
+            });
+
+            // Agregar la respuesta de la herramienta al historial
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: toolResult,
+            });
+          }
+
+          // Pedir respuesta final al modelo con los resultados de las herramientas
+          completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages,
+            tools: BOT_TOOLS,
+            tool_choice: "auto",
+            max_tokens: 300,
+            temperature: 0.3,
           });
-
-          // Enviar resultado al modelo y pedir respuesta final
-          result = await chat.sendMessage([{
-            functionResponse: { name, response: { result: toolResult } }
-          }]);
-
-          // Si fue escalar_a_humano, podemos querer enviar también botones específicos
         } else {
-          // Ya es texto — salir del loop
+          // Ya es texto final — salir del loop
           break;
         }
       }
 
-      const finishReason = result.response.candidates?.[0]?.finishReason;
-      if (finishReason === "SAFETY" || finishReason === "OTHER") {
+      const finishReason = completion.choices[0]?.finish_reason;
+      if (finishReason === "content_filter") {
         aiResponse = "No puedo responder esa consulta. Por favor contáctate con un asesor.";
       } else {
-        aiResponse = result.response.text()?.trim() || "";
+        aiResponse = completion.choices[0]?.message?.content?.trim() || "";
       }
     } catch (err: any) {
-      console.error("[WEBHOOK] Error Gemini:", err.message);
-      aiResponse = "Tuvimos un inconveniente técnico leve. ¿Me repites tu mensaje, por favor?";
+      console.error("[WEBHOOK] Error OpenAI:", err.message);
+      aiResponse = "¡Hola! ¿Necesitas ayuda con recargas o retiros?";
     }
 
-    if (!aiResponse) aiResponse = "Disculpa, no logré entender tu mensaje. ¿Puedes intentarlo de nuevo?";
+    if (!aiResponse) aiResponse = "¡Hola! ¿Necesitas ayuda con recargas o retiros?";
 
     // ── POST-PROCESO PARA ENVÍO CON BOTONES (si la IA menciona bancos) ──
     let sentWithButtons = false;
@@ -567,7 +640,7 @@ Nombre del cliente: ${senderName}`;
       // Extraer lista de bancos de banksInfo para ofrecerlos como botones
       const bankLines = (banksInfo as string).split('\n').filter((l: string) => l.trim());
       const bankNames = bankLines.map((line: string) => line.split(':')[0].trim()).filter(Boolean).slice(0, 6); // máx 6
-      if (bankNames.length > 0 && aiResponse.toLowerCase().includes('banco') || aiResponse.toLowerCase().includes('cual banco') || aiResponse.toLowerCase().includes('qué banco')) {
+      if (bankNames.length > 0 && (aiResponse.toLowerCase().includes('banco') || aiResponse.toLowerCase().includes('cual banco') || aiResponse.toLowerCase().includes('qué banco'))) {
         await send(aiResponse);
         await sendButtons("¿Qué banco usarás?", bankNames);
         sentWithButtons = true;
@@ -581,7 +654,7 @@ Nombre del cliente: ${senderName}`;
     // ── GUARDAR RESPUESTA DEL BOT ──
     await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: aiResponse });
 
-    console.log("[WEBHOOK] ✅ Completado.");
+    console.log("[WEBHOOK] ✅ Completado (OpenAI).");
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
@@ -591,5 +664,5 @@ Nombre del cliente: ${senderName}`;
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "ok", version: "v3_function_calling" });
+  return NextResponse.json({ status: "ok", version: "v4_openai" });
 }
