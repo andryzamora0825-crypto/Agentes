@@ -417,27 +417,29 @@ Nombre del cliente: ${senderName}`;
 
     const genAI = new GoogleGenerativeAI(geminiKey);
     // SDK v0.24: systemInstruction y toolConfig MODE no soportados en startChat.
-    // Inyectamos el system prompt en el historial y dejamos tools sin mode explícito.
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      tools: BOT_TOOLS,
-      generationConfig: { maxOutputTokens: 280, temperature: 0.3 },
-    });
-
-    // Construir historial — el system prompt va como primer turno user/model
+    // Construir historial — system prompt como primer turno user/model
+    // IMPORTANTE: slice(0,-1) excluye el último mensaje (el actual) porque
+    // lo enviamos explícitamente con sendMessage() a continuación.
     const chatHistory: any[] = [
       { role: "user", parts: [{ text: systemPrompt }] },
       { role: "model", parts: [{ text: "Entendido. Aplicaré todas las reglas e instrucciones." }] },
     ];
-    for (const msg of history) {
+    // history ya viene en orden cronológico (más viejo primero)
+    const historyWithoutCurrent = history.slice(0, -1); // excluir el mensaje actual
+    for (const msg of historyWithoutCurrent) {
       if (msg.role === "agent") continue;
       chatHistory.push({ role: msg.role === "model" ? "model" : "user", parts: [{ text: msg.content }] });
     }
 
     let aiResponse = "";
     try {
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        tools: BOT_TOOLS,
+        generationConfig: { maxOutputTokens: 280, temperature: 0.3 },
+      });
       const chat = model.startChat({ history: chatHistory });
-      // El mensaje actual ya está guardado en el historial; enviamos trigger con el texto actual
+      // Enviamos el mensaje actual como nuevo turno
       let result = await chat.sendMessage(messageText);
 
       // ── MANEJAR FUNCTION CALLS (máx 2 rondas) ──
