@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
-import { ArrowLeft, Clock, Loader2, Send, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, Clock, Loader2, Send, MessageSquare, X, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 
 export default function ChatPage() {
@@ -19,6 +19,8 @@ export default function ChatPage() {
   const [mobileView, setMobileView] = useState<"list" | "chat">(isAdmin ? "list" : "chat");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -89,6 +91,37 @@ export default function ChatPage() {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedContact) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("La imagen no debe pesar más de 5MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      setSending(true);
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: base64, receiver_email: selectedContact })
+        });
+        if (res.ok) { loadMessages(); }
+      } catch (err) {
+        console.error(err);
+        alert("Error enviando imagen.");
+      } finally {
+        setSending(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -238,7 +271,11 @@ export default function ChatPage() {
                           ? "bg-[#FFDE00] text-black rounded-tr-sm shadow-[0_0_15px_rgba(255,222,0,0.15)]"
                           : "bg-[#1A1A1A] border border-white/8 text-gray-200 rounded-tl-sm"
                       }`}>
-                        <p className="text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                        {msg.content.startsWith("data:image/") || msg.content.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i) ? (
+                          <img src={msg.content} className="w-full max-w-[250px] sm:max-w-[320px] rounded-xl shadow-sm border border-black/10" alt="Archivo adjunto" />
+                        ) : (
+                          <p className="text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                        )}
                         <span className={`text-[10px] uppercase font-bold mt-1.5 block text-right ${isMine ? "text-black/40" : "text-gray-600"}`}>
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
@@ -254,6 +291,22 @@ export default function ChatPage() {
             {selectedContact && (
               <div className="p-3 sm:p-4 bg-[#111111] border-t border-white/5 z-10 shrink-0">
                 <form onSubmit={handleSend} className="flex gap-2">
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    onChange={handleImageSelect} 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    className="text-gray-400 p-2.5 sm:p-3 rounded-xl bg-white/5 hover:bg-white/10 hover:text-white transition-all shrink-0"
+                    title="Adjuntar imagen"
+                  >
+                    <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </button>
                   <input
                     type="text"
                     placeholder="Escribe tu mensaje..."

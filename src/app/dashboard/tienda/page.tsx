@@ -13,6 +13,7 @@ export default function TiendaPage() {
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [isVip, setIsVip] = useState(false);
   const [hasWhatsappBot, setHasWhatsappBot] = useState(false);
+  const [banksInfo, setBanksInfo] = useState<string>("");
 
   // Verificar estado del usuario
   useEffect(() => {
@@ -25,7 +26,14 @@ export default function TiendaPage() {
         }
       })
       .catch(console.error);
-  });
+
+    fetch("/api/admin/payment-methods")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.banksInfo) setBanksInfo(data.banksInfo);
+      })
+      .catch(console.error);
+  }, []);
 
   const packages = [
     {
@@ -89,7 +97,7 @@ export default function TiendaPage() {
     },
     {
       id: "whatsapp_bot",
-      price: 25,
+      price: 30,
       name: "Bot de WhatsApp Automatizado",
       description: "Implementamos un Bot de WhatsApp con IA en tu propio número para atender clientes 24/7. Costo mensual recurrente.",
       features: ["Atención al cliente 24/7", "Integración con tu base de conocimientos", "Traspaso a agente humano", "Sin límites de chats"],
@@ -410,6 +418,17 @@ export default function TiendaPage() {
                </div>
             </div>
 
+            {/* Método de Pago */}
+            <div className="bg-[#111111] border border-[#FFDE00]/30 p-5 rounded-2xl mb-8 flex flex-col items-center justify-center shadow-inner relative">
+              <span className="block text-[10px] text-[#FFDE00] font-black uppercase tracking-widest mb-3">Método de Pago Oficial</span>
+              <div className="text-gray-300 text-sm text-center font-medium leading-relaxed max-w-sm">
+                 Banco Pichincha<br/>
+                 Cuenta de ahorro transaccional<br/>
+                 Número: <strong>2215379279</strong><br/>
+                 A nombre de Andry Zamora
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4 relative z-10">
               <button 
                 onClick={() => setSelectedPackage(null)}
@@ -422,7 +441,7 @@ export default function TiendaPage() {
                 disabled={processing}
                 className="flex-1 py-4 px-4 rounded-xl font-black text-black bg-[#FFDE00] hover:bg-white hover:shadow-[0_0_25px_rgba(255,222,0,0.5)] disabled:opacity-50 disabled:hover:bg-[#FFDE00] transition-all flex items-center justify-center gap-2 text-lg"
               >
-                {processing ? 'Procesando...' : 'Proceder al Chat'}
+                {processing ? 'Procesando...' : 'Adjuntar Comprobante en Chat'}
               </button>
             </div>
           </div>

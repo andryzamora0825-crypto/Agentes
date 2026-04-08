@@ -235,48 +235,59 @@ export default function EstudioIAPage() {
             </div>
           )}
 
-          <form onSubmit={handleGenerate} className="space-y-4">
+          <form onSubmit={handleGenerate} className="space-y-6">
 
-            {/* Switch de Identidad de Agencia */}
-            <div className="flex items-center justify-between bg-black/40 border border-[#FFDE00]/10 rounded-2xl p-4 cursor-pointer hover:bg-black/60 transition-colors" onClick={() => setUseAgencyIdentity(!useAgencyIdentity)}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]/20 text-[#FFDE00]' : 'bg-white/5 text-gray-500'}`}>
-                  <Zap className="w-5 h-5" />
+            {/* Opciones Avanzadas (Switches) agrupadas */}
+            <div className="bg-[#0b0b0b] border border-white/5 rounded-2xl overflow-hidden shadow-inner divide-y divide-white/5">
+              {/* Switch de Identidad de Agencia */}
+              <div 
+                className="flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-white/[0.02] transition-colors" 
+                onClick={() => setUseAgencyIdentity(!useAgencyIdentity)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`p-2.5 rounded-xl transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]/10 text-[#FFDE00]' : 'bg-white/5 text-gray-500'}`}>
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className={`font-extrabold text-sm sm:text-base tracking-tight ${useAgencyIdentity ? 'text-white' : 'text-gray-400'}`}>Identidad de Agencia</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Inyecta tus estilos y logos visuales.</p>
+                  </div>
                 </div>
-                <div>
-                  <p className={`font-bold text-sm ${useAgencyIdentity ? 'text-white' : 'text-gray-400'}`}>Usar Identidad de mi Agencia</p>
-                  <p className="text-xs text-gray-500">Inyecta tus logos, colores y datos al prompt automáticamente.</p>
+                <div className={`w-11 h-6 rounded-full relative transition-colors shadow-inner ${useAgencyIdentity ? 'bg-[#FFDE00]' : 'bg-[#1a1a1a] border border-white/10'}`}>
+                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${useAgencyIdentity ? 'translate-x-5 shadow-[0_0_5px_rgba(0,0,0,0.5)]' : 'translate-x-0'}`}></div>
                 </div>
               </div>
-              <div className={`w-12 h-6 rounded-full relative transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]' : 'bg-gray-700'}`}>
-                <div className={`absolute top-1 left-1 w-4 h-4 bg-black rounded-full transition-transform ${useAgencyIdentity ? 'translate-x-6' : 'translate-x-0'}`}></div>
-              </div>
-            </div>
 
-            {/* Switch de Personaje de Agencia */}
-            <div className="flex items-center justify-between bg-black/40 border border-purple-500/10 rounded-2xl p-4 cursor-pointer hover:bg-black/60 transition-colors" onClick={() => setUseAgencyCharacter(!useAgencyCharacter)}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg transition-colors ${useAgencyCharacter ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-gray-500'}`}>
-                  <UserCircle className="w-5 h-5" />
+              {/* Switch de Personaje de Agencia */}
+              <div 
+                className="flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-white/[0.02] transition-colors" 
+                onClick={() => setUseAgencyCharacter(!useAgencyCharacter)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`p-2.5 rounded-xl transition-colors ${useAgencyCharacter ? 'bg-purple-500/10 text-purple-400' : 'bg-white/5 text-gray-500'}`}>
+                    <UserCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-extrabold text-sm sm:text-base tracking-tight ${useAgencyCharacter ? 'text-white' : 'text-gray-400'}`}>Personaje Representante</p>
+                      {useAgencyCharacter && <span className="bg-purple-500/10 text-purple-400 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-purple-500/20">+50 cr</span>}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">Incluye a tu representante en la imagen.</p>
+                  </div>
                 </div>
-                <div>
-                  <p className={`font-bold text-sm ${useAgencyCharacter ? 'text-white' : 'text-gray-400'}`}>Usar Personaje de Agencia</p>
-                  <p className="text-xs text-gray-500">Incluye al representante/personaje de tu agencia en la imagen generada.</p>
-                  <p className={`text-[10px] font-black mt-0.5 ${useAgencyCharacter ? 'text-purple-400' : 'text-gray-600'}`}>+50 créditos extra</p>
+                <div className={`w-11 h-6 rounded-full relative transition-colors shadow-inner ${useAgencyCharacter ? 'bg-purple-500' : 'bg-[#1a1a1a] border border-white/10'}`}>
+                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${useAgencyCharacter ? 'translate-x-5 shadow-[0_0_5px_rgba(0,0,0,0.5)]' : 'translate-x-0'}`}></div>
                 </div>
-              </div>
-              <div className={`w-12 h-6 rounded-full relative transition-colors ${useAgencyCharacter ? 'bg-purple-500' : 'bg-gray-700'}`}>
-                <div className={`absolute top-1 left-1 w-4 h-4 bg-black rounded-full transition-transform ${useAgencyCharacter ? 'translate-x-6' : 'translate-x-0'}`}></div>
               </div>
             </div>
 
             {/* Selector de Formato de Imagen */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Monitor className="w-4 h-4 text-gray-500" />
-                <span className="text-xs text-gray-500 font-black uppercase tracking-widest">Formato de imagen</span>
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <Monitor className="w-4 h-4 text-gray-400" />
+                <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Dimensiones</span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3">
                 {FORMAT_OPTIONS.map((fmt) => {
                   const selected = imageFormat === fmt.id;
                   const IconEl = fmt.icon === 'monitor' ? Monitor : fmt.icon === 'phone' ? Smartphone : fmt.icon === 'rect-h' ? RectangleHorizontal : fmt.icon === 'rect-v' ? RectangleVertical : Square;
@@ -285,21 +296,18 @@ export default function EstudioIAPage() {
                       key={fmt.id}
                       type="button"
                       onClick={() => setImageFormat(fmt.id)}
-                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-all ${selected
-                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00] shadow-[0_0_12px_rgba(255,222,0,0.15)]'
-                          : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border transition-all ${selected
+                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/50 text-[#FFDE00] shadow-[0_0_20px_rgba(255,222,0,0.1)] scale-100'
+                          : 'bg-white/[0.03] border-white/5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-300 scale-95 hover:scale-100'
                         }`}
                     >
-                      <IconEl className="w-5 h-5" />
-                      <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{fmt.label}</span>
-                      <span className={`text-[9px] font-mono ${selected ? 'text-[#FFDE00]/70' : 'text-gray-600'}`}>{fmt.ratio}</span>
+                      <IconEl className={`w-5 h-5 ${selected ? 'text-[#FFDE00]' : 'text-gray-400'}`} />
+                      <span className={`text-[10px] font-black uppercase tracking-wider leading-none mt-1 ${selected ? 'text-[#FFDE00]' : 'text-gray-400'}`}>{fmt.label}</span>
+                      <span className={`text-[9px] font-bold ${selected ? 'text-[#FFDE00]/70' : 'text-gray-600'}`}>{fmt.ratio}</span>
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[10px] text-gray-600 mt-2 ml-1">
-                {FORMAT_OPTIONS.find(f => f.id === imageFormat)?.desc}
-              </p>
             </div>
 
             {/* Prompt Textarea */}
@@ -307,19 +315,21 @@ export default function EstudioIAPage() {
               <textarea
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
-                placeholder="Ejemplo: Un león dorado con textura neon, arte digital hiperrealista, render 3D..."
-                className="w-full bg-[#0A0A0A] text-white border border-white/10 rounded-2xl p-5 pr-40 focus:outline-none focus:ring-2 focus:ring-[#FFDE00] focus:border-transparent resize-none h-40 transition-all text-lg placeholder-gray-600 shadow-inner"
+                placeholder=""
+                className="w-full bg-[#050505] text-white border border-white/10 rounded-[1.5rem] p-5 pr-36 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/50 focus:border-[#FFDE00]/50 resize-none h-36 transition-all text-lg sm:text-xl font-medium shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] placeholder-gray-700"
               />
+              {!prompt && (
+                <div className="absolute top-5 left-5 pointer-events-none flex flex-col text-gray-600 italic">
+                  <span>Describe tu obra visual aquí...</span>
+                </div>
+              )}
               <button
                 type="submit"
                 disabled={generating || !prompt.trim()}
-                className={`absolute bottom-5 right-5 font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-300 disabled:opacity-50 active:scale-95 ${generating ? 'bg-white/10 text-gray-400' : 'bg-[#FFDE00] text-black hover:bg-[#FFC107] shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)] hover:-translate-y-1'}`}
+                className={`absolute bottom-4 right-4 font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-300 disabled:opacity-30 active:scale-95 ${generating ? 'bg-white/10 text-gray-400' : 'bg-[#FFDE00] text-black hover:bg-[#FFC107] shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)]'}`}
               >
                 {generating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Generando...
-                  </>
+                  <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
                   <>
                     <Sparkles className="w-5 h-5 fill-black" />
