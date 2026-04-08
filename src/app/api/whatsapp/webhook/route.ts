@@ -39,7 +39,7 @@ const BOT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "registrar_recarga",
-      description: "Registra una solicitud de recarga del cliente en el sistema. Llama a esta herramienta SOLO cuando el cliente haya confirmado el monto Y el banco. No inventes datos.",
+      description: "Registra una solicitud de recarga del cliente en el sistema. Llama a esta herramienta SOLO cuando el cliente haya confirmado el monto Y el banco. IMPORTANTE: Antes o al mismo tiempo de usar esta herramienta, DEBES darle al cliente los datos exactos de la cuenta bancaria del banco elegido para que pueda hacer la transferencia. NUNCA pidas comprobante sin darle primero la cuenta.",
       parameters: {
         type: "object",
         properties: {
@@ -277,8 +277,30 @@ export async function POST(request: Request) {
       body: JSON.stringify({ chatId: sender, action: "typing" }), signal: AbortSignal.timeout(3000),
     }).catch(() => {});
 
-    // INSERCIÓN DIRECTA SIN BUFFER
-    await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText });
+    // INSERCIÓN DIRECTA
+    const { data: insertedChat } = await supabase.from("whatsapp_chats")
+      .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
+      .select('created_at').single();
+      
+    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (2.5 SEGS) ──
+    // Esperamos un momento. Si el cliente escribe otra línea rápidamente ("hola" + "quiero saldo"),
+    // este proceso morirá en favor del proceso más nuevo para responder todo junto.
+    await new Promise(resolve => setTimeout(resolve, 2500));
+
+    if (insertedChat?.created_at) {
+      const { data: newerMsg } = await supabase.from("whatsapp_chats")
+        .select("created_at")
+        .eq("owner_id", uid)
+        .eq("phone_number", sender)
+        .eq("role", "user")
+        .gt("created_at", insertedChat.created_at)
+        .limit(1);
+
+      if (newerMsg && newerMsg.length > 0) {
+        console.log(`[WEBHOOK] 🛑 Mensaje fragmentado detectado. Abortando instancia vieja (${messageText}).`);
+        return NextResponse.json({ success: true, ignored: true, reason: "Fragmentado" });
+      }
+    }
 
     // ── HISTORIAL DE CONVERSACIÓN RAPIDO ──
     const { data: rawHistory } = await supabase.from("whatsapp_chats")
@@ -296,11 +318,13 @@ REGLAS VITALES:
 4. ESCALA RAPIDO SI HAY ENOJO, GROSERIAS O REQUERIMIENTOS ESPECIALES. Usa 'escalar_a_humano' y diles: "Dame un par de minutos, le paso tu caso a un compañero/a para que te dé una mano de inmediato." PROHIBIDO utilizar lenguajes técnicos.
 5. CERO AUDIOS. Si ves "[NOTA_DE_VOZ_RECIBIDA]", diles rápido: "Disculpa, no puedo oír audios ahorita, me lo escribes por favor? 🙏"
 6. NO DIGAS QUE ERES IA. Eres humano a los ojos del cliente.
+7. OBLIGATORIO DAR DATOS BANCARIOS: Cuando vayas a ejecutar la orden de 'registrar_recarga', TU MENSAJE TEXTUAL OBLIGATORIAMENTE debe incluir el Tipo de Cuenta, Número de Cuenta y Titular del banco seleccionado. NUNCA pidas el comprobante sin haber proveído esos datos al cliente en ese mismo instante.
+8. PREGUNTAS SOBRE BANCOS: Si el cliente pregunta si tienes un banco específico y NO está en tu lista, dile amablemente: "Ese banco no lo tengo por los momentos, pero tengo estos: [lista]". Sé asertivo, nunca sumiso.
 
 ===== FLUJO RECARGA (DEPÓSITOS) =====
 * PROTOCOLO: "${rechargeSteps || "Averigua qué monto depositará y qué banco usará."}"
 * BANCOS: ${banksInfo || "Debes apoyarte de un humano, usa tu herramienta de escalar."}
-* ALERTA DE SISTEMA: Apenas determines con exactitud un MONTO numérico y la elección de BANCO del cliente, EJECUTA DE INMEDIATO LA ACCIÓN 'registrar_recarga'. Dile en tu mensaje final que envíe comprobante cuando pague.
+* ALERTA DE SISTEMA: Apenas se confirme MONTO y BANCO, ejecuta 'registrar_recarga'. En ese MENSAJE DEBES entregar los datos exactos del banco (de tu listado de BANCOS) y pedirle amablemente que te envíe el comprobante ('foto del boucher') cuando termine.
 * SI ENVIAN FOTO (Gritan "[COMPROBANTE_ENVIADO]"): Tú solo confirma maravillosamente que ya lo recibiste y va en cola, y ejecuta EN SEGUNDO PLANO la acción 'etiquetar_contacto' como recarga_pendiente.
 
 ===== FLUJO RETIROS =====
