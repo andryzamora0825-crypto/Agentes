@@ -10,35 +10,25 @@ export const maxDuration = 45;
 const geminiKey = process.env.GEMINI_API_KEY;
 const PAUSE_HUMAN_MINUTES = 10;    // Auto-pausa por intervención del agente humano
 const ESCALATION_PAUSE_MIN = 30;   // Pausa cuando el bot escala a humano
-const BUFFER_DELAY_MS = 8000;      // Espera de 8 seg para unificar ráfagas de mensajes
 
 // =====================================================
 // TIPOS DE INTENCIÓN
 // =====================================================
 type Intent = 'greeting' | 'recarga' | 'retiro' | 'comprobante' | 'queja' | 'button_reply' | 'consulta';
 
-function classifyIntent(text: string, typeMessage?: string): Intent {
+function classifyIntent(text: string, typeMessage: string): Intent {
   // Respuesta a botón interactivo de WhatsApp
   if (typeMessage === 'buttonsResponseMessage') return 'button_reply';
   // Imagen / documento / video → comprobante
-  if (typeMessage && ['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage'].includes(typeMessage)) return 'comprobante';
-
-  // Si usamos el texto consolidado para saber si hay archivos:
-  if (text.includes('[COMPROBANTE_ENVIADO]')) return 'comprobante';
-  if (text.includes('[ARCHIVO_TIPO_')) return 'comprobante'; // Para covers catch-all
+  if (['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage'].includes(typeMessage)) return 'comprobante';
 
   const lower = text.toLowerCase().trim();
   const is = (words: string[]) => words.some(w => lower.includes(w));
 
-  // Prioridad 1: Quejas y problemas (requieren empatía/escalación)
-  if (is(['problema', 'queja', 'reclamo', 'error', 'falla', 'no funciona', 'no me llega', 'no aparece'])) return 'queja';
-  
-  // Prioridad 2: Transacciones
-  if (is(['recarga', 'recargar', 'depositar', 'deposito', 'cargar saldo', 'quiero cargar', 'fondear'])) return 'recarga';
-  if (is(['retiro', 'retirar', 'sacar', 'cobrar', 'quiero retirar', 'quiero sacar'])) return 'retiro';
-
-  // Prioridad 3: Saludos (solo si no hay intención de acción detectada)
   if (is(['hola', 'buenas', 'buenos', 'buen dia', 'buen día', 'hi ', 'hey', 'ey ', 'saludos', 'buenas noches', 'buenas tardes']) || lower === 'hola' || lower === 'hi') return 'greeting';
+  if (is(['recarga', 'recargar', 'depositar', 'deposito', 'cargar saldo', 'quiero cargar'])) return 'recarga';
+  if (is(['retiro', 'retirar', 'sacar', 'cobrar', 'quiero retirar', 'quiero sacar'])) return 'retiro';
+  if (is(['problema', 'queja', 'reclamo', 'error', 'falla', 'no funciona', 'no me llega', 'no aparece'])) return 'queja';
 
   return 'consulta';
 }
@@ -76,7 +66,7 @@ function makeWASender(waBaseUrl: string, idInstance: string, apiToken: string, c
           body: JSON.stringify({
             chatId,
             message,
-            buttons: chunk.map((text, idx) => ({ buttonId: String(idx + 1), buttonText: { displayText: text } })),
+            buttons: chunk.map((text, idx) => ({ buttonId: String(idx + 1), buttonText: text })),
             footer: footer || "",
           }),
           signal: AbortSignal.timeout(8000),
@@ -231,7 +221,7 @@ export async function POST(request: Request) {
     // ── AUTO-PAUSA POR INTERVENCIÓN DE HUMANO ──
     if (webhookType === "outgoingMessage" || webhookType === "outgoingMessageReceived") {
       if (!chatId) return NextResponse.json({ success: true, ignored: true });
-      
+
       const outText = (payload.messageData?.textMessageData?.textMessage || payload.messageData?.extendedTextMessageData?.text || "").toLowerCase().trim();
 
       // ── COMANDOS EXPLÍCITOS (procesar y salir inmediatamente) ──
@@ -243,7 +233,7 @@ export async function POST(request: Request) {
         console.log(`[WEBHOOK] 🛑 Comando #contact: Bot pausado PERMANENTEMENTE en ${chatId}`);
         return NextResponse.json({ success: true, action: "paused_permanent" });
       }
-      
+
       if (outText === "#pause") {
         const pauseUntil = new Date(Date.now() + PAUSE_HUMAN_MINUTES * 60 * 1000).toISOString();
         await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
@@ -339,70 +329,7 @@ export async function POST(request: Request) {
 
     const senderName = payload.senderData?.senderName || "Cliente";
 
-    // ── GUARDAR MENSAJE EN HISTORIAL INMEDIATAMENTE ──
-    const { data: insertedChat, error: chatErr } = await supabase
-      .from("whatsapp_chats")
-      .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
-      .select("id").single();
-    if (chatErr) throw chatErr;
-    const insertedId = insertedChat.id;
-
-    // ── BUFFER: esperar 8 segundos para unificar mensajes rápidos ──
-    await new Promise(r => setTimeout(r, BUFFER_DELAY_MS));
-
-    const { data: latestMsg } = await supabase
-      .from("whatsapp_chats")
-      .select("id")
-      .eq("owner_id", uid).eq("phone_number", sender).eq("role", "user")
-      .order("created_at", { ascending: false }).limit(1).single();
-
-    // Si este mensaje NO es el último insertado por este usuario, morimos en silencio.
-    // El hilo responsable del ÚLTIMO mensaje se encargará de procesarlos todos unificados.
-    if (latestMsg && latestMsg.id !== insertedId) {
-      console.log("[WEBHOOK] ⏱️ Hilo abortado: llegaron nuevos mensajes en la ventana de 8 seg.");
-      return NextResponse.json({ success: true, ignored: true, reason: "Consolidado por el último mensaje" });
-    }
-
-    // ==============================================================
-    // A PARTIR DE AQUÍ SOLO LLEGA 1 HILO (El último de la ráfaga)
-    // ==============================================================
-
-    // ── HISTORIAL DE CONVERSACIÓN (Extracción Lote) ──
-    const { data: pastMessages } = await supabase
-      .from("whatsapp_chats")
-      .select("role, content")
-      .eq("owner_id", uid).eq("phone_number", sender)
-      .order("created_at", { ascending: true }) // CRÍTICO: ORDEN CRONOLÓGICO CRECIENTE
-      .limit(40); // Suficientes mensajes para unificar correctamente
-
-    const rawHistory = pastMessages || [];
-    
-    // ── UNIFICADOR DE CASCADA (Múltiples Mensajes) ──
-    // Evita que Gemini explote por turnos repetidos ("user", "user") y junta las frases del cliente.
-    const unifiedHistory: { role: string, content: string }[] = [];
-    for (const msg of rawHistory) {
-      // Ignoramos mensajes internos del sistema
-      if (msg.role === "agent") continue;
-      
-      const roleStr = msg.role === "model" ? "model" : "user";
-      if (unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === roleStr) {
-         // Sumar al globo anterior
-         unifiedHistory[unifiedHistory.length - 1].content += `\n${msg.content}`;
-      } else {
-         unifiedHistory.push({ role: roleStr, content: msg.content });
-      }
-    }
-
-    // Si algo salió mal y no hay historia unificada, caer al original
-    const finalUserText = unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === "user" 
-      ? unifiedHistory[unifiedHistory.length - 1].content 
-      : messageText;
-
-    // ── CLASIFICAR INTENCIÓN UNIFICADA ──
-    const intent: Intent = classifyIntent(finalUserText);
-    console.log(`[WEBHOOK] 📨 ${senderName} → Intención Final: ${intent} | "Resumen: ${finalUserText.substring(0, 60)}"`);
-
-    // ── CARGAR CONFIGURACIÓN DEL AGENTE DESDE CLERK ──
+    // ── CARGAR CONFIGURACIÓN DEL AGENTE Y EARLY TYPING ──
     const clerkClient_ = await clerkClient();
     const user = await clerkClient_.users.getUser(uid);
     if (!user) throw new Error("Usuario no encontrado");
@@ -419,7 +346,7 @@ export async function POST(request: Request) {
     const waBaseUrl = providerConfig.apiUrl.replace(/\/$/, "");
     const { send, sendButtons } = makeWASender(waBaseUrl, providerConfig.idInstance, providerConfig.apiTokenInstance, sender);
 
-    // ── VERIFICAR PAUSA ──
+    // ── VERIFICAR PAUSA (Early check) ──
     const { data: pauses } = await supabase
       .from("whatsapp_pauses")
       .select("paused_until, phone_number")
@@ -431,8 +358,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, ignored: true, reason: "Pausado" });
     }
 
-    // ── ANTIFRAUDE PARA RECARGAS ──
-    if (intent === 'recarga') {
+    const initialIntent = isComprobante ? 'comprobante' : classifyIntent(messageText, typeMessage);
+
+    // ── ANTIFRAUDE PARA RECARGAS (Early) ──
+    if (initialIntent === 'recarga') {
       const cleanPhone = sender.replace("@c.us", "");
       const { data: scammerData } = await supabase.from("scammers").select("id")
         .or(`phone_number.eq.${cleanPhone},phone_number.eq.0${cleanPhone.slice(-10)},phone_number.eq.593${cleanPhone.slice(-10)}`)
@@ -443,18 +372,80 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── INDICADOR DE ESCRITURA ──
+    // ── INDICADOR DE ESCRITURA INMEDIATO ──
     fetch(`${waBaseUrl}/waInstance${providerConfig.idInstance}/sendAction/${providerConfig.apiTokenInstance}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatId: sender, action: "typing" }),
       signal: AbortSignal.timeout(3000),
-    }).catch(() => {});
+    }).catch(() => { });
+
+    // ── GUARDAR MENSAJE EN BASE DE DATOS ──
+    const { data: insertedChat, error: chatErr } = await supabase
+      .from("whatsapp_chats")
+      .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
+      .select("id").single();
+    if (chatErr) throw chatErr;
+    const insertedId = insertedChat.id;
+
+    // ── BUFFER DINÁMICO (Debounce) ──
+    const isShortMessage = messageText.length < 15;
+    const isGreeting = initialIntent === 'greeting';
+    // Esperamos 3500ms si es corto o saludo puro. Si aporta más info, 2000ms.
+    const dynamicBufferMs = (isGreeting || isShortMessage) ? 3500 : 2000;
+    await new Promise(r => setTimeout(r, dynamicBufferMs));
+
+    const { data: latestMsg } = await supabase
+      .from("whatsapp_chats")
+      .select("id")
+      .eq("owner_id", uid).eq("phone_number", sender).eq("role", "user")
+      .order("created_at", { ascending: false }).limit(1).single();
+
+    if (latestMsg && latestMsg.id !== insertedId) {
+      console.log(`[WEBHOOK] ⏱️ Hilo abortado: llegaron más mensajes en la ventana de ${dynamicBufferMs}ms.`);
+      return NextResponse.json({ success: true, ignored: true, reason: "Consolidado" });
+    }
+
+    // ==============================================================
+    // A PARTIR DE AQUÍ SOLO LLEGA 1 HILO (El último de la ráfaga)
+    // ==============================================================
+
+    // ── HISTORIAL DE CONVERSACIÓN (Extracción Lote) ──
+    const { data: pastMessages } = await supabase
+      .from("whatsapp_chats")
+      .select("role, content")
+      .eq("owner_id", uid).eq("phone_number", sender)
+      .order("created_at", { ascending: true }) // Creciente para unificar bien
+      .limit(40);
+
+    const rawHistory = pastMessages || [];
+
+    // ── UNIFICADOR DE CASCADA ──
+    const unifiedHistory: { role: string, content: string }[] = [];
+    for (const msg of rawHistory) {
+      if (msg.role === "agent") continue;
+
+      const roleStr = msg.role === "model" ? "model" : "user";
+      if (unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === roleStr) {
+        // Sumar al globo anterior
+        unifiedHistory[unifiedHistory.length - 1].content += `\n${msg.content}`;
+      } else {
+        unifiedHistory.push({ role: roleStr, content: msg.content });
+      }
+    }
+
+    const finalUserMessage = unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === "user"
+      ? unifiedHistory[unifiedHistory.length - 1].content
+      : messageText;
+
+    // ── CLASIFICAR INTENCIÓN FINAL ──
+    // IMPORTANTE: isComprobante viene del último webhook (que podría ser la imagen tras el texto)
+    const intent: Intent = isComprobante ? 'comprobante' : classifyIntent(finalUserMessage, typeMessage);
+    console.log(`[WEBHOOK] 📨 ${senderName} → intención final: ${intent} | "Resumen: ${finalUserMessage.substring(0, 60)}"`);
 
     // ── RESPUESTA DIRECTA SIN IA PARA SALUDO (BOTONES) ──
     if (intent === 'greeting') {
       const customMenu = greetingMenu || "¿En qué te puedo ayudar hoy? 👇";
-      // Solo 3 botones por mensaje (límite real de WhatsApp). Soporte queda fuera como texto corto.
-      await sendButtons(customMenu, ["💰 Recargar", "📤 Retirar", "❓ Consulta / Soporte"]);
+      await sendButtons(customMenu, ["Recargar", "Retirar", "Soporte"]);
       await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: customMenu });
       return NextResponse.json({ success: true, action: "greeting_with_buttons" });
     }
@@ -493,6 +484,7 @@ Interpreta su elección y actúa de inmediato según la opción elegida.`;
 8. RESPUESTAS NATURALES: Si te dicen algo sin sentido, raro, o fuera de contexto, ignóralo educadamente y pregúntales si necesitan ayuda con recargas o retiros.
 9. ESCALACIÓN INVISIBLE: Si usas "escalar_a_humano", dile al cliente: "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda." PROHIBIDO decir "escalado" o "agente".
 10. AUDIOS: Si el mensaje del usuario dice "[NOTA_DE_VOZ_RECIBIDA]", respóndele brevemente que no puedes escuchar notas de voz y pídele que te escriba en texto.
+11. BREVEDAD PARA SALUDOS: Si el cliente solo te dice "hola" o algo vago y no salta el menú automático, responde con una sola línea amigable (ej. "¡Hola! ¿En qué te ayudo?"). No despliegues información no pedida.
 
 IDENTIDAD Y PERSONALIDAD:
 ${aiPersona || "Asistente amigable y profesional."}
@@ -507,19 +499,13 @@ Nombre del cliente: ${senderName}`;
     if (!geminiKey) return NextResponse.json({ error: "No Gemini Key" }, { status: 500 });
     const genAI = new GoogleGenerativeAI(geminiKey);
 
-    // SDK v0.24: Construir historial — system prompt como primer turno user/model
-    // IMPORTANTE: El historial unificado finaliza SIEMPRE con el último bloque "user".
-    // Gemini startChat() toma todos los mensajes ANTERIORES al actual en el arreglo history.
-    // Y el último mensaje se lo pasamos en chat.sendMessage(finalUserText).
-    
     const chatHistory: any[] = [
       { role: "user", parts: [{ text: systemPrompt }] },
       { role: "model", parts: [{ text: "Entendido. Aplicaré todas las reglas y responderé a continuación." }] },
     ];
-    
-    // Extraer todos excepto el último (que sabemos que es 'user' por nuestra lógica unificadora)
+
+    // Extraer todos excepto el último (que es el usuario actual unificado)
     const historyWithoutLastUser = unifiedHistory.slice(0, -1);
-    
     for (const msg of historyWithoutLastUser) {
       chatHistory.push({ role: msg.role, parts: [{ text: msg.content }] });
     }
@@ -532,9 +518,9 @@ Nombre del cliente: ${senderName}`;
         generationConfig: { maxOutputTokens: 280, temperature: 0.3 },
       });
       const chat = model.startChat({ history: chatHistory });
-      
-      // Enviamos el bloque FINAL (el texto consolidado de los 8 segundos)
-      let result = await chat.sendMessage(finalUserText);
+
+      // Enviamos el bloque FINAL (el texto consolidado)
+      let result = await chat.sendMessage(finalUserMessage);
 
       // ── MANEJAR FUNCTION CALLS (máx 2 rondas) ──
       for (let round = 0; round < 2; round++) {
