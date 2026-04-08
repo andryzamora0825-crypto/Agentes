@@ -3,6 +3,8 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
+export const maxDuration = 300; // Vercel Pro: 5 Minutos (Protege el saldo de timeouts fantasmas)
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // Nano Banana 2 — capa gratuita + de pago, texto a imagen

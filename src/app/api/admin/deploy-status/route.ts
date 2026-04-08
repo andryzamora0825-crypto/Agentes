@@ -3,7 +3,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
