@@ -118,7 +118,7 @@ async function executeTool(
     await supabase.from("whatsapp_contact_tags")
       .upsert({ owner_id: ctx.uid, phone_number: ctx.sender, tag: "recarga_pendiente" }, { onConflict: "owner_id,phone_number,tag" });
     console.log(`[TOOL] ✅ Recarga registrada: $${monto} - ${banco}`);
-    return `¡ACCIÓN COMPLETADA! Recarga registrada. AHORA DEBES RESPONDER AL CLIENTE: Entrégale de forma amable pero OBLIGATORIA los datos exactos de la cuenta bancaria del banco '${banco}' (búscalos en tu lista de BANCOS DISPONIBLES) y dile que cuando haga la transferencia te envíe la foto del comprobante. NO PUEDES despedirte ni pedir el comprobante sin poner los datos (Número, Tipo, Titular) en tu mensaje.`;
+    return `¡ACCIÓN COMPLETADA! Recarga registrada. AHORA DEBES RESPONDER AL CLIENTE: Entrégale de forma amable los datos exactos de la cuenta bancaria del banco '${banco}' (búscalos en tu lista de BANCOS DISPONIBLES). Además de darle la cuenta, ES ABSOLUTAMENTE OBLIGATORIO que termines el mensaje diciéndole textualmente: "Me ayuda con el comprobante de la transferencia y el ID de su cuenta Ecuabet. Recuerde que el titular de la cuenta bancaria debe ser el mismo de la cuenta Ecuabet". NO PUEDES despedirte sin añadir esa frase exacta y los datos bancarios completos.`;
   }
 
   if (name === "etiquetar_contacto") {
