@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI, FunctionCallingMode, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
@@ -356,8 +356,8 @@ export async function POST(request: Request) {
     // ── RESPUESTA DIRECTA SIN IA PARA SALUDO (BOTONES) ──
     if (intent === 'greeting') {
       const customMenu = greetingMenu || "¿En qué te puedo ayudar hoy? 👇";
-      await sendButtons(customMenu, ["💰 Recargar", "📤 Retirar", "❓ Consulta", "🆘 Soporte"]);
-      // Guardar respuesta en BD como modelo
+      // Solo 3 botones por mensaje (límite real de WhatsApp). Soporte queda fuera como texto corto.
+      await sendButtons(customMenu, ["💰 Recargar", "📤 Retirar", "❓ Consulta / Soporte"]);
       await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: customMenu });
       return NextResponse.json({ success: true, action: "greeting_with_buttons" });
     }
@@ -416,26 +416,28 @@ Nombre del cliente: ${senderName}`;
     if (!geminiKey) return NextResponse.json({ error: "No Gemini Key" }, { status: 500 });
 
     const genAI = new GoogleGenerativeAI(geminiKey);
+    // SDK v0.24: systemInstruction y toolConfig MODE no soportados en startChat.
+    // Inyectamos el system prompt en el historial y dejamos tools sin mode explícito.
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      systemInstruction: systemPrompt,
       tools: BOT_TOOLS,
-      toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
       generationConfig: { maxOutputTokens: 280, temperature: 0.3 },
     });
 
-    // Construir contenidos de la conversación para Gemini
-    const contents: any[] = [];
-    for (const msg of history.slice(0, -1)) { // Todo menos el último (el actual)
+    // Construir historial — el system prompt va como primer turno user/model
+    const chatHistory: any[] = [
+      { role: "user", parts: [{ text: systemPrompt }] },
+      { role: "model", parts: [{ text: "Entendido. Aplicaré todas las reglas e instrucciones." }] },
+    ];
+    for (const msg of history) {
       if (msg.role === "agent") continue;
-      contents.push({ role: msg.role === "model" ? "model" : "user", parts: [{ text: msg.content }] });
+      chatHistory.push({ role: msg.role === "model" ? "model" : "user", parts: [{ text: msg.content }] });
     }
-    // Último mensaje del usuario (el actual)
-    contents.push({ role: "user", parts: [{ text: messageText }] });
 
     let aiResponse = "";
     try {
-      const chat = model.startChat({ history: contents.slice(0, -1) });
+      const chat = model.startChat({ history: chatHistory });
+      // El mensaje actual ya está guardado en el historial; enviamos trigger con el texto actual
       let result = await chat.sendMessage(messageText);
 
       // ── MANEJAR FUNCTION CALLS (máx 2 rondas) ──
