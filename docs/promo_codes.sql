@@ -27,11 +27,12 @@ CREATE TABLE IF NOT EXISTS public.promo_redemptions (
 ALTER TABLE public.promo_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.promo_redemptions ENABLE ROW LEVEL SECURITY;
 
--- Como las rutas de API (/api/...) de Next.js harán todo el trabajo a nivel servidor usando service_role
--- podemos crear políticas que permitan todo o dejar que el service_role pase por alto RLS automáticamente.
--- Por seguridad estándar, vamos a permitir lectura/escritura si y solo si se usa desde el backend (que ignora RLS por diseño siempre que instanciemos con clave secreta).
+-- Como las rutas de API (/api/...) de Next.js harán todo el trabajo a nivel servidor validando con Clerk,
+-- vamos a permitir libre edición para el RLS, dado que los bloqueos los gestiona la API nuestra.
 
--- Para desarrollo, si usan Supabase Cliente Anonimo:
-CREATE POLICY "Public Read Codes" ON public.promo_codes FOR SELECT USING (true);
-CREATE POLICY "Public Enviar Redemption" ON public.promo_redemptions FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public Ver Redemptions" ON public.promo_redemptions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public Read Codes" ON public.promo_codes;
+CREATE POLICY "Permitir TODO en promo_codes" ON public.promo_codes FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public Enviar Redemption" ON public.promo_redemptions;
+DROP POLICY IF EXISTS "Public Ver Redemptions" ON public.promo_redemptions;
+CREATE POLICY "Permitir TODO en promo_redemptions" ON public.promo_redemptions FOR ALL USING (true) WITH CHECK (true);

@@ -24,7 +24,7 @@ export async function GET() {
       email: u.emailAddresses[0]?.emailAddress || 'Sin Email',
       avatar: u.imageUrl,
       credits: u.publicMetadata?.credits,
-      plan: u.publicMetadata?.plan || 'VIP',
+      plan: u.publicMetadata?.plan || 'FREE',
       whatsappSettings: u.publicMetadata?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
       createdAt: u.createdAt
     }));
