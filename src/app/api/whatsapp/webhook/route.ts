@@ -10,26 +10,35 @@ export const maxDuration = 45;
 const geminiKey = process.env.GEMINI_API_KEY;
 const PAUSE_HUMAN_MINUTES = 10;    // Auto-pausa por intervención del agente humano
 const ESCALATION_PAUSE_MIN = 30;   // Pausa cuando el bot escala a humano
-const BUFFER_DELAY_MS = 3500;      // Espera para unificar mensajes rápidos consecutivos
+const BUFFER_DELAY_MS = 8000;      // Espera de 8 seg para unificar ráfagas de mensajes
 
 // =====================================================
 // TIPOS DE INTENCIÓN
 // =====================================================
 type Intent = 'greeting' | 'recarga' | 'retiro' | 'comprobante' | 'queja' | 'button_reply' | 'consulta';
 
-function classifyIntent(text: string, typeMessage: string): Intent {
+function classifyIntent(text: string, typeMessage?: string): Intent {
   // Respuesta a botón interactivo de WhatsApp
   if (typeMessage === 'buttonsResponseMessage') return 'button_reply';
   // Imagen / documento / video → comprobante
-  if (['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage'].includes(typeMessage)) return 'comprobante';
+  if (typeMessage && ['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage'].includes(typeMessage)) return 'comprobante';
+
+  // Si usamos el texto consolidado para saber si hay archivos:
+  if (text.includes('[COMPROBANTE_ENVIADO]')) return 'comprobante';
+  if (text.includes('[ARCHIVO_TIPO_')) return 'comprobante'; // Para covers catch-all
 
   const lower = text.toLowerCase().trim();
   const is = (words: string[]) => words.some(w => lower.includes(w));
 
-  if (is(['hola', 'buenas', 'buenos', 'buen dia', 'buen día', 'hi ', 'hey', 'ey ', 'saludos', 'buenas noches', 'buenas tardes']) || lower === 'hola' || lower === 'hi') return 'greeting';
-  if (is(['recarga', 'recargar', 'depositar', 'deposito', 'cargar saldo', 'quiero cargar'])) return 'recarga';
-  if (is(['retiro', 'retirar', 'sacar', 'cobrar', 'quiero retirar', 'quiero sacar'])) return 'retiro';
+  // Prioridad 1: Quejas y problemas (requieren empatía/escalación)
   if (is(['problema', 'queja', 'reclamo', 'error', 'falla', 'no funciona', 'no me llega', 'no aparece'])) return 'queja';
+  
+  // Prioridad 2: Transacciones
+  if (is(['recarga', 'recargar', 'depositar', 'deposito', 'cargar saldo', 'quiero cargar', 'fondear'])) return 'recarga';
+  if (is(['retiro', 'retirar', 'sacar', 'cobrar', 'quiero retirar', 'quiero sacar'])) return 'retiro';
+
+  // Prioridad 3: Saludos (solo si no hay intención de acción detectada)
+  if (is(['hola', 'buenas', 'buenos', 'buen dia', 'buen día', 'hi ', 'hey', 'ey ', 'saludos', 'buenas noches', 'buenas tardes']) || lower === 'hola' || lower === 'hi') return 'greeting';
 
   return 'consulta';
 }
@@ -330,11 +339,7 @@ export async function POST(request: Request) {
 
     const senderName = payload.senderData?.senderName || "Cliente";
 
-    // ── CLASIFICAR INTENCIÓN ──
-    const intent: Intent = isComprobante ? 'comprobante' : classifyIntent(messageText, typeMessage);
-    console.log(`[WEBHOOK] 📨 ${senderName} → intención: ${intent} | "${messageText.substring(0, 60)}"`);
-
-    // ── GUARDAR MENSAJE EN HISTORIAL ──
+    // ── GUARDAR MENSAJE EN HISTORIAL INMEDIATAMENTE ──
     const { data: insertedChat, error: chatErr } = await supabase
       .from("whatsapp_chats")
       .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
@@ -342,7 +347,7 @@ export async function POST(request: Request) {
     if (chatErr) throw chatErr;
     const insertedId = insertedChat.id;
 
-    // ── BUFFER: esperar para unificar mensajes rápidos ──
+    // ── BUFFER: esperar 8 segundos para unificar mensajes rápidos ──
     await new Promise(r => setTimeout(r, BUFFER_DELAY_MS));
 
     const { data: latestMsg } = await supabase
@@ -351,10 +356,51 @@ export async function POST(request: Request) {
       .eq("owner_id", uid).eq("phone_number", sender).eq("role", "user")
       .order("created_at", { ascending: false }).limit(1).single();
 
+    // Si este mensaje NO es el último insertado por este usuario, morimos en silencio.
+    // El hilo responsable del ÚLTIMO mensaje se encargará de procesarlos todos unificados.
     if (latestMsg && latestMsg.id !== insertedId) {
-      console.log("[WEBHOOK] ⏱️ Buffer: otro mensaje llegó después. Abortando este hilo.");
-      return NextResponse.json({ success: true, ignored: true, reason: "Consolidado" });
+      console.log("[WEBHOOK] ⏱️ Hilo abortado: llegaron nuevos mensajes en la ventana de 8 seg.");
+      return NextResponse.json({ success: true, ignored: true, reason: "Consolidado por el último mensaje" });
     }
+
+    // ==============================================================
+    // A PARTIR DE AQUÍ SOLO LLEGA 1 HILO (El último de la ráfaga)
+    // ==============================================================
+
+    // ── HISTORIAL DE CONVERSACIÓN (Extracción Lote) ──
+    const { data: pastMessages } = await supabase
+      .from("whatsapp_chats")
+      .select("role, content")
+      .eq("owner_id", uid).eq("phone_number", sender)
+      .order("created_at", { ascending: true }) // CRÍTICO: ORDEN CRONOLÓGICO CRECIENTE
+      .limit(40); // Suficientes mensajes para unificar correctamente
+
+    const rawHistory = pastMessages || [];
+    
+    // ── UNIFICADOR DE CASCADA (Múltiples Mensajes) ──
+    // Evita que Gemini explote por turnos repetidos ("user", "user") y junta las frases del cliente.
+    const unifiedHistory: { role: string, content: string }[] = [];
+    for (const msg of rawHistory) {
+      // Ignoramos mensajes internos del sistema
+      if (msg.role === "agent") continue;
+      
+      const roleStr = msg.role === "model" ? "model" : "user";
+      if (unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === roleStr) {
+         // Sumar al globo anterior
+         unifiedHistory[unifiedHistory.length - 1].content += `\n${msg.content}`;
+      } else {
+         unifiedHistory.push({ role: roleStr, content: msg.content });
+      }
+    }
+
+    // Si algo salió mal y no hay historia unificada, caer al original
+    const finalUserText = unifiedHistory.length > 0 && unifiedHistory[unifiedHistory.length - 1].role === "user" 
+      ? unifiedHistory[unifiedHistory.length - 1].content 
+      : messageText;
+
+    // ── CLASIFICAR INTENCIÓN UNIFICADA ──
+    const intent: Intent = classifyIntent(finalUserText);
+    console.log(`[WEBHOOK] 📨 ${senderName} → Intención Final: ${intent} | "Resumen: ${finalUserText.substring(0, 60)}"`);
 
     // ── CARGAR CONFIGURACIÓN DEL AGENTE DESDE CLERK ──
     const clerkClient_ = await clerkClient();
@@ -457,33 +503,25 @@ ${intentContext}
 
 Nombre del cliente: ${senderName}`;
 
-    // ── HISTORIAL DE CONVERSACIÓN ──
-    const { data: pastMessages } = await supabase
-      .from("whatsapp_chats")
-      .select("role, content")
-      .eq("owner_id", uid).eq("phone_number", sender)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    const history = (pastMessages || []).reverse();
-
     // ── GENERACIÓN CON GEMINI + FUNCTION CALLING ──
     if (!geminiKey) return NextResponse.json({ error: "No Gemini Key" }, { status: 500 });
-
     const genAI = new GoogleGenerativeAI(geminiKey);
-    // SDK v0.24: systemInstruction y toolConfig MODE no soportados en startChat.
-    // Construir historial — system prompt como primer turno user/model
-    // IMPORTANTE: slice(0,-1) excluye el último mensaje (el actual) porque
-    // lo enviamos explícitamente con sendMessage() a continuación.
+
+    // SDK v0.24: Construir historial — system prompt como primer turno user/model
+    // IMPORTANTE: El historial unificado finaliza SIEMPRE con el último bloque "user".
+    // Gemini startChat() toma todos los mensajes ANTERIORES al actual en el arreglo history.
+    // Y el último mensaje se lo pasamos en chat.sendMessage(finalUserText).
+    
     const chatHistory: any[] = [
       { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Entendido. Aplicaré todas las reglas e instrucciones." }] },
+      { role: "model", parts: [{ text: "Entendido. Aplicaré todas las reglas y responderé a continuación." }] },
     ];
-    // history ya viene en orden cronológico (más viejo primero)
-    const historyWithoutCurrent = history.slice(0, -1); // excluir el mensaje actual
-    for (const msg of historyWithoutCurrent) {
-      if (msg.role === "agent") continue;
-      chatHistory.push({ role: msg.role === "model" ? "model" : "user", parts: [{ text: msg.content }] });
+    
+    // Extraer todos excepto el último (que sabemos que es 'user' por nuestra lógica unificadora)
+    const historyWithoutLastUser = unifiedHistory.slice(0, -1);
+    
+    for (const msg of historyWithoutLastUser) {
+      chatHistory.push({ role: msg.role, parts: [{ text: msg.content }] });
     }
 
     let aiResponse = "";
@@ -494,8 +532,9 @@ Nombre del cliente: ${senderName}`;
         generationConfig: { maxOutputTokens: 280, temperature: 0.3 },
       });
       const chat = model.startChat({ history: chatHistory });
-      // Enviamos el mensaje actual como nuevo turno
-      let result = await chat.sendMessage(messageText);
+      
+      // Enviamos el bloque FINAL (el texto consolidado de los 8 segundos)
+      let result = await chat.sendMessage(finalUserText);
 
       // ── MANEJAR FUNCTION CALLS (máx 2 rondas) ──
       for (let round = 0; round < 2; round++) {
