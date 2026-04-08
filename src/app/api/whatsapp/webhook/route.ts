@@ -461,79 +461,36 @@ export async function POST(request: Request) {
       ? unifiedHistory[unifiedHistory.length - 1].content
       : messageText;
 
-    // ── CLASIFICAR INTENCIÓN FINAL ──
-    // IMPORTANTE: isComprobante viene del último webhook (que podría ser la imagen tras el texto)
-    const intent: Intent = isComprobante ? 'comprobante' : classifyIntent(finalUserMessage, typeMessage);
-    console.log(`[WEBHOOK] 📨 ${senderName} → intención final: ${intent} | "Resumen: ${finalUserMessage.substring(0, 60)}"`);
+    console.log(`[WEBHOOK] 📨 ${senderName} | "Resumen: ${finalUserMessage.substring(0, 60)}"`);
 
-    // ── RESPUESTA DIRECTA SIN IA PARA SALUDO (BOTONES) ──
-    if (intent === 'greeting') {
-      const customMenu = greetingMenu || "¿En qué te puedo ayudar hoy? 👇";
-      await sendButtons(customMenu, ["Recargar", "Retirar", "Soporte"]);
-      await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: customMenu });
-      return NextResponse.json({ success: true, action: "greeting_with_buttons" });
-    }
+    // ── SISTEMA DE RESPUESTA BASADO ÍNTEGRAMENTE EN IA (Prompt Dinámico) ──
+    const systemPrompt = `Eres un agente de atención al cliente empático, inteligente y con alta fluidez humana resolviendo dudas y dando soporte a usuarios directamente a través de WhatsApp.
+Reglas INQUEBRANTABLES:
+1. RESPONDE DE MANERA CONVERSACIONAL Y CERCANA. ¡PROHIBIDO ESCRIBIR COMO UN MENÚ NUMERADO RIGIDO! Comunícate como una persona fluida y lista, no como un sistema automatizado o cajero de banco.
+2. NUNCA EXPLIQUES tus acciones internas ni te presentes, no uses firmas en cada mensaje y sé breve.
+3. Eres un ASESOR VIRTUAL con carisma y de carne y hueso a los ojos del cliente. NO uses palabras como "bot", "IA", "asistente de Inteligencia artificial", ni que estás ejecutando herramientas de sistema.
+4. ANTES DE RESPONDER, REVISA LO QUE EL CLIENTE YA HABÍA DICHO. Si en algún mensaje anterior él ya te confesó que iba a cargar '50 dólares' o ya escogió el banco 'Pichincha', por favor NO LE VUELVAS a preguntar monto y banco de nuevo como un sistema fallido de disco rayado. ¡Usa esa información adquirida orgánicamente!
+5. DEBES ADAPTARTE Y PREVER: Si te equivocas seguido, o el cliente se desespera o te exige alguien superior, no titubees en ejecutar pacíficamente "escalar_a_humano" para salvaguardarle la buena experiencia.
+6. LOS SALUDOS DEBEN SER AMIGABLES. Si su mensaje inicial es algo como "Hola", "Buenas", "Que tal", contesta solo un saludo natural y cálido en menos de dos líneas: "¿Hola, qué tal? ¿En qué te puedo asesorar el día de hoy?". Toma esta configuración si existe: "${greetingMenu || '¿En qué te ayudo?'}". Jamás recites inmediatamente tus listados de cosas como retiro y depósito salvo que te lo pregunten.
+7. ESCALACIÓN ORGÁNICA E INVISIBLE: Si recurres a usar tu capacidad técnica real de "escalar_a_humano", diles con mucha sutileza antes de frenar tu actividad: "Claro, aguárdame un instante y enseguida contacto con uno de mis compañeros para que venga a ayudarte."
+8. RESTRICCIONES DE ARCHIVOS: Si llega un "[NOTA_DE_VOZ_RECIBIDA]", responde sueltamente "Ups, no me envíes audios en este momento por favor, escríbeme lo que necesitas 🙏".
+9. PRECISIÓN INTACTA: IDs largos que te pasen o cuentas de cliente se repiten con alta fidelidad y sin inventar.
 
-    // ── ESCALACIÓN DIRECTA (sin pasar por IA) ──
-    if (intent === 'escalacion') {
-      // Ejecutar la herramienta de escalación directamente
-      await executeTool("escalar_a_humano", { motivo: "El cliente pidió hablar con un humano" }, {
-        uid, sender, senderName, adminEmail, waBaseUrl,
-        idInstance: providerConfig.idInstance, apiToken: providerConfig.apiTokenInstance,
-      });
-      const escResponse = "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda. 🙏";
-      await send(escResponse);
-      await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: escResponse });
-      return NextResponse.json({ success: true, action: "escalated_to_human" });
-    }
+====== CONTEXTO Y FLUJOS VITALES A SEGUIR ==================
+* RECARGAS / DEPÓSITOS: Si notas por contexto que desea realizar una RECARGA, tus pasos naturales son: "${rechargeSteps || "1. Averiguar monto con tacto. 2. Guiar a elegir banco. 3. Brindarle el número de cuenta de ese banco preferido. 4. Exigir la foto del comprobante."}"
+  -- Estos bancos existen acá: ${banksInfo || "Debes comunicarle que solicite esta info a un compañero tuyo."}
+  -- ALERTA OBLIGATORIA: Tan pronto consolides y averigües con éxito el "Monto numérico" y un "Banco", en tu próxima interacción EJECUTA LA HERRAMIENTA 'registrar_recarga' SIN LUGAR A DUDAS para el registro administrativo y alíentalo a enviarte su foto comprobante.
+  -- GESTIÓN DE COMPROBANTES: Si el último texto o mensaje en la plática actual dice textualmente "[COMPROBANTE_ENVIADO]", tú lo agradeces calmadamente "De lujo, acuso recibo de tu comprobante, ya se valida pronto"; e inmediatamente ejecutas tu herramienta 'etiquetar_contacto' con valor "recarga_pendiente".
 
-    // ── PROMPT CONTEXTUAL POR INTENCIÓN ──
-    let intentContext = "";
-    if (intent === 'recarga') {
-      intentContext = `\n\n[CONTEXTO OPERACIÓN: El cliente quiere hacer una RECARGA]\nPasos del proceso de recarga que debes seguir:
-${rechargeSteps || "1. Pregunta el monto. 2. Muestra los bancos disponibles con botones. 3. Da los datos de la cuenta del banco elegido. 4. Pide el comprobante."}
-BANCOS DISPONIBLES (para ofrecer con botones):
-${banksInfo || "No hay bancos configurados. Indica al cliente que se comunique con soporte."}
-IMPORTANTE: Si ya sabes el monto Y el banco, usa la herramienta 'registrar_recarga'. Luego pide el comprobante.`;
-    } else if (intent === 'retiro') {
-      intentContext = `\n\n[CONTEXTO OPERACIÓN: El cliente quiere hacer un RETIRO]
-${withdrawSteps || "1. Pide el monto que desea retirar. 2. Pide su número de cuenta y banco. 3. Escala a humano para procesar el retiro, ya que requiere aprobación manual."}
-Los retiros requieren verificación humana. Usa 'escalar_a_humano' cuando tengas todos los datos.`;
-    } else if (intent === 'comprobante') {
-      intentContext = `\n\n[CONTEXTO: El cliente acaba de ENVIAR UN COMPROBANTE DE PAGO]
-Confirma la recepción de forma corta y cordial. Indícale que procesarán en breve. Usa 'etiquetar_contacto' con tag 'recarga_pendiente'.`;
-    } else if (intent === 'queja') {
-      intentContext = `\n\n[CONTEXTO: El cliente tiene un PROBLEMA O QUEJA]
-Sé empático y breve. Si no puedes resolverlo directamente, usa 'escalar_a_humano' indicando el motivo.`;
-    } else if (intent === 'button_reply') {
-      intentContext = `\n\n[CONTEXTO: El cliente respondió un botón del menú: "${messageText}"]
-Interpreta su elección y actúa de inmediato según la opción elegida.`;
-    }
+* RETIROS: Si requieren cobrar o retirar plata, aplícalo orgánico: "${withdrawSteps || "1. Averigua la cantidad a extraer y su Nro de cuenta."}"
+  -- Todo retiro depende de soporte en persona, así que la herramienta 'escalar_a_humano' será vital usarla luego de reunirle los datos a tu colega.
 
-    const systemPrompt = `Eres un agente de servicio al cliente en WhatsApp para esta empresa. Reglas INQUEBRANTABLES:
-1. RESPONDE DIRECTO AL GRANO. Máximo 3-4 líneas.
-2. NUNCA expliques tus acciones internas ni te presentes en cada mensaje.
-3. NO uses firmas ni despedidas formales.
-4. USA emojis con moderación, solo cuando añaden valor.
-5. Si te piden una operación, actúa con las herramientas disponibles sin pedir confirmación innecesaria.
-6. Cuando ofrezcas opciones de bancos o tipos de operación, NUNCA los listes en el texto.
-7. Eres humano a los ojos del cliente. NUNCA digas que eres un bot, Inteligencia Artificial o asistente virtual. Eres un ASESOR de servicio.
-8. RESPUESTAS NATURALES: Si te dicen algo sin sentido, raro, o fuera de contexto, ignóralo educadamente y pregúntales si necesitan ayuda con recargas o retiros.
-9. ESCALACIÓN INVISIBLE: Si usas "escalar_a_humano", dile al cliente: "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda." PROHIBIDO decir "escalado" o "agente".
-10. AUDIOS: Si el mensaje del usuario dice "[NOTA_DE_VOZ_RECIBIDA]", respóndele brevemente que no puedes escuchar notas de voz y pídele que te escriba en texto.
-11. BREVEDAD PARA SALUDOS: Si el cliente solo te dice "hola" o algo vago y no salta el menú automático, responde con una sola línea amigable (ej. "¡Hola! ¿En qué te ayudo?"). No despliegues información no pedida.
-12. CONTACTOS: Si el mensaje dice "[CONTACTO_REENVIADO]", el cliente te está compartiendo datos de contacto. Extrae el nombre y teléfono y úsalos como ID del cliente para la operación en curso.
-13. NÚMEROS E IDS: Si el cliente envía un número largo (ID de cuenta, número de teléfono, comprobante), REPRODÚCELO COMPLETO, nunca lo trunces ni lo resumas.
-14. NO REPITAS INFORMACIÓN: Si ya pediste el monto y banco, y el cliente te responde con algo nuevo, procesa lo nuevo. No vuelvas a pedir lo mismo.
+====== IDENTIDAD DE ASESOR Y BASE DE AYUDAS ======
+${aiPersona || "Ponte la camiseta de tu plataforma financiera e interactúa empático, dando la mejor atención, seguro."}
+${knowledgeBase || ""}
 
-IDENTIDAD Y PERSONALIDAD:
-${aiPersona || "Asistente amigable y profesional."}
-
-BASE DE CONOCIMIENTO:
-${knowledgeBase || "Empresa de servicios financieros."}
-${intentContext}
-
-Nombre del cliente: ${senderName}`;
+Dato adicional para tratarlo con cortesía: 
+Identificador de contacto del cliente: ${senderName}`;
 
     // ── GENERACIÓN CON OPENAI (ChatGPT) + FUNCTION CALLING ──
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -629,27 +586,13 @@ Nombre del cliente: ${senderName}`;
       }
     } catch (err: any) {
       console.error("[WEBHOOK] Error OpenAI:", err.message);
-      aiResponse = "¡Hola! ¿Necesitas ayuda con recargas o retiros?";
+      aiResponse = "¡Hola! ¿Necesitas ayuda con recargas o retiros en este momento?";
     }
 
-    if (!aiResponse) aiResponse = "¡Hola! ¿Necesitas ayuda con recargas o retiros?";
+    if (!aiResponse) aiResponse = "¡Hola! ¿Dime cómo puedo asesorarte hoy?";
 
-    // ── POST-PROCESO PARA ENVÍO CON BOTONES (si la IA menciona bancos) ──
-    let sentWithButtons = false;
-    if (intent === 'recarga' && banksInfo) {
-      // Extraer lista de bancos de banksInfo para ofrecerlos como botones
-      const bankLines = (banksInfo as string).split('\n').filter((l: string) => l.trim());
-      const bankNames = bankLines.map((line: string) => line.split(':')[0].trim()).filter(Boolean).slice(0, 6); // máx 6
-      if (bankNames.length > 0 && (aiResponse.toLowerCase().includes('banco') || aiResponse.toLowerCase().includes('cual banco') || aiResponse.toLowerCase().includes('qué banco'))) {
-        await send(aiResponse);
-        await sendButtons("¿Qué banco usarás?", bankNames);
-        sentWithButtons = true;
-      }
-    }
-
-    if (!sentWithButtons) {
-      await send(aiResponse);
-    }
+    // Sin pos-proceso errático, se envía puramente la inteligencia natural
+    await send(aiResponse);
 
     // ── GUARDAR RESPUESTA DEL BOT ──
     await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: aiResponse });
