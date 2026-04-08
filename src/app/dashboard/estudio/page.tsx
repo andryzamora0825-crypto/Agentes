@@ -283,11 +283,11 @@ export default function EstudioIAPage() {
 
             {/* Selector de Formato de Imagen */}
             <div>
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <Monitor className="w-4 h-4 text-gray-400" />
-                <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Dimensiones</span>
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <Monitor className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Dimensiones</span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3">
+              <div className="flex flex-wrap gap-2">
                 {FORMAT_OPTIONS.map((fmt) => {
                   const selected = imageFormat === fmt.id;
                   const IconEl = fmt.icon === 'monitor' ? Monitor : fmt.icon === 'phone' ? Smartphone : fmt.icon === 'rect-h' ? RectangleHorizontal : fmt.icon === 'rect-v' ? RectangleVertical : Square;
@@ -296,14 +296,14 @@ export default function EstudioIAPage() {
                       key={fmt.id}
                       type="button"
                       onClick={() => setImageFormat(fmt.id)}
-                      className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border transition-all ${selected
-                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/50 text-[#FFDE00] shadow-[0_0_20px_rgba(255,222,0,0.1)] scale-100'
-                          : 'bg-white/[0.03] border-white/5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-300 scale-95 hover:scale-100'
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${selected
+                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00] shadow-[0_0_10px_rgba(255,222,0,0.1)]'
+                          : 'bg-[#111111] border-white/5 text-gray-500 hover:bg-white/5 hover:text-gray-300'
                         }`}
                     >
-                      <IconEl className={`w-5 h-5 ${selected ? 'text-[#FFDE00]' : 'text-gray-400'}`} />
-                      <span className={`text-[10px] font-black uppercase tracking-wider leading-none mt-1 ${selected ? 'text-[#FFDE00]' : 'text-gray-400'}`}>{fmt.label}</span>
-                      <span className={`text-[9px] font-bold ${selected ? 'text-[#FFDE00]/70' : 'text-gray-600'}`}>{fmt.ratio}</span>
+                      <IconEl className={`w-3.5 h-3.5 ${selected ? 'text-[#FFDE00]' : 'text-gray-500'}`} />
+                      <span className={`text-[10px] font-bold uppercase tracking-wide leading-none ${selected ? 'text-[#FFDE00]' : 'text-gray-400'}`}>{fmt.label}</span>
+                      <span className={`text-[9px] font-mono ${selected ? 'text-[#FFDE00]/60' : 'text-gray-600'}`}>{fmt.ratio}</span>
                     </button>
                   );
                 })}
