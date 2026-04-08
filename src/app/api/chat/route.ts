@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         sender_name: "Soporte Zamtools",
         sender_avatar: "https://ui-avatars.com/api/?name=Soporte&background=FFDE00&color=000",
         receiver_email: sender_email,
-        content: "✅ ¡Hola! Hemos recibido tu solicitud de compra en la tienda. Por favor, realiza el pago correspondiente y envíanos el comprobante por este chat. Te atenderemos en breve para activar tu paquete."
+        content: "✅ ¡Hola! Hemos recibido tu solicitud de compra en la tienda.\n\nPor favor, realiza tu pago a la siguiente cuenta oficial:\n\n🏦 Banco Pichincha\n🔹 Cuenta de ahorro transaccional\n🔹 Número: 2215379279\n🔹 A nombre de Andry Zamora\n\nUna vez realizada la transferencia, adjunta la captura del comprobante por este chat. Te validaremos de inmediato para activar tu compra."
       });
     } else if (content.includes("Quiero solicitar la creación de un")) {
       await supabase.from("chats").insert({
