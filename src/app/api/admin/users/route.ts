@@ -25,6 +25,7 @@ export async function GET() {
       avatar: u.imageUrl,
       credits: u.publicMetadata?.credits,
       plan: u.publicMetadata?.plan || 'FREE',
+      vipExpiresAt: u.publicMetadata?.vipExpiresAt,
       whatsappSettings: u.publicMetadata?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
       createdAt: u.createdAt
     }));

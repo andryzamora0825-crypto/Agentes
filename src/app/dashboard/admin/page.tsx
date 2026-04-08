@@ -145,7 +145,11 @@ export default function AdminPanelPage() {
        });
 
        if (res.ok) {
-         setUsers(prev => prev.map(u => u.id === targetId ? { ...u, plan: newPlan } : u));
+         setUsers(prev => prev.map(u => u.id === targetId ? { 
+           ...u, 
+           plan: newPlan, 
+           vipExpiresAt: newPlan === 'VIP' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null 
+         } : u));
        } else {
          alert("Error modificando el plan.");
        }
@@ -395,6 +399,11 @@ export default function AdminPanelPage() {
                     <div>
                       <div className="font-bold text-white truncate max-w-[150px] group-hover:text-[#FFDE00] transition-colors">{u.name}</div>
                       <div className="text-xs text-gray-500 truncate max-w-[150px]">{u.email}</div>
+                      {u.plan === 'VIP' && u.vipExpiresAt && (
+                        <div className="text-[10px] text-[#FFDE00] mt-1 font-mono bg-[#FFDE00]/10 inline-block px-1.5 py-0.5 rounded border border-[#FFDE00]/20">
+                          {Math.max(0, Math.ceil((u.vipExpiresAt - Date.now()) / (1000 * 60 * 60 * 24)))} Días Left
+                        </div>
+                      )}
                     </div>
                   </div>
 
