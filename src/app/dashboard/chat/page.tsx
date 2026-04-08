@@ -17,6 +17,7 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   // En móvil: vista = "list" | "chat"
   const [mobileView, setMobileView] = useState<"list" | "chat">(isAdmin ? "list" : "chat");
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -272,7 +273,18 @@ export default function ChatPage() {
                           : "bg-[#1A1A1A] border border-white/8 text-gray-200 rounded-tl-sm"
                       }`}>
                         {msg.content.startsWith("data:image/") || msg.content.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i) ? (
-                          <img src={msg.content} className="w-full max-w-[250px] sm:max-w-[320px] rounded-xl shadow-sm border border-black/10" alt="Archivo adjunto" />
+                          <div className="relative group rounded-xl overflow-hidden shadow-sm border border-black/10 inline-block">
+                            <img src={msg.content} className="w-full max-w-[250px] sm:max-w-[320px] object-cover" alt="Archivo adjunto" />
+                            <button 
+                              type="button"
+                              onClick={() => setLightboxImg(msg.content)}
+                              className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]"
+                            >
+                              <span className="bg-black/70 text-white text-[11px] px-3 py-1.5 rounded-lg border border-white/20 font-bold uppercase tracking-widest shadow-lg">
+                                Ver completa
+                              </span>
+                            </button>
+                          </div>
                         ) : (
                           <p className="text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                         )}
@@ -328,6 +340,27 @@ export default function ChatPage() {
 
         </div>
       </div>
+
+      {/* MODAL: Lightbox para Ver Imágenes */}
+      {lightboxImg && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => setLightboxImg(null)}
+        >
+          <button 
+            className="absolute top-4 sm:top-8 right-4 sm:right-8 bg-white/10 hover:bg-white/20 p-2 sm:p-3 rounded-full text-white transition-colors"
+            onClick={() => setLightboxImg(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img 
+            src={lightboxImg} 
+            alt="Ampliación" 
+            className="max-w-[95vw] max-h-[85vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </>
   );
 }
