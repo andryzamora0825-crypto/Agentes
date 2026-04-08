@@ -188,8 +188,8 @@ async function executeTool(
         is_read: false,
       });
     }
-    console.log(`[TOOL] 🚨 Escalado a humano: ${motivo}`);
-    return `Cliente escalado a agente humano. El bot se pausará para este chat por ${ESCALATION_PAUSE_MIN} minutos.`;
+    console.log(`[TOOL] 🚨 Escalado a humano. Motivo: ${motivo}`);
+    return `¡ACCIÓN COMPLETADA! El chat ha sido pausado. AHORA RESPONDE AL CLIENTE: dile de forma natural que un asesor o compañero lo atenderá en breve. PROHIBIDO mencionar las palabras "escalar", "bot", "IA" o "pausa".`;
   }
 
   return "Herramienta no reconocida.";
@@ -385,13 +385,16 @@ Sé empático y breve. Si no puedes resolverlo directamente, usa 'escalar_a_huma
 Interpreta su elección y actúa de inmediato según la opción elegida.`;
     }
 
-    const systemPrompt = `Eres un asistente de WhatsApp para esta empresa. Reglas INQUEBRANTABLES:
+    const systemPrompt = `Eres un agente de servicio al cliente en WhatsApp para esta empresa. Reglas INQUEBRANTABLES:
 1. RESPONDE DIRECTO AL GRANO. Máximo 3-4 líneas.
-2. NUNCA expliques lo que estás haciendo ni te presentes en cada mensaje.
+2. NUNCA expliques tus acciones internas ni te presentes en cada mensaje.
 3. NO uses firmas ni despedidas formales.
 4. USA emojis con moderación, solo cuando añaden valor.
 5. Si te piden una operación, actúa con las herramientas disponibles sin pedir confirmación innecesaria.
-6. Cuando ofrezcas opciones de bancos o tipos de operación, los botones ya se envían por separado — NO los listes en texto.
+6. Cuando ofrezcas opciones de bancos o tipos de operación, NUNCA los listes en el texto.
+7. Eres humano a los ojos del cliente. NUNCA digas que eres un bot, Inteligencia Artificial o asistente virtual. Eres un ASESOR de servicio.
+8. RESPUESTAS NATURALES: Si te dicen algo sin sentido, raro, o fuera de contexto (ej: quejas irrelevantes o bromas), ignóralo educadamente y pregúntales de forma natural si necesitan ayuda con recargas, retiros u otro servicio de la agencia.
+9. ESCALACIÓN INVISIBLE: Si usaste la herramienta "escalar_a_humano", asume que transferiste la conversación a un compañero. Dile al cliente: "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda personalmente." PROHIBIDO decir "escalado", "pausado" o "agente humano".
 
 IDENTIDAD Y PERSONALIDAD:
 ${aiPersona || "Asistente amigable y profesional."}
@@ -476,10 +479,10 @@ Nombre del cliente: ${senderName}`;
       }
     } catch (err: any) {
       console.error("[WEBHOOK] Error Gemini:", err.message);
-      aiResponse = "Tenemos dificultades técnicas. Por favor intenta de nuevo en un momento.";
+      aiResponse = "Tuvimos un inconveniente técnico leve. ¿Me repites tu mensaje, por favor?";
     }
 
-    if (!aiResponse) aiResponse = "🤖 No pude procesar tu mensaje. Inténtalo de nuevo.";
+    if (!aiResponse) aiResponse = "Disculpa, no logré entender tu mensaje. ¿Puedes intentarlo de nuevo?";
 
     // ── POST-PROCESO PARA ENVÍO CON BOTONES (si la IA menciona bancos) ──
     let sentWithButtons = false;
