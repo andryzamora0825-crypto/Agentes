@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   MessageSquare, Save, Database, Cpu, Lock, ArrowRight, CheckCircle2,
-  Landmark, ListOrdered, HelpCircle, Menu, ChevronDown, ChevronUp
+  Landmark, ListOrdered, HelpCircle, Menu, ChevronDown, ChevronUp, RefreshCcw
 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
@@ -101,6 +101,8 @@ export default function WhatsAppAgentPage() {
     "¡Hola! 👋 Bienvenido/a. ¿En qué te puedo ayudar hoy?"
   );
 
+  const [resetting, setResetting] = useState(false);
+
   useEffect(() => {
     fetch("/api/user/whatsapp")
       .then(res => res.json())
@@ -120,6 +122,25 @@ export default function WhatsAppAgentPage() {
       .catch(console.error)
       .finally(() => setInitialLoad(false));
   }, []);
+
+  const handleReset = async () => {
+    if (!confirm("¿Seguro que quieres reiniciar el bot? Esto borrará el historial de conversaciones y las pausas activas. La configuración del entrenamiento NO se borrará.")) return;
+    
+    setResetting(true);
+    try {
+      const res = await fetch("/api/user/whatsapp/reset", { method: "POST" });
+      if (res.ok) {
+        alert("El bot ha sido reiniciado. Ha olvidado contextos anteriores y las pausas han sido levantadas.");
+      } else {
+        alert("Hubo un error reseteando el bot.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al resetear el bot.");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,17 +251,28 @@ export default function WhatsAppAgentPage() {
           </div>
         </div>
 
-        {/* Toggle Bot On/Off */}
-        <label className="flex items-center cursor-pointer gap-3 bg-white/5 px-4 py-2 rounded-xl hover:bg-white/10 transition-colors border border-white/5">
-          <span className={`text-sm font-bold ${isActive ? 'text-[#25D366]' : 'text-gray-500'}`}>
-            {isActive ? "BOT ACTIVO" : "BOT APAGADO"}
-          </span>
-          <div className="relative">
-            <input type="checkbox" className="sr-only" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
-            <div className={`block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-[#25D366]' : 'bg-gray-700'}`} />
-            <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`} />
-          </div>
-        </label>
+        {/* Controles: Toggle On/Off y Reset */}
+        <div className="flex flex-col sm:items-end items-center gap-2 m-auto sm:m-0">
+          <label className="flex items-center cursor-pointer gap-3 bg-white/5 px-4 py-2 rounded-xl hover:bg-white/10 transition-colors border border-white/5 w-full justify-between sm:w-auto sm:justify-start">
+            <span className={`text-sm font-bold ${isActive ? 'text-[#25D366]' : 'text-gray-500'}`}>
+              {isActive ? "BOT ACTIVO" : "BOT APAGADO"}
+            </span>
+            <div className="relative">
+              <input type="checkbox" className="sr-only" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
+              <div className={`block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-[#25D366]' : 'bg-gray-700'}`} />
+              <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`} />
+            </div>
+          </label>
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={resetting}
+            className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-red-500/20 hover:border-red-500/50 border border-transparent px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 w-full justify-center sm:w-auto"
+          >
+            {resetting ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
+            Resetear Historial y Pausas
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSave} className="space-y-4">
