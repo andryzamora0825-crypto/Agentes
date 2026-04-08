@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +78,21 @@ const BOT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "recolectar_datos_contacto",
+      description: "Ejecutar discretamente para almacenar a un prospecto en la base central si se obtiene su nombre y su ubicación (ciudad/país) durante la conversación. Hazlo sutil.",
+      parameters: {
+        type: "object",
+        properties: {
+          nombre: { type: "string", description: "Nombre extraído del cliente" },
+          ubicacion: { type: "string", description: "Ciudad o País extraído del cliente" },
+        },
+        required: ["nombre", "ubicacion"],
+      },
+    },
+  },
 ];
 
 // =====================================================
@@ -137,6 +152,14 @@ async function executeTool(
     }
     console.log(`[TOOL] 🚨 Escalado a humano. Motivo: ${motivo}`);
     return `¡ACCIÓN COMPLETADA! El chat ha sido pausado de tu parte. AHORA RESPONDE AL CLIENTE con naturalidad que un compañero lo atenderá y DESPÍDETE. NUNCA menciones que lo has 'escalado' o has 'pausado' tus sistemas.`;
+  }
+
+  if (name === "recolectar_datos_contacto") {
+    const { nombre, ubicacion } = args;
+    await supabase.from("whatsapp_contact_tags")
+      .upsert({ owner_id: ctx.uid, phone_number: ctx.sender, tag: `LEAD|${nombre}|${ubicacion}` }, { onConflict: "owner_id,phone_number,tag" });
+    console.log(`[TOOL] 🎣 Lead Capturado VIP: ${nombre} (${ubicacion})`);
+    return `¡Datos Registrados! Actúa natural, la persona ya está en nuestra base VIP de remarketing.`;
   }
 
   return "Herramienta no reconocida.";
@@ -222,8 +245,33 @@ export async function POST(request: Request) {
       const phone = phoneMatch ? phoneMatch[1].replace(/[\s-]/g, "") : "";
       messageText = phone ? `[CONTACTO_REENVIADO] Nombre: ${displayName}, Teléfono: ${phone}` : `[CONTACTO_REENVIADO] Nombre: ${displayName}`;
     } 
-    else if (['imageMessage', 'documentMessage'].includes(typeMessage)) messageText = "[COMPROBANTE_ENVIADO]";
-    else if (typeMessage === 'audioMessage') messageText = "[NOTA_DE_VOZ_RECIBIDA]";
+    else if (['imageMessage', 'documentMessage'].includes(typeMessage)) {
+      messageText = "[COMPROBANTE_ENVIADO]";
+    }
+    else if (typeMessage === 'audioMessage') {
+      const downloadUrl = payload.messageData?.fileMessageData?.downloadUrl;
+      if (downloadUrl) {
+        try {
+          const audioRes = await fetch(downloadUrl);
+          const audioBuffer = await audioRes.arrayBuffer();
+          // Transformamos nativo para la API de Whisper
+          const audioFile = await toFile(audioBuffer, "audio.ogg", { type: "audio/ogg" });
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const transcription = await openai.audio.transcriptions.create({
+            file: audioFile as any, // Bypass TS as ReadStream compatibility
+            model: "whisper-1",
+            language: "es",
+          });
+          messageText = `[NOTA_DE_VOZ_RECIBIDA: "${transcription.text}"]`;
+          console.log(`[WEBHOOK] 🎤 Audio Transcrito con éxito: ${transcription.text}`);
+        } catch (e: any) {
+          console.error("[WEBHOOK/WHISPER] Falla procesando audio:", e.message);
+          messageText = "[NOTA_DE_VOZ_RECIBIDA: Audio ininteligible, pídele que lo escriba]";
+        }
+      } else {
+        messageText = "[NOTA_DE_VOZ_RECIBIDA: (Inaccesible, archivo vacío)]";
+      }
+    }
     else messageText = `[ARCHIVO_${typeMessage}_RECIBIDO]`;
 
     if (!messageText.trim()) return NextResponse.json({ success: true });
@@ -319,15 +367,16 @@ REGLAS VITALES Y ESTRICTAS DE COMPORTAMIENTO:
 4. GESTIÓN DE BANCOS INEXISTENTES: Si el cliente te pide o menciona un banco que NO está en tu lista de BANCOS DISPONIBLES, dile directa pero amablemente que "No manejamos ese banco por el momento" e inmediatamente OFRÉCELE las opciones que SÍ tienes disponibles en tu lista. No seas sumiso ni le des la razón si se equivoca.
 5. DATOS FINANCIEROS OBLIGATORIOS: Al registrar una recarga, ES ABSOLUTAMENTE OBLIGATORIO que incluyas en tu mensaje de texto los datos bancarios completos (Número de Cuenta, Tipo de Cuenta y Nombre Titular) del banco que el cliente eligió. Jamás mandes al cliente a depositar sin haberle escrito la cuenta exacta a donde debe enviar el dinero.
 6. ESCALACIÓN INMEDIATA: Si hay quejas, enojos, insultos, o solicita retiros complejos, ejecuta la orden 'escalar_a_humano' e infórmale que le pasarás el chat a un colega humano. No uses lenguaje técnico.
-7. CERO ARCHIVOS/AUDIOS: Si lees "[NOTA_DE_VOZ_RECIBIDA]" o parecidos, dile rápidamente "Disculpa, ahorita no puedo escuchar audios, ¿me lo escribes por favor? 🙏".
-8. IDENTIDAD: Bajo ninguna circunstancia digas que eres una Inteligencia Artificial o un Bot.
+7. COMPRENSIÓN DE AUDIOS: Si recibes una etiqueta que comienza con '[NOTA_DE_VOZ_RECIBIDA: "...", tu labor es LEER y ENTENDER la transcripción dentro de las comillas como si el cliente te la hubiera escrito, y responderle normalmente hablando del tema (puedes mencionar que escuchaste su audio). Si marca "Ininteligible" o vacío, ahí sí dile diplomáticamente que estás experimentando fallas con los audios y que si por favor te lo puede escribir.
+8. CAPTURA DE LEADS (CRM): Cuando percibas en el chat o en la nota de voz que el cliente menciona su Ciudad, País o Nombre genuino de modo circunstancial, ejecuta la herramienta 'recolectar_datos_contacto'. Tu meta silenciosa es sacarles su ciudad de forma amena, por ejemplo: "¿desde qué ciudad nos escribes para brindarte atención local?". Hazlo con una altísima sutileza y nunca fuerces si el cliente quiere su saldo urgente.
+9. IDENTIDAD: Bajo ninguna circunstancia digas que eres una Inteligencia Artificial o un Bot.
 9. PREGUNTAS DE DISPONIBILIDAD: Si el cliente pregunta cosas como "estás activo?", "¿están trabajando?", "¿hay línea?", "¿me atiendes?", responde SIEMPRE con mucho entusiasmo que SÍ, que están 100% operativos y activos, y pregúntale en qué le puedes ayudar o indícale que será atendido a la brevedad posible.
 
 ===== FLUJO DE RECARGAS DE SALDO =====
 PROTOCOLO: "${rechargeSteps || "Averigua monto y banco."}"
 BANCOS DISPONIBLES (Extrae las cuentas de aquí): ${banksInfo || "No tienes bancos cargados, usa escalar_a_humano"}
 ACCIÓN CONDICIONADA: En cuanto tengas el MONTO y el BANCO confirmado por el cliente, EJECUTA la función 'registrar_recarga'. En ese mismo momento DEBES mostrarle los datos exactos de la cuenta en pantalla y pedirle que te envíe la foto del comprobante.
-SI RECIBES COMPROBANTE ([COMPROBANTE_ENVIADO]): Felicítalo, dile que ya está en cola de proceso y ejecuta silenciosamente 'etiquetar_contacto' con el tag 'recarga_pendiente'.
+SI RECIBES COMPROBANTE ([COMPROBANTE_ENVIADO]): Agradece muy formalmente, dile que ya ha entrado en la cola de validación y que en un instante se abonará u operará en el sistema humano. Ejecuta silenciosamente 'etiquetar_contacto' con el tag 'recarga_pendiente' y despídete amablemente dejando el ticket cerrado.
 
 ===== FLUJO DE RETIROS (COBROS) =====
 PROTOCOLO: "${withdrawSteps || "Pide monto y número de cuenta."}"
