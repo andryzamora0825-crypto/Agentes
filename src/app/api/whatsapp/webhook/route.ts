@@ -222,10 +222,29 @@ export async function POST(request: Request) {
     // ── AUTO-PAUSA POR INTERVENCIÓN DE HUMANO ──
     if (webhookType === "outgoingMessage" || webhookType === "outgoingMessageReceived") {
       if (!chatId) return NextResponse.json({ success: true, ignored: true });
-      const pauseUntil = new Date(Date.now() + PAUSE_HUMAN_MINUTES * 60 * 1000).toISOString();
+      
+      const outText = (payload.messageData?.textMessageData?.textMessage || payload.messageData?.extendedTextMessageData?.text || "").toLowerCase().trim();
+      let pauseMinutes = PAUSE_HUMAN_MINUTES; // 10 minutos por defecto para respuestas normales
+
+      if (outText === "#contact") {
+        pauseMinutes = 52560000; // 100 años (para siempre)
+        console.log(`[WEBHOOK] 🛑 Comando #contact: Bot pausado para siempre en ${chatId}`);
+      } else if (outText === "#pause") {
+        pauseMinutes = 10;
+        console.log(`[WEBHOOK] 🛑 Comando #pause: Bot pausado 10 min en ${chatId}`);
+      } else if (outText === "#resume") {
+        await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
+        console.log(`[WEBHOOK] ▶️ Comando #resume: Bot reactivado para ${chatId}`);
+        return NextResponse.json({ success: true, action: "resumed" });
+      }
+
+      const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
       await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
       await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
-      console.log(`[WEBHOOK] 🛑 Humano intervino. Pausa de ${PAUSE_HUMAN_MINUTES}min para ${chatId}`);
+      
+      if (outText !== "#contact" && outText !== "#pause") {
+        console.log(`[WEBHOOK] 🛑 Humano intervino. Pausa de ${pauseMinutes}min para ${chatId}`);
+      }
       return NextResponse.json({ success: true, action: "auto_paused" });
     }
 
