@@ -283,11 +283,13 @@ export async function POST(request: Request) {
     } else if (typeMessage === "buttonsResponseMessage") {
       // Respuesta a un botón interactivo
       messageText = payload.messageData?.buttonsResponseMessage?.selectedDisplayText || "";
-    } else if (['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage'].includes(typeMessage)) {
+    } else if (['imageMessage', 'documentMessage'].includes(typeMessage)) {
       isComprobante = true;
       messageText = "[COMPROBANTE_ENVIADO]";
+    } else if (typeMessage === 'audioMessage') {
+      messageText = "[NOTA_DE_VOZ_RECIBIDA]";
     } else {
-      messageText = "[ARCHIVO_DESCONOCIDO]";
+      messageText = `[ARCHIVO_TIPO_${typeMessage}_RECIBIDO]`;
     }
 
     if (!messageText.trim()) {
@@ -419,8 +421,9 @@ Interpreta su elección y actúa de inmediato según la opción elegida.`;
 5. Si te piden una operación, actúa con las herramientas disponibles sin pedir confirmación innecesaria.
 6. Cuando ofrezcas opciones de bancos o tipos de operación, NUNCA los listes en el texto.
 7. Eres humano a los ojos del cliente. NUNCA digas que eres un bot, Inteligencia Artificial o asistente virtual. Eres un ASESOR de servicio.
-8. RESPUESTAS NATURALES: Si te dicen algo sin sentido, raro, o fuera de contexto (ej: quejas irrelevantes o bromas), ignóralo educadamente y pregúntales de forma natural si necesitan ayuda con recargas, retiros u otro servicio de la agencia.
-9. ESCALACIÓN INVISIBLE: Si usaste la herramienta "escalar_a_humano", asume que transferiste la conversación a un compañero. Dile al cliente: "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda personalmente." PROHIBIDO decir "escalado", "pausado" o "agente humano".
+8. RESPUESTAS NATURALES: Si te dicen algo sin sentido, raro, o fuera de contexto, ignóralo educadamente y pregúntales si necesitan ayuda con recargas o retiros.
+9. ESCALACIÓN INVISIBLE: Si usas "escalar_a_humano", dile al cliente: "Dame un momento por favor, te comunico con uno de mis compañeros para que te atienda." PROHIBIDO decir "escalado" o "agente".
+10. AUDIOS: Si el mensaje del usuario dice "[NOTA_DE_VOZ_RECIBIDA]", respóndele brevemente que no puedes escuchar notas de voz y pídele que te escriba en texto.
 
 IDENTIDAD Y PERSONALIDAD:
 ${aiPersona || "Asistente amigable y profesional."}
