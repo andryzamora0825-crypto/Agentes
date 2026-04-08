@@ -24,6 +24,11 @@ export default function AdminPanelPage() {
   const [editingWa, setEditingWa] = useState<any | null>(null);
   const [waForm, setWaForm] = useState({ isUnlocked: false, apiUrl: "", idInstance: "", apiTokenInstance: "" });
 
+  // Estados del modal Galería Secreta (Admin-only)
+  const [galleryUser, setGalleryUser] = useState<any | null>(null);
+  const [galleryImages, setGalleryImages] = useState<any[]>([]);
+  const [loadingGallery, setLoadingGallery] = useState(false);
+
   // Sincronizar el formulario cuando abrimos el modal
   useEffect(() => {
     if (editingWa) {
@@ -102,6 +107,24 @@ export default function AdminPanelPage() {
       loadUsers();
     }
   }, [isAdmin]);
+
+  const openGallery = async (targetUser: any) => {
+    setGalleryUser(targetUser);
+    setLoadingGallery(true);
+    try {
+      const res = await fetch(`/api/admin/history?targetEmail=${encodeURIComponent(targetUser.email)}`);
+      const data = await res.json();
+      if (data.success) {
+        setGalleryImages(data.images);
+      } else {
+        alert(data.error);
+      }
+    } catch (e) {
+      alert("Error de conexión con la galería");
+    } finally {
+      setLoadingGallery(false);
+    }
+  };
 
   const modifyCredits = async (targetId: string, currentCredits: number | undefined, amount: number) => {
     if (!confirm(`Estás a punto de ${amount > 0 ? 'AÑADIR' : 'RESTAR'} ${Math.abs(amount)} créditos al usuario. ¿Continuar?`)) return;
@@ -400,10 +423,23 @@ export default function AdminPanelPage() {
                       <div className="font-bold text-white truncate max-w-[150px] group-hover:text-[#FFDE00] transition-colors">{u.name}</div>
                       <div className="text-xs text-gray-500 truncate max-w-[150px]">{u.email}</div>
                       {u.plan === 'VIP' && u.vipExpiresAt && (
-                        <div className="text-[10px] text-[#FFDE00] mt-1 font-mono bg-[#FFDE00]/10 inline-block px-1.5 py-0.5 rounded border border-[#FFDE00]/20">
+                        <div className="text-[10px] text-[#FFDE00] mt-1 font-mono bg-[#FFDE00]/10 inline-block px-1.5 py-0.5 rounded border border-[#FFDE00]/20 mr-2">
                           {Math.max(0, Math.ceil((u.vipExpiresAt - Date.now()) / (1000 * 60 * 60 * 24)))} Días Left
                         </div>
                       )}
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="text-[10px] text-purple-400 font-bold inline-block">
+                          🖼️ {u.generationCount || 0} imágenes generadas
+                        </div>
+                        {(u.generationCount || 0) > 0 && (
+                          <button
+                            onClick={() => openGallery(u)}
+                            className="bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white px-2 py-0.5 rounded text-[9px] uppercase tracking-widest font-black transition-colors"
+                          >
+                            Ver Obras
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -567,6 +603,46 @@ export default function AdminPanelPage() {
                    {processingId === editingWa.id ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar y Desplegar'}
                  </button>
               </form>
+           </div>
+        </div>
+      )}
+
+      {/* MODAL GALERÍA SECRETA VISUALIZADOR */}
+      {galleryUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setGalleryUser(null)}>
+           <div className="bg-[#111111] border border-white/10 p-6 rounded-3xl shadow-2xl max-w-5xl w-full relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setGalleryUser(null)} className="absolute top-6 right-6 text-gray-500 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-colors z-50">
+                <Minus className="w-5 h-5 rotate-45" />
+              </button>
+              
+              <div className="flex items-center gap-3 mb-6 border-b border-white/5 pb-4">
+                 <img src={galleryUser.avatar || "https://ui-avatars.com/api/?name=U"} alt="A" className="w-10 h-10 rounded-full" />
+                 <div>
+                   <h3 className="text-lg font-black text-white">Galería de {galleryUser.name}</h3>
+                   <p className="text-xs text-gray-500">{galleryUser.email}</p>
+                 </div>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4">
+                {loadingGallery ? (
+                  <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-purple-500" /></div>
+                ) : galleryImages.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500 font-medium border border-white/5 bg-[#1A1A1A] rounded-2xl mx-auto w-1/2">
+                     Este agente no ha generado imágenes.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {galleryImages.map(img => (
+                      <div key={img.id} className="bg-black border border-white/5 rounded-xl overflow-hidden group">
+                        <img src={img.image_url} className="w-full h-auto aspect-square object-cover" alt="Gen" />
+                        <div className="p-3 text-[10px] text-gray-400 italic line-clamp-3 leading-tight border-t border-white/5">
+                           "{img.prompt}"
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
            </div>
         </div>
       )}

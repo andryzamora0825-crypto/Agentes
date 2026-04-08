@@ -455,7 +455,14 @@ export default function EstudioIAPage() {
         {/* Título Base de Datos (Row) */}
         <div className="flex items-center gap-3 pt-6 border-t border-white/10">
           <History className="w-6 h-6 text-[#FFDE00]" />
-          <h2 className="text-2xl font-bold text-white tracking-tight">Registro de Imágenes Creadas</h2>
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Registro de Imágenes Creadas</h2>
+            {!loadingHistory && (
+              <span className="text-sm font-bold text-gray-400 mt-0.5">
+                Has documentado un total de <span className="text-[#FFDE00]">{images.length}</span> obras maestras.
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Grid de Galería de Historial */}
