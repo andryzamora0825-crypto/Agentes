@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Coins, Zap, ShieldCheck, ChevronRight, Check, PlayCircle, X } from "lucide-react";
+import { Coins, Zap, ShieldCheck, ChevronRight, Check, PlayCircle, X, Ticket, Loader2 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +14,34 @@ export default function TiendaPage() {
   const [isVip, setIsVip] = useState(false);
   const [hasWhatsappBot, setHasWhatsappBot] = useState(false);
   const [banksInfo, setBanksInfo] = useState<string>("");
+
+  const [promoCode, setPromoCode] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+
+  const handleRedeem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!promoCode.trim()) return;
+    setRedeeming(true);
+    try {
+      const res = await fetch("/api/user/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoCode })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        setPromoCode("");
+        window.location.reload();
+      } else {
+        alert(data.error || "Código inválido");
+      }
+    } catch (err) {
+      alert("Error de conexión");
+    } finally {
+      setRedeeming(false);
+    }
+  };
 
   // Verificar estado del usuario
   useEffect(() => {
@@ -173,6 +201,31 @@ export default function TiendaPage() {
         <p className="text-gray-400 max-w-3xl mx-auto text-lg sm:text-2xl font-medium tracking-tight">
           Elige entre el acceso <strong className="text-white">VIP Ilimitado</strong> o adquiere <strong className="text-white">paquetes de créditos</strong> para potenciar tus generaciones con IA de forma inmediata.
         </p>
+      </div>
+
+      {/* ─── BANNER CANJEO CODIGO ─── */}
+      <div className="bg-[#121212] border border-[#FFDE00]/30 p-6 sm:p-8 rounded-3xl shadow-[0_0_20px_rgba(255,222,0,0.05)] text-center w-full max-w-2xl mx-auto mb-10 flex flex-col items-center">
+        <div className="bg-[#FFDE00]/10 p-3 rounded-full mb-4">
+          <Ticket className="w-8 h-8 text-[#FFDE00]" />
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">Canjear Código Promocional</h2>
+        <p className="text-gray-400 text-sm mb-6 max-w-sm">Si tienes un código de regalo de días VIP o Créditos, ingrésalo aquí.</p>
+        <form onSubmit={handleRedeem} className="flex flex-col sm:flex-row w-full gap-3">
+           <input 
+             type="text"
+             value={promoCode}
+             onChange={e => setPromoCode(e.target.value)}
+             placeholder="Ej. BFX2026"
+             className="flex-1 bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFDE00] uppercase text-center sm:text-left tracking-widest font-bold"
+           />
+           <button 
+             type="submit" 
+             disabled={redeeming || !promoCode.trim()}
+             className="bg-[#FFDE00] text-black font-black px-6 py-3 rounded-xl hover:bg-white transition-all hover:shadow-[0_0_15px_rgba(255,222,0,0.4)] disabled:opacity-50 shrink-0 flex items-center justify-center gap-2"
+           >
+             {redeeming ? <Loader2 className="w-5 h-5 animate-spin" /> : "Aplicar Premio"}
+           </button>
+        </form>
       </div>
 
       {/* ─── BANNER VIP (Destacado Principal) — Solo si NO es VIP ─── */}

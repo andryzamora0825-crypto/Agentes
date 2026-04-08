@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -262,6 +262,14 @@ export default function AdminPanelPage() {
              Panel de Administración
            </h1>
            <p className="text-gray-400 mt-2 text-sm max-w-md">Supervisa y controla los balances económicos y rangos de los agentes en tiempo real.</p>
+           
+           <button 
+             onClick={() => router.push('/dashboard/admin/codigos')}
+             className="mt-6 bg-[#FFDE00] text-black font-bold px-6 py-3 rounded-xl hover:bg-white hover:-translate-y-1 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,222,0,0.3)] w-max"
+           >
+             <Ticket className="w-5 h-5" />
+             Generar Códigos Promo
+           </button>
          </div>
 
          {/* Stats Rápidas */}
