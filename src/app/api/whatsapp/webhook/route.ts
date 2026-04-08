@@ -390,8 +390,8 @@ export async function POST(request: Request) {
     // ── BUFFER DINÁMICO (Debounce) ──
     const isShortMessage = messageText.length < 15;
     const isGreeting = initialIntent === 'greeting';
-    // Esperamos 3500ms si es corto o saludo puro. Si aporta más info, 2000ms.
-    const dynamicBufferMs = (isGreeting || isShortMessage) ? 3500 : 2000;
+    // Esperamos 8000ms si es corto o saludo puro. Si aporta más info, 2500ms.
+    const dynamicBufferMs = (isGreeting || isShortMessage) ? 8000 : 2500;
     await new Promise(r => setTimeout(r, dynamicBufferMs));
 
     const { data: latestMsg } = await supabase
