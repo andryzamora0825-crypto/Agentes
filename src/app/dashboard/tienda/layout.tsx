@@ -6,7 +6,6 @@ import { ShoppingCart, Target, Ticket } from "lucide-react";
 
 const tabs = [
   { name: "Tienda", href: "/dashboard/tienda", icon: ShoppingCart, exact: true },
-  { name: "Misiones", href: "/dashboard/tienda/misiones", icon: Target, exact: false },
   { name: "Canjear Código", href: "/dashboard/tienda/canjear", icon: Ticket, exact: false },
 ];
 
