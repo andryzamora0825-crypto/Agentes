@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 45; // Previene caída prematura en Vercel si el plan lo permite
 
 const PAUSE_HUMAN_MINUTES = 10;    // Auto-pausa por intervención del agente humano
-const ESCALATION_PAUSE_MIN = 30;   // Pausa cuando el bot escala a humano
+const ESCALATION_PAUSE_MIN = 10;   // Pausa cuando el bot escala a humano (antes estaba en 30)
 
 // =====================================================
 // HELPER: ENVIAR MENSAJE DE TEXTO SIMPLE VÍA GREEN-API
@@ -20,7 +20,7 @@ function makeWASender(waBaseUrl: string, idInstance: string, apiToken: string, c
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chatId, message }),
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(15000),
       });
       return res.ok;
     } catch (e: any) {
@@ -209,8 +209,8 @@ export async function POST(request: Request) {
       }
 
       // Evitar sobreescribir pausa permanente si el humano escribe
-      const { data: existingPause } = await supabase.from("whatsapp_pauses")
-        .select("paused_until").eq("owner_id", uid).eq("phone_number", chatId).limit(1).single();
+      const { data: existingPause, error: pauseErr } = await supabase.from("whatsapp_pauses")
+        .select("paused_until").eq("owner_id", uid).eq("phone_number", chatId).limit(1).maybeSingle();
 
       if (existingPause && (new Date(existingPause.paused_until).getTime() - Date.now() > 24 * 60 * 60 * 1000)) {
         return NextResponse.json({ success: true, action: "long_pause_preserved" });
@@ -244,7 +244,7 @@ export async function POST(request: Request) {
       const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s-]+)/i);
       const phone = phoneMatch ? phoneMatch[1].replace(/[\s-]/g, "") : "";
       messageText = phone ? `[CONTACTO_REENVIADO] Nombre: ${displayName}, Teléfono: ${phone}` : `[CONTACTO_REENVIADO] Nombre: ${displayName}`;
-    } 
+    }
     else if (['imageMessage', 'documentMessage'].includes(typeMessage)) {
       messageText = "[COMPROBANTE_ENVIADO]";
     }
@@ -313,7 +313,7 @@ export async function POST(request: Request) {
     const cleanPhone = sender.replace("@c.us", "");
     const { data: scammerData } = await supabase.from("scammers").select("id")
       .or(`phone_number.eq.${cleanPhone},phone_number.eq.0${cleanPhone.slice(-10)},phone_number.eq.593${cleanPhone.slice(-10)}`).limit(1);
-    
+
     if (scammerData && scammerData.length > 0) {
       await send("Lo sentimos, por motivos de seguridad no podemos procesar su solicitud. Comuníquese directamente con un asesor humano.");
       return NextResponse.json({ success: true, action: "scammer" });
@@ -323,17 +323,17 @@ export async function POST(request: Request) {
     fetch(`${waBaseUrl}/waInstance${providerConfig.idInstance}/sendAction/${providerConfig.apiTokenInstance}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatId: sender, action: "typing" }), signal: AbortSignal.timeout(3000),
-    }).catch(() => {});
+    }).catch(() => { });
 
     // INSERCIÓN DIRECTA
     const { data: insertedChat } = await supabase.from("whatsapp_chats")
       .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
       .select('id').single();
-      
-    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (5 SEGS) ──
+
+    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (3 SEGS) ──
     // Vercel Pro nos permite esperar más. Si el cliente escribe otra línea rápidamente 
     // o si GreenAPI tiene latencia entregando los Webhooks, esto evitará el doble disparo.
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     if (insertedChat?.id) {
       const { data: latestMsg } = await supabase.from("whatsapp_chats")
@@ -374,6 +374,16 @@ REGLAS VITALES Y ESTRICTAS DE COMPORTAMIENTO:
 11. IDENTIDAD: Bajo ninguna circunstancia digas que eres una Inteligencia Artificial o un Bot.
 12. PREGUNTAS DE DISPONIBILIDAD: Si el cliente pregunta cosas como "estás activo?", "¿están trabajando?", "¿hay línea?", responde SIEMPRE con mucho entusiasmo que SÍ, que están 100% operativos.
 
+===== SOPORTE Y RESOLUCIÓN DE PROBLEMAS (ECUABET) =====
+ACTUACIÓN: Si el usuario pide ayuda técnica, usa frases como "me ayuda con un problema", "necesito ayuda", "tengo un problema" (o sinónimos), ATIÉNDELO usando ESTA información oficial. NO lo escales inmediatamente.
+- Apuesta ganada pero marcada como pérdida: Dile que vaya a la parte superior izquierda de la página principal de Ecuabet, deslice hasta "Chat" y describa su problema para que Soporte de Ecuabet le dé solución.
+- Perdió/olvidó contraseña: Que haga clic en "Olvidaste tu contraseña" para recibir un código a su correo. Si no tiene acceso al correo, debe ir al chat de soporte en la página y detallar su situación.
+- Tiene acceso a la cuenta Ecuabet pero NO al correo vinculado: Que vaya al chat de soporte (parte superior izquierda), describa el problema y llene el formulario que le brindarán para registrar su nuevo correo.
+- Problema al iniciar sesión o pantalla de bloqueo: Pídele que borre el caché de su navegador. Luego intente entrar de nuevo. Si la cuenta sigue sin abrir, infórmale que su cuenta ha sido bloqueada por incumplir normas o por actividad sospechosa como "jineteo".
+- ¿Qué es Jineteo?: Es recargar y retirar dinero repetidamente sin jugar ni perder patrimonio, solo para generar comisiones al agente. (El dinero solo circula).
+- Pasos para generar nota de retiro: Ir a la parte superior izquierda -> Gestión -> Retirar -> método "Local Ecuador" -> escribir cantidad -> y confirmar con el código que llega al correo.
+- Se descontó el dinero de Ecuabet pero no se generó la nota de retiro: Indícale que vaya al chat de soporte de la página y describa la situación. El saldo perdido se le volverá a acreditar allí para que intente generar la nota de retiro nuevamente.
+
 ===== FLUJO DE RECARGAS DE SALDO =====
 PROTOCOLO: "${rechargeSteps || "Averigua monto y banco."}"
 BANCOS DISPONIBLES (Extrae las cuentas de aquí): ${banksInfo || "No tienes bancos cargados, usa escalar_a_humano"}
@@ -394,7 +404,7 @@ CLIENTE: ${senderName}`;
     const openai = new OpenAI({ apiKey: openaiKey });
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt }];
-    
+
     // Inyectar el historial (excluyendo el último porque el LLM lo verá como el "prompt")
     for (const msg of history) {
       messages.push({ role: msg.role === "model" ? "assistant" : "user", content: msg.content });
@@ -416,11 +426,11 @@ CLIENTE: ${senderName}`;
         const choice = completion.choices[0];
         if (choice.finish_reason === "tool_calls" || choice.message.tool_calls?.length) {
           messages.push(choice.message);
-          
+
           for (const toolCall of choice.message.tool_calls || []) {
             if (toolCall.type !== 'function') continue;
-            let args = {}; try { args = JSON.parse(toolCall.function.arguments); } catch {}
-            
+            let args = {}; try { args = JSON.parse(toolCall.function.arguments); } catch { }
+
             console.log(`[WEBHOOK] 🔧 Ejecutando Tool: ${toolCall.function.name}`, args);
             const toolResult = await executeTool(toolCall.function.name, args, {
               uid, sender, senderName, adminEmail, waBaseUrl,
@@ -443,8 +453,8 @@ CLIENTE: ${senderName}`;
         aiResponse = completion.choices[0]?.message?.content?.trim() || "";
       }
     } catch (e: any) {
-      console.error("[WEBHOOK/OPENAI] Error:", e.message);
-      aiResponse = "¡Hola! ¿Dime cómo te podemos ayudar hoy? (Disculpa, he tenido una fallita técnica breve)";
+      console.error("[WEBHOOK/OPENAI] Error:", e.stack || e.message);
+      aiResponse = "¡Hola! ¿Dime cómo te podemos ayudar hoy? (Disculpa, tuvimos una breve actualización técnica)";
     }
 
     if (!aiResponse) aiResponse = "¿En qué te puedo ayudar?"; // Safe fallback
