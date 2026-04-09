@@ -374,8 +374,8 @@ export default function RecargasPage() {
         </div>
 
         {/* Columna Derecha: Iframe Caja Ecuabet */}
-        <div className="bg-[#121212] border border-white/10 rounded-3xl overflow-auto shadow-2xl min-h-[700px] flex flex-col relative group sticky top-4" style={{ WebkitOverflowScrolling: "touch" }}>
-          <div className="px-5 py-4 bg-black/80 border-b border-white/10 flex items-center justify-between backdrop-blur-md sticky top-0 z-20">
+        <div className="bg-[#121212] border border-white/10 rounded-3xl overflow-hidden shadow-2xl h-[450px] sm:h-[700px] flex flex-col relative group sticky top-4">
+          <div className="px-5 py-4 bg-black/80 border-b border-white/10 flex items-center justify-between backdrop-blur-md z-20">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
               <span className="text-white font-black text-sm tracking-widest uppercase truncate max-w-[140px] sm:max-w-none">Sistema Caja Ecuabet</span>
@@ -384,17 +384,17 @@ export default function RecargasPage() {
               <ExternalLink className="w-3 h-3 shrink-0" /> Abrir Externamente
             </a>
           </div>
-          <div className="flex-1 w-full bg-[#0d0d0d] relative overflow-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+          <div className="flex-1 w-full bg-[#0d0d0d] relative" style={{ WebkitOverflowScrolling: "touch" }}>
             {/* Loading placeholder underneath iframe */}
-            <div className="absolute inset-x-0 top-32 flex flex-col items-center justify-center z-0">
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-0">
                <Loader2 className="w-10 h-10 text-[#FFDE00] animate-spin mb-4" />
                <span className="text-gray-400 font-bold tracking-widest text-sm uppercase">Cargando Plataforma...</span>
             </div>
             {/* The actual iframe */}
-            <div className="w-full h-full min-h-[800px] relative z-10 overflow-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="absolute inset-0 z-10 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
               <iframe 
                 src="https://caja.ecuabet.com/#!/top/recargarCredito" 
-                className="w-full h-full border-none bg-white min-h-[800px]"
+                className="w-full h-full border-none bg-white"
                 title="Caja Ecuabet - Recargar Crédito"
               />
             </div>
