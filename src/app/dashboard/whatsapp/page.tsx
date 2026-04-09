@@ -3,10 +3,21 @@
 import { useEffect, useState } from "react";
 import {
   MessageSquare, Save, Database, Cpu, Lock, ArrowRight, CheckCircle2,
-  Landmark, ListOrdered, HelpCircle, Menu, ChevronDown, ChevronUp, RefreshCcw
+  Landmark, ListOrdered, HelpCircle, Menu, ChevronDown, ChevronUp, RefreshCcw, Plus, Trash2
 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
+
+// ─── Interfaces ──────────────────────────────────────────────────────────────
+interface Bank {
+  id: string;
+  name: string;
+  type: string;
+  customType: string;
+  number: string;
+  holder: string;
+  cedula: string;
+}
 
 // ─── Componente de sección colapsable ───────────────────────────────────────
 function Section({
@@ -88,9 +99,8 @@ export default function WhatsAppAgentPage() {
   );
 
   // ── Nuevos campos de inteligencia ──
-  const [banksInfo, setBanksInfo] = useState(
-    "Banco Pichincha: Cuenta de ahorros 2201234567 | Nombre: Juan Pérez\nBanco Guayaquil: Cuenta corriente 3301234567 | Nombre: Ana López"
-  );
+  const [banksInfo, setBanksInfo] = useState("");
+  const [banksList, setBanksList] = useState<Bank[]>([]);
   const [rechargeSteps, setRechargeSteps] = useState(
     "1. Pregunta al cliente cuánto desea recargar.\n2. Muéstrale los bancos disponibles para que elija.\n3. Da los datos de la cuenta bancaria seleccionada.\n4. Pide el comprobante de transferencia.\n5. Confirma que lo recibiste y que procesarás en breve."
   );
@@ -113,7 +123,11 @@ export default function WhatsAppAgentPage() {
           setIsActive(s.isActive || false);
           if (s.aiPersona) setAiPersona(s.aiPersona);
           if (s.knowledgeBase) setKnowledgeBase(s.knowledgeBase);
-          if (s.banksInfo) setBanksInfo(s.banksInfo);
+          if (s.banksList && s.banksList.length > 0) {
+            setBanksList(s.banksList);
+          } else if (s.banksInfo) {
+            setBanksInfo(s.banksInfo);
+          }
           if (s.rechargeSteps) setRechargeSteps(s.rechargeSteps);
           if (s.withdrawSteps) setWithdrawSteps(s.withdrawSteps);
           if (s.greetingMenu) setGreetingMenu(s.greetingMenu);
@@ -147,6 +161,15 @@ export default function WhatsAppAgentPage() {
     if (!isUnlocked) return;
     setLoading(true);
     setSaved(false);
+
+    // Compilar banksList a texto legible para el prompt de IA
+    const compiledBanksInfo = banksList.length > 0 ? banksList.map(b => {
+      const typeStr = b.type === "Otro" ? b.customType : `Cuenta de ${b.type.toLowerCase()}`;
+      let line = `${b.name}: ${typeStr} ${b.number} | Titular: ${b.holder}`;
+      if (b.cedula) line += ` | CI: ${b.cedula}`;
+      return line;
+    }).join('\n') : banksInfo;
+
     try {
       const res = await fetch("/api/user/whatsapp", {
         method: "POST",
@@ -155,7 +178,8 @@ export default function WhatsAppAgentPage() {
           isActive,
           aiPersona,
           knowledgeBase,
-          banksInfo,
+          banksInfo: compiledBanksInfo,
+          banksList,
           rechargeSteps,
           withdrawSteps,
           greetingMenu,
@@ -321,29 +345,107 @@ export default function WhatsAppAgentPage() {
         </Section>
 
         {/* 3. Bancos */}
-        <Section icon={Landmark} title="Bancos Aceptados" subtitle="El bot los mostrará como botones cuando el cliente quiera recargar">
-          <Field
-            label="Lista de bancos (uno por línea)"
-            hint={'Formato: "Nombre Banco: Tipo de cuenta [número] | Titular"\nEl nombre antes de ":" se usará como botón de WhatsApp.'}
-            value={banksInfo}
-            onChange={setBanksInfo}
-            placeholder={"Banco Pichincha: Ahorro 2201234567 | Juan Pérez\nBanco Guayaquil: Corriente 3301234567 | Ana López\nTransferencia Móvil: 0991234567"}
-            rows={5}
-            maxLen={1500}
-          />
-          {banksInfo && (
-            <div className="bg-[#111111] border border-white/5 rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-2 font-bold uppercase tracking-wider">Botones de banco que el cliente verá:</p>
-              <div className="flex flex-wrap gap-2">
-                {banksInfo.split('\n').filter(l => l.trim()).map(line => {
-                  const name = line.split(':')[0].trim();
-                  return name ? (
-                    <span key={name} className="bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold px-3 py-1.5 rounded-lg">{name}</span>
-                  ) : null;
-                })}
-              </div>
+        <Section icon={Landmark} title="Bancos Aceptados" subtitle="Añade los bancos que el bot mostrará para recargas">
+          {banksList.length === 0 && banksInfo && (
+            <div className="bg-[#FFDE00]/10 border border-[#FFDE00]/20 rounded-xl p-4 text-xs text-[#FFDE00] mb-4">
+              <p className="font-bold">⚠️ Tienes estos bancos configurados anteriormente como texto libre:</p>
+              <pre className="mt-2 text-[10px] whitespace-pre-wrap font-mono">{banksInfo}</pre>
+              <p className="mt-2 text-gray-300">Añádelos manualmente en los nuevos formularios de abajo y da click a guardar para migrarlos a la nueva versión interactiva.</p>
             </div>
           )}
+
+          <div className="space-y-4">
+            {banksList.map((bank, index) => (
+              <div key={bank.id} className="bg-[#111111] border border-white/10 rounded-xl p-5 relative group animate-in fade-in slide-in-from-bottom-2">
+                <button
+                  type="button"
+                  onClick={() => setBanksList(bl => bl.filter(b => b.id !== bank.id))}
+                  className="absolute top-4 right-4 text-gray-500 hover:text-red-500 transition-colors p-1"
+                  title="Eliminar banco"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Nombre del Banco</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#FFDE00]/50"
+                      placeholder="Ej: Banco Pichincha"
+                      value={bank.name}
+                      onChange={e => setBanksList(bl => bl.map(b => b.id === bank.id ? { ...b, name: e.target.value } : b))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Tipo de Cuenta</label>
+                    <select
+                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#FFDE00]/50"
+                      value={bank.type}
+                      onChange={e => setBanksList(bl => bl.map(b => b.id === bank.id ? { ...b, type: e.target.value } : b))}
+                    >
+                      <option value="Ahorros">Ahorros</option>
+                      <option value="Corriente">Corriente</option>
+                      <option value="Otro">Otro...</option>
+                    </select>
+                  </div>
+                  {bank.type === "Otro" && (
+                    <div className="sm:col-span-2 shadow-inner bg-[#1A1A1A]/50 p-3 rounded-lg border border-white/5">
+                      <label className="text-xs font-bold text-[#FFDE00] uppercase tracking-wider block mb-1">Especifique el tipo de cuenta</label>
+                      <input
+                        type="text"
+                        className="w-full bg-[#0A0A0A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#FFDE00]/50"
+                        placeholder="Ej: Billetera Móvil (De Una)"
+                        value={bank.customType}
+                        onChange={e => setBanksList(bl => bl.map(b => b.id === bank.id ? { ...b, customType: e.target.value } : b))}
+                        required={bank.type === "Otro"}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Número de Cuenta</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#FFDE00]/50"
+                      placeholder="Ej: 2201234567"
+                      value={bank.number}
+                      onChange={e => setBanksList(bl => bl.map(b => b.id === bank.id ? { ...b, number: e.target.value } : b))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Nombre del Titular</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#FFDE00]/50"
+                      placeholder="Ej: Juan Pérez"
+                      value={bank.holder}
+                      onChange={e => setBanksList(bl => bl.map(b => b.id === bank.id ? { ...b, holder: e.target.value } : b))}
+                      required
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Número de Cédula <span className="text-gray-500 font-normal lowercase">(Opcional)</span></label>
+                    <input
+                      type="text"
+                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#FFDE00]/50"
+                      placeholder="Ej: 0912345678"
+                      value={bank.cedula}
+                      onChange={e => setBanksList(bl => bl.map(b => b.id === bank.id ? { ...b, cedula: e.target.value } : b))}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <button
+            type="button"
+            onClick={() => setBanksList([...banksList, { id: Date.now().toString() + Math.random(), name: "", type: "Ahorros", customType: "", number: "", holder: "", cedula: "" }])}
+            className="w-full mt-4 flex items-center justify-center gap-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 py-3 rounded-xl font-bold transition-colors"
+          >
+            <Plus className="w-5 h-5" /> Añadir Banco
+          </button>
         </Section>
 
         {/* 4. Proceso de Recarga */}

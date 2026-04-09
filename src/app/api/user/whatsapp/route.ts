@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const body = await request.json();
-    const { isActive, aiPersona, knowledgeBase, banksInfo, rechargeSteps, withdrawSteps, greetingMenu } = body;
+    const { isActive, aiPersona, knowledgeBase, banksInfo, banksList, rechargeSteps, withdrawSteps, greetingMenu } = body;
     
     // Extraer metadata antigua para no sobreescribir isUnlocked ni providerConfig
     const oldMeta = user.publicMetadata?.whatsappSettings as any || {};
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
           aiPersona: aiPersona || "",
           knowledgeBase: knowledgeBase || "",
           banksInfo: banksInfo || "",
+          banksList: banksList || [],
           rechargeSteps: rechargeSteps || "",
           withdrawSteps: withdrawSteps || "",
           greetingMenu: greetingMenu || "",
