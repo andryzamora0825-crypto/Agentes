@@ -331,27 +331,27 @@ export default function DashboardPage() {
         </div>
 
         {/* Right Column: Ecuabet Embedded Viewer */}
-        <div className="bg-[#121212] border border-white/10 rounded-3xl overflow-hidden shadow-2xl h-full min-h-[700px] flex flex-col relative group">
-          <div className="px-5 py-4 bg-black/80 border-b border-white/10 flex items-center justify-between backdrop-blur-md">
+        <div className="bg-[#121212] border border-white/10 rounded-3xl overflow-auto shadow-2xl h-full min-h-[700px] flex flex-col relative group" style={{ WebkitOverflowScrolling: "touch" }}>
+          <div className="px-5 py-4 bg-black/80 border-b border-white/10 flex items-center justify-between backdrop-blur-md sticky top-0 z-20">
              <div className="flex items-center gap-2">
                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-               <span className="text-white font-black text-sm tracking-widest uppercase">Sistema Caja Ecuabet</span>
+               <span className="text-white font-black text-sm tracking-widest uppercase truncate max-w-[150px] sm:max-w-none">Sistema Caja Ecuabet</span>
              </div>
-             <a href="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" target="_blank" rel="noreferrer" className="text-xs font-bold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FFDE00]/30 shadow-[0_0_10px_rgba(255,222,0,0.1)]">
+             <a href="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" target="_blank" rel="noreferrer" className="text-[10px] sm:text-xs font-bold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FFDE00]/30 shadow-[0_0_10px_rgba(255,222,0,0.1)] truncate max-w-[120px] sm:max-w-none">
                Abrir Externamente
              </a>
           </div>
-          <div className="flex-1 w-full bg-[#0d0d0d] relative overflow-hidden">
+          <div className="flex-1 w-full bg-[#0d0d0d] relative overflow-auto" style={{ WebkitOverflowScrolling: "touch" }}>
             {/* Loading placeholder underneath iframe */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-0">
+            <div className="absolute inset-x-0 top-32 flex flex-col items-center justify-center z-0">
                <Loader2 className="w-10 h-10 text-[#FFDE00] animate-spin mb-4" />
                <span className="text-gray-400 font-bold tracking-widest text-sm uppercase">Cargando Plataforma...</span>
             </div>
             {/* The actual iframe - fills the container */}
-            <div className="absolute inset-0 z-10">
+            <div className="w-full h-full min-h-[800px] relative z-10 overflow-auto" style={{ WebkitOverflowScrolling: "touch" }}>
               <iframe 
                 src="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" 
-                className="w-full h-full border-none bg-white"
+                className="w-full h-full border-none bg-white min-h-[800px]"
                 title="Caja Ecuabet Viewer"
               />
             </div>
