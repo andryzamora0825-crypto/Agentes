@@ -223,7 +223,7 @@ export default function ConfiguracionPage() {
 
 // ── COMPONENTE FORMULARIO IA ── //
 import { supabase } from "@/lib/supabase";
-import { Upload, Check, Save, Sparkles } from "lucide-react";
+import { Check, Save, Sparkles } from "lucide-react";
 
 function AiSettingsForm() {
   const { user, isLoaded } = useUser();
