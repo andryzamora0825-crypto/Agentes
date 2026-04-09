@@ -75,27 +75,40 @@ export default function SidebarNav() {
 
       {/* Widget de Créditos e Identidad */}
       {credits !== null && (
-        <div className="mt-8 pt-4 border-t border-white/5 px-4 relative">
-          <div className="absolute inset-0 bg-[#FFDE00]/5 blur-3xl rounded-full"></div>
-          <div className="bg-[#121212] rounded-xl p-4 flex flex-col items-center border border-white/5 relative z-10 hover:shadow-[0_0_25px_rgba(255,222,0,0.15)] transition-all duration-500">
+        <div className="mt-8 px-4 pb-4">
+          <div className="bg-gradient-to-br from-[#151515] to-[#0A0A0A] rounded-2xl p-5 flex flex-col items-center border border-white/10 relative shadow-2xl overflow-hidden group hover:border-[#FFDE00]/30 transition-all duration-500">
             
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFDE00]/5 blur-[40px] rounded-full pointer-events-none group-hover:bg-[#FFDE00]/10 transition-colors duration-500"></div>
+
             {/* Etiqueta de Plan VIP/FREE */}
             {plan === "VIP" ? (
-              <div className="absolute -top-3 inset-x-0 mx-auto w-max px-3 py-0.5 bg-[#FFDE00] text-[#23274A] font-black text-[10px] rounded-full shadow-sm z-10 flex items-center gap-1">
-                ⭐ VIP ACTIVADO ({daysLeft} {daysLeft === 1 ? 'DÍA' : 'DÍAS'})
+              <div className="w-full text-center px-3 py-1.5 bg-[#FFDE00]/10 border border-[#FFDE00]/20 text-[#FFDE00] font-black text-[10px] rounded-lg shadow-inner flex justify-center items-center gap-2 mb-5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FFDE00] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-full w-full bg-[#FFDE00]"></span>
+                </span>
+                VIP ACTIVO ({daysLeft} {daysLeft === 1 ? 'DÍA' : 'DÍAS'})
               </div>
             ) : (
-              <Link href="/dashboard/chat" className="absolute -top-3 inset-x-0 mx-auto w-max px-3 py-0.5 bg-gray-600 text-white font-black text-[10px] rounded-full shadow-sm z-10 hover:bg-gray-500 transition-colors uppercase tracking-widest">
-                RENUEVA TU VIP AQUÍ
+              <Link href="/dashboard/tienda" className="w-full text-center px-3 py-1.5 bg-white/5 border border-white/10 text-gray-300 font-extrabold text-[10px] rounded-lg hover:bg-white/10 hover:text-white transition-colors uppercase tracking-[0.15em] mb-5 font-sans">
+                Renueva tu VIP Aquí
               </Link>
             )}
 
-            <Coins className="w-8 h-8 text-[#FFDE00] mb-2 mt-2" />
-            <span className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Tu Saldo</span>
-            <span className="text-2xl font-black text-white text-shadow-sm drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">{credits.toLocaleString()}</span>
+            {/* Saldo Grid */}
+            <div className="flex items-center gap-4 w-full mb-5 relative z-10">
+              <div className="bg-black/80 p-3 rounded-xl border border-white/5 shadow-inner">
+                <Coins className="w-6 h-6 text-[#FFDE00]" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest font-sans mb-0.5">Tu Saldo</span>
+                <span className="text-3xl font-black text-white tracking-tighter leading-none font-sans">{credits.toLocaleString()}</span>
+              </div>
+            </div>
+
             <Link 
               href="/dashboard/tienda" 
-              className="mt-4 bg-[#FFDE00] text-black w-full text-center py-2.5 rounded-xl text-sm font-black shadow-[0_0_15px_rgba(255,222,0,0.4)] hover:bg-[#FFC107] hover:shadow-[0_0_25px_rgba(255,222,0,0.6)] hover:scale-105 transition-all duration-300"
+              className="relative z-10 w-full bg-[#FFDE00] text-black text-center py-3 rounded-xl text-sm font-black hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-[0_0_20px_rgba(255,222,0,0.15)] flex justify-center items-center gap-2"
             >
               Comprar Créditos
             </Link>
