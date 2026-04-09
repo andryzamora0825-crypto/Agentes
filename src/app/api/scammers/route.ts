@@ -2,11 +2,23 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { currentUser } from "@clerk/nextjs/server";
 
+const ADMIN_EMAIL = "andryzamora0825@gmail.com";
+
 export async function POST(request: Request) {
   try {
     const user = await currentUser();
-    if (!user || user.primaryEmailAddress?.emailAddress !== "andryzamora0825@gmail.com") {
+    if (!user) {
       return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+    }
+
+    const email = user.primaryEmailAddress?.emailAddress || "";
+    const isAdmin = email === ADMIN_EMAIL;
+    const plan = (user.publicMetadata as any)?.plan || "FREE";
+    const isVip = plan === "VIP";
+
+    // Solo Admin y VIP pueden reportar estafadores
+    if (!isAdmin && !isVip) {
+      return NextResponse.json({ error: "Se requiere plan VIP para reportar estafadores." }, { status: 403 });
     }
 
     const formData = await request.formData();
@@ -75,7 +87,7 @@ export async function POST(request: Request) {
         description: description || null,
         photo_url,
         proof_urls,
-        created_by: user.primaryEmailAddress.emailAddress
+        created_by: email
       })
       .select()
       .single();

@@ -2,7 +2,7 @@
 
 import { UserProfile, useUser, useClerk } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
-import { Settings, Shield, Coins, Loader2, Calendar, LogOut, Star, Zap } from "lucide-react";
+import { Settings, Shield, Coins, Loader2, Calendar, LogOut, Star, Zap, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -13,6 +13,23 @@ export default function ConfiguracionPage() {
   const [credits, setCredits] = useState<number | null>(null);
   const [plan, setPlan] = useState<string>("Cargando...");
   const [daysLeft, setDaysLeft] = useState<number>(0);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      if (user) {
+        await user.setProfileImage({ file });
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Error al subir la imagen: " + (err.errors?.[0]?.longMessage || err.message));
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/user/sync")
@@ -75,11 +92,25 @@ export default function ConfiguracionPage() {
 
         {/* Avatar + Nombre */}
         <div className="bg-[#111111] border border-white/5 rounded-2xl p-5 flex items-center gap-4 hover:border-white/10 transition-colors">
-          <img
-            src={user?.imageUrl || `https://ui-avatars.com/api/?name=${user?.firstName}&background=1a1a1a&color=FFDE00`}
-            alt="Avatar"
-            className="w-14 h-14 rounded-2xl border border-white/10 object-cover"
-          />
+          <div className="relative group/avatar shrink-0 w-14 h-14">
+            {uploadingAvatar ? (
+              <div className="w-14 h-14 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 text-[#FFDE00] animate-spin" />
+              </div>
+            ) : (
+              <>
+                <img
+                  src={user?.imageUrl || `https://ui-avatars.com/api/?name=${user?.firstName}&background=1a1a1a&color=FFDE00`}
+                  alt="Avatar"
+                  className="w-14 h-14 rounded-2xl border border-white/10 object-cover"
+                />
+                <label className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer backdrop-blur-[2px]">
+                  <Upload className="w-5 h-5 text-white" />
+                  <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+                </label>
+              </>
+            )}
+          </div>
           <div>
             <div className="font-black text-white text-lg leading-tight">{user?.fullName || user?.firstName}</div>
             <div className="text-xs text-gray-500 mt-0.5">{user?.primaryEmailAddress?.emailAddress}</div>

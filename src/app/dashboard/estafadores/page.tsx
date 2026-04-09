@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Search, Plus, X, UploadCloud, ShieldAlert, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import VipGate from "@/components/VipGate";
@@ -8,6 +8,7 @@ import VipGate from "@/components/VipGate";
 export default function EstafadoresPage() {
   const { user } = useUser();
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
+  const [isVip, setIsVip] = useState(false);
 
   const [searchPhone, setSearchPhone] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -15,6 +16,20 @@ export default function EstafadoresPage() {
   const [searchAttempted, setSearchAttempted] = useState(false);
 
   const [showAddForm, setShowAddForm] = useState(false);
+
+  // Verificar plan del usuario
+  useEffect(() => {
+    fetch("/api/user/sync")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setIsVip(data.plan === "VIP");
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const canReport = isAdmin || isVip;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +66,7 @@ export default function EstafadoresPage() {
           </h1>
           <p className="text-gray-400 mt-1">Busca números telefónicos para verificar antecedentes de fraude.</p>
         </div>
-        {isAdmin && (
+        {canReport && (
           <button 
             onClick={() => setShowAddForm(true)}
             className="bg-[#FFDE00] text-black px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#FFC107] hover:shadow-[0_0_15px_rgba(255,222,0,0.3)] transition-all"
@@ -141,7 +156,7 @@ export default function EstafadoresPage() {
       )}
 
       {/* Modal Agregar Reporte */}
-      {showAddForm && isAdmin && (
+      {showAddForm && canReport && (
         <AddScammerModal onClose={() => setShowAddForm(false)} />
       )}
     </div>
