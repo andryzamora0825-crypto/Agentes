@@ -73,45 +73,42 @@ export default function SidebarNav() {
         );
       })}
 
-      {/* Widget de Créditos e Identidad */}
+      {/* Widget de Créditos e Identidad Minimalista */}
       {credits !== null && (
         <div className="mt-8 px-4 pb-4">
-          <div className="bg-gradient-to-br from-[#151515] to-[#0A0A0A] rounded-2xl p-5 flex flex-col items-center border border-white/10 relative shadow-2xl overflow-hidden group hover:border-[#FFDE00]/30 transition-all duration-500">
-            
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFDE00]/5 blur-[40px] rounded-full pointer-events-none group-hover:bg-[#FFDE00]/10 transition-colors duration-500"></div>
+          <div className="bg-[#0f0f0f] rounded-xl p-3 border border-white/5 flex flex-col gap-2.5 hover:border-[#FFDE00]/20 transition-colors">
+             
+             {/* Fila de balance */}
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                   <div className="bg-[#FFDE00]/10 p-1.5 rounded-lg">
+                     <Coins className="w-4 h-4 text-[#FFDE00]" />
+                   </div>
+                   <div className="flex flex-col">
+                      <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider font-sans leading-none mb-0.5">Saldo</span>
+                      <span className="text-base font-black text-white font-sans leading-none">{credits.toLocaleString()}</span>
+                   </div>
+                </div>
 
-            {/* Etiqueta de Plan VIP/FREE */}
-            {plan === "VIP" ? (
-              <div className="w-full text-center px-3 py-1.5 bg-[#FFDE00]/10 border border-[#FFDE00]/20 text-[#FFDE00] font-black text-[10px] rounded-lg shadow-inner flex justify-center items-center gap-2 mb-5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FFDE00] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-full w-full bg-[#FFDE00]"></span>
-                </span>
-                VIP ACTIVO ({daysLeft} {daysLeft === 1 ? 'DÍA' : 'DÍAS'})
-              </div>
-            ) : (
-              <Link href="/dashboard/tienda" className="w-full text-center px-3 py-1.5 bg-white/5 border border-white/10 text-gray-300 font-extrabold text-[10px] rounded-lg hover:bg-white/10 hover:text-white transition-colors uppercase tracking-[0.15em] mb-5 font-sans">
-                Renueva tu VIP Aquí
-              </Link>
-            )}
+                <Link 
+                  href="/dashboard/tienda" 
+                  className="bg-[#FFDE00] text-black w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white hover:scale-105 active:scale-95 transition-all shadow-md shrink-0"
+                  title="Comprar Créditos"
+                >
+                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+                </Link>
+             </div>
 
-            {/* Saldo Grid */}
-            <div className="flex items-center gap-4 w-full mb-5 relative z-10">
-              <div className="bg-black/80 p-3 rounded-xl border border-white/5 shadow-inner">
-                <Coins className="w-6 h-6 text-[#FFDE00]" />
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest font-sans mb-0.5">Tu Saldo</span>
-                <span className="text-3xl font-black text-white tracking-tighter leading-none font-sans">{credits.toLocaleString()}</span>
-              </div>
-            </div>
-
-            <Link 
-              href="/dashboard/tienda" 
-              className="relative z-10 w-full bg-[#FFDE00] text-black text-center py-3 rounded-xl text-sm font-black hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-[0_0_20px_rgba(255,222,0,0.15)] flex justify-center items-center gap-2"
-            >
-              Comprar Créditos
-            </Link>
+             {/* Fila VIP/Renovar */}
+             {plan === "VIP" ? (
+               <div className="w-full py-1.5 bg-[#FFDE00]/5 text-[#FFDE00] font-bold text-[10px] rounded-lg flex justify-center items-center gap-1.5">
+                 <ShieldCheck className="w-3 h-3" /> VIP ({daysLeft} d)
+               </div>
+             ) : (
+               <Link href="/dashboard/tienda" className="w-full text-center py-1.5 bg-white/5 text-gray-400 font-bold text-[10px] rounded-lg hover:bg-white/10 hover:text-white transition-colors tracking-wide font-sans">
+                 Renovar VIP
+               </Link>
+             )}
           </div>
         </div>
       )}
