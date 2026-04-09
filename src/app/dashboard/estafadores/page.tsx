@@ -260,17 +260,17 @@ function AddScammerModal({ onClose }: { onClose: () => void }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1.5">
                   <label className="text-sm font-bold text-gray-700">Número de Teléfono *</label>
-                  <input type="text" value={phone} onChange={e => setPhone(e.target.value)} required placeholder="Ej: 0912345678" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#23274A] outline-none" />
+                  <input type="text" value={phone} onChange={e => setPhone(e.target.value)} required placeholder="Ej: 0912345678" className="w-full px-4 py-3 bg-gray-50 text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#23274A] outline-none" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-bold text-gray-700">Alias / Nombre</label>
-                  <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Juan Perez" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#23274A] outline-none" />
+                  <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Juan Perez" className="w-full px-4 py-3 bg-gray-50 text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#23274A] outline-none" />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-sm font-bold text-gray-700">Detalles de la Estafa</label>
-                <textarea rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe cómo opera..." className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#23274A] outline-none resize-none"></textarea>
+                <textarea rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe cómo opera..." className="w-full px-4 py-3 bg-gray-50 text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#23274A] outline-none resize-none"></textarea>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
