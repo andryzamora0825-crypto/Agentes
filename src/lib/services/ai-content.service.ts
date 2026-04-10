@@ -152,7 +152,7 @@ Incorpora sutil y orgánicamente la identidad de la marca "${aiSettings.agencyNa
     n: 1,
   });
 
-  const generatedUrl = response.data[0]?.url;
+  const generatedUrl = response.data?.[0]?.url;
   if (!generatedUrl) {
     throw new Error("DALL-E 3 no devolvió ninguna imagen. Intenta de nuevo.");
   }

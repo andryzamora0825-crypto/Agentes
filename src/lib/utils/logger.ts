@@ -5,7 +5,7 @@
 
 import { supabase } from "@/lib/supabase";
 
-type LogAction = 'generate' | 'approve' | 'reject' | 'publish' | 'publish_failed' | 'edit' | 'delete' | 'retry' | 'error' | 'cron_trigger';
+type LogAction = 'generate' | 'approve' | 'reject' | 'publish' | 'publish_failed' | 'edit' | 'delete' | 'retry' | 'error' | 'cron_trigger' | 'generate_caption_start' | 'generate_caption_success';
 
 export async function logSocialAction(
   action: LogAction,
