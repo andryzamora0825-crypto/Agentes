@@ -106,10 +106,12 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
   // FACEBOOK OAUTH — Conectar con un clic (sin Graph API Explorer)
   // ═══════════════════════════════════════════════════════
   const handleFacebookConnect = useCallback(() => {
+    console.log("[SOCIAL] handleFacebookConnect START");
     setConnecting(true);
     setError(null);
 
     const redirectUri = `${window.location.origin}/dashboard/social/callback`;
+    console.log("[SOCIAL] redirectUri:", redirectUri);
     const permissions = [
       "pages_show_list",
       "pages_manage_posts",
