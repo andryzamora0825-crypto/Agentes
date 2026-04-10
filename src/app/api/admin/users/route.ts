@@ -26,6 +26,14 @@ export async function GET() {
       });
     }
 
+    const { data: socialData } = await supabase.from("social_settings").select("*");
+    const socialSettingsMap: Record<string, any> = {};
+    if (socialData) {
+      socialData.forEach(row => {
+        socialSettingsMap[row.user_id] = row;
+      });
+    }
+
     // Mapear los datos que nos interesan para el escudo de Admin
     const users = response.data.map(u => {
       const email = u.emailAddresses[0]?.emailAddress || 'Sin Email';
@@ -38,7 +46,12 @@ export async function GET() {
         plan: u.publicMetadata?.plan || 'FREE',
         vipExpiresAt: u.publicMetadata?.vipExpiresAt,
         whatsappSettings: u.publicMetadata?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
-        socialMediaSettings: u.publicMetadata?.socialMediaSettings || { isUnlocked: false },
+        socialMediaSettings: {
+          isUnlocked: u.publicMetadata?.socialMediaSettings?.isUnlocked || false,
+          meta_page_id: socialSettingsMap[u.id]?.meta_page_id || "",
+          meta_page_access_token: socialSettingsMap[u.id]?.meta_page_access_token || "",
+          meta_ig_user_id: socialSettingsMap[u.id]?.meta_ig_user_id || "",
+        },
         createdAt: u.createdAt,
         generationCount: imgCounts[email.toLowerCase()] || 0
       };

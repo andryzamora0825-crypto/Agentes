@@ -24,6 +24,10 @@ export default function AdminPanelPage() {
   const [editingWa, setEditingWa] = useState<any | null>(null);
   const [waForm, setWaForm] = useState({ isUnlocked: false, apiUrl: "", idInstance: "", apiTokenInstance: "" });
 
+  // Estados del modal de Social Media
+  const [editingSocial, setEditingSocial] = useState<any | null>(null);
+  const [socialForm, setSocialForm] = useState({ isUnlocked: false, meta_page_id: "", meta_page_access_token: "", meta_ig_user_id: "" });
+
   // Estados del modal Galería Secreta (Admin-only)
   const [galleryUser, setGalleryUser] = useState<any | null>(null);
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
@@ -41,6 +45,17 @@ export default function AdminPanelPage() {
       });
     }
   }, [editingWa]);
+
+  useEffect(() => {
+    if (editingSocial) {
+      setSocialForm({
+        isUnlocked: editingSocial.socialMediaSettings?.isUnlocked || false,
+        meta_page_id: editingSocial.socialMediaSettings?.meta_page_id || "",
+        meta_page_access_token: editingSocial.socialMediaSettings?.meta_page_access_token || "",
+        meta_ig_user_id: editingSocial.socialMediaSettings?.meta_ig_user_id || "",
+      });
+    }
+  }, [editingSocial]);
 
   const saveWaSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +88,46 @@ export default function AdminPanelPage() {
         setEditingWa(null); // Cerrar modal
       } else {
         alert("Error guardando config de telefonía");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de red");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const saveSocialSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSocial) return;
+    
+    setProcessingId(editingSocial.id);
+    try {
+      const res = await fetch("/api/admin/social-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: editingSocial.id,
+          isUnlocked: socialForm.isUnlocked,
+          meta_page_id: socialForm.meta_page_id,
+          meta_page_access_token: socialForm.meta_page_access_token,
+          meta_ig_user_id: socialForm.meta_ig_user_id
+        })
+      });
+
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === editingSocial.id ? { 
+          ...u, 
+          socialMediaSettings: { 
+            isUnlocked: socialForm.isUnlocked, 
+            meta_page_id: socialForm.meta_page_id,
+            meta_page_access_token: socialForm.meta_page_access_token,
+            meta_ig_user_id: socialForm.meta_ig_user_id
+          } 
+        } : u));
+        setEditingSocial(null); // Cerrar modal
+      } else {
+        alert("Error guardando config de Social Media");
       }
     } catch (err) {
       console.error(err);
@@ -524,30 +579,10 @@ export default function AdminPanelPage() {
                       <Share2 className="w-3.5 h-3.5" /> Social Media
                    </div>
                    <button
-                     onClick={async () => {
-                       const newState = !u.socialMediaSettings?.isUnlocked;
-                       setProcessingId(u.id);
-                       try {
-                         const res = await fetch("/api/admin/social-config", {
-                           method: "POST",
-                           headers: { "Content-Type": "application/json" },
-                           body: JSON.stringify({ targetUserId: u.id, isUnlocked: newState })
-                         });
-                         if (res.ok) {
-                           setUsers(prev => prev.map(usr => usr.id === u.id ? {
-                             ...usr,
-                             socialMediaSettings: { isUnlocked: newState }
-                           } : usr));
-                         } else {
-                           alert("Error activando Social Media");
-                         }
-                       } catch { alert("Error de conexión"); }
-                       finally { setProcessingId(null); }
-                     }}
-                     disabled={processingId === u.id}
-                     className={`px-3 py-1 rounded-md text-xs font-bold transition-colors disabled:opacity-50 ${u.socialMediaSettings?.isUnlocked ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
+                     onClick={() => setEditingSocial(u)}
+                     className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${u.socialMediaSettings?.isUnlocked ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
                    >
-                     {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : u.socialMediaSettings?.isUnlocked ? 'ACTIVO ✓' : 'ACTIVAR'}
+                     {u.socialMediaSettings?.isUnlocked ? 'ACTIVO (Gestionar)' : 'VENDER / ACTIVAR'}
                    </button>
                 </div>
 
@@ -706,6 +741,94 @@ export default function AdminPanelPage() {
           />
         </div>
       )}
+
+      {/* MODAL CONFIGURACIÓN SOCIAL MEDIA */}
+      {editingSocial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+           <div className="bg-[#111111] border border-white/10 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-md w-full relative my-8">
+              <button onClick={() => setEditingSocial(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+              
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg mb-4">
+                 <Share2 className="w-6 h-6 text-white" />
+              </div>
+              
+              <h3 className="text-xl font-black text-white mb-2">Social IA para {editingSocial.name}</h3>
+              <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                Tú eres administrador supremo. Ingresa aquí los tokens de la página de Facebook de tu cliente. Este flujo ignora completamente la burocracia de verificación de Meta.
+              </p>
+
+              <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-xl mb-6">
+                <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="block text-center text-xs font-bold text-blue-400 hover:text-blue-300 underline">
+                  ✨ Abrir Arreglador (Graph API Explorer)
+                </a>
+              </div>
+
+              <form onSubmit={saveSocialSettings} className="space-y-4">
+                 <label className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
+                    <input 
+                      type="checkbox" 
+                      className="w-5 h-5 accent-blue-500"
+                      checked={socialForm.isUnlocked}
+                      onChange={e => setSocialForm({ ...socialForm, isUnlocked: e.target.checked })}
+                    />
+                    <span className={`text-sm font-bold ${socialForm.isUnlocked ? 'text-blue-400' : 'text-gray-400'}`}>
+                      {socialForm.isUnlocked ? 'MÓDULO DESBLOQUEADO ✓' : 'DESBLOQUEAR ESTE MÓDULO AL CLIENTE'}
+                    </span>
+                 </label>
+
+                 {socialForm.isUnlocked && (
+                   <div className="space-y-4 bg-[#0A0A0A] p-4 rounded-xl border border-blue-500/20">
+                     
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Page ID</label>
+                       <input 
+                         type="text"
+                         className="w-full bg-[#1A1A1A] text-white border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                         placeholder="Ej: 1234567890123"
+                         value={socialForm.meta_page_id}
+                         onChange={e => setSocialForm({ ...socialForm, meta_page_id: e.target.value })}
+                       />
+                     </div>
+
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Page Access Token</label>
+                       <input 
+                         type="password"
+                         className="w-full bg-[#1A1A1A] text-white border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                         placeholder="EAAxxxxxx..."
+                         value={socialForm.meta_page_access_token}
+                         onChange={e => setSocialForm({ ...socialForm, meta_page_access_token: e.target.value })}
+                       />
+                     </div>
+                     
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Instagram User ID (Opcional)</label>
+                       <input 
+                         type="text"
+                         className="w-full bg-[#1A1A1A] text-white border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                         placeholder="Ej: 17841400000000000"
+                         value={socialForm.meta_ig_user_id}
+                         onChange={e => setSocialForm({ ...socialForm, meta_ig_user_id: e.target.value })}
+                       />
+                     </div>
+
+                   </div>
+                 )}
+
+                 <button 
+                   type="submit"
+                   disabled={processingId === editingSocial.id}
+                   className="w-full bg-blue-500 hover:bg-blue-600 text-white font-black py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(59,130,246,0.3)] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+                 >
+                   {processingId === editingSocial.id ? <Loader2 className="w-5 h-5 animate-spin" /> : 'GUARDAR CONFIGURACIÓN META'}
+                 </button>
+              </form>
+           </div>
+        </div>
+      )}
+
     </div>
   );
 }

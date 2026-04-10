@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { targetUserId, isUnlocked } = body;
+    const { targetUserId, isUnlocked, meta_page_id, meta_page_access_token, meta_ig_user_id } = body;
 
     if (!targetUserId) {
         return NextResponse.json({ error: "Falta targetUserId" }, { status: 400 });
@@ -31,6 +32,33 @@ export async function POST(request: Request) {
         }
       }
     });
+
+    // Guardar los tokens en Supabase para el cliente
+    const { data: existing } = await supabase
+      .from("social_settings")
+      .select("id")
+      .eq("user_id", targetUserId)
+      .single();
+
+    if (existing) {
+      await supabase
+        .from("social_settings")
+        .update({
+          meta_page_id: meta_page_id || null,
+          meta_page_access_token: meta_page_access_token || null,
+          meta_ig_user_id: meta_ig_user_id || null,
+        })
+        .eq("user_id", targetUserId);
+    } else {
+      await supabase
+        .from("social_settings")
+        .insert({
+          user_id: targetUserId,
+          meta_page_id: meta_page_id || null,
+          meta_page_access_token: meta_page_access_token || null,
+          meta_ig_user_id: meta_ig_user_id || null,
+        });
+    }
 
     return NextResponse.json({ success: true, message: "Social Media actualizado para este cliente" });
   } catch (error: any) {
