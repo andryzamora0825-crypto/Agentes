@@ -19,6 +19,7 @@ import {
   Loader2,
   Image as ImageIcon,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 
 interface PostCardProps {
@@ -26,6 +27,7 @@ interface PostCardProps {
   onApprove: (id: string) => Promise<void>;
   onReject: (id: string) => Promise<void>;
   onEdit: (post: SocialPost) => void;
+  onSave: (id: string, data: any) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPublishNow: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
@@ -36,6 +38,7 @@ export default function PostCard({
   onApprove,
   onReject,
   onEdit,
+  onSave,
   onDelete,
   onPublishNow,
   onRetry,
@@ -48,6 +51,27 @@ export default function PostCard({
     setLoading(action);
     try {
       await fn();
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleGenerateCaption = async () => {
+    if (!post.image_url) return;
+    setLoading("generate_caption");
+    try {
+      const res = await fetch("/api/social/generate-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: post.image_url, platform: post.platform }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error generando caption");
+      
+      await onSave(post.id, { caption: data.caption });
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Error al analizar imagen.");
     } finally {
       setLoading(null);
     }
@@ -170,12 +194,25 @@ export default function PostCard({
               </button>
             )}
 
+            {/* AI Caption (only for approved) */}
+            {post.status === "approved" && (
+              <button
+                onClick={handleGenerateCaption}
+                disabled={loading !== null || !post.image_url}
+                className="flex-1 bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 text-[#FFDE00] px-2 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border border-[#FFDE00]/20 disabled:opacity-40"
+                title="Generar título y descripción con IA analizando esta imagen"
+              >
+                {loading === "generate_caption" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                Crear Descripción
+              </button>
+            )}
+
             {/* Publish Now (only for approved) */}
             {post.status === "approved" && (
               <button
                 onClick={() => handleAction("publish", () => onPublishNow(post.id))}
                 disabled={loading !== null}
-                className="flex-1 min-w-[80px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 px-2 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border border-cyan-500/20 disabled:opacity-40"
+                className="flex-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 px-2 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border border-cyan-500/20 disabled:opacity-40"
               >
                 {loading === "publish" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                 Publicar

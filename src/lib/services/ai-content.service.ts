@@ -5,10 +5,12 @@
 // ══════════════════════════════════════════════
 
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 import type { GenerateContentParams } from "@/lib/types/social.types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 // Same primary models used in Estudio IA
 const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
@@ -121,67 +123,51 @@ export async function generateImage(
   aiSettings?: any
 ): Promise<{ imageUrl: string; model: string }> {
 
-  // Format instructions (same as Estudio IA)
-  const FORMAT_MAP: Record<string, string> = {
-    square: "OBLIGATORIO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles.",
-    vertical: "OBLIGATORIO: La imagen DEBE ser VERTICAL (9:16), como 768x1365 píxeles. Formato Stories/Reels.",
-    horizontal: "OBLIGATORIO: La imagen DEBE ser HORIZONTAL (16:9), como 1365x768 píxeles.",
-    portrait: "OBLIGATORIO: La imagen DEBE ser VERTICAL tipo RETRATO (4:5), como 819x1024 píxeles.",
-  };
-  const formatInstruction = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
+  // Mapeamos a los formatos nativos de DALL-E 3
+  let size: "1024x1024" | "1024x1792" | "1792x1024" = "1024x1024";
+  if (imageFormat === "vertical" || imageFormat === "portrait") size = "1024x1792";
+  if (imageFormat === "horizontal") size = "1792x1024";
 
-  let finalPrompt = `[INSTRUCCIÓN DE FORMATO CRÍTICA - MÁXIMA PRIORIDAD]: ${formatInstruction}
+  let finalPrompt = `${imagePrompt}
 
-${imagePrompt}
-
-IMPORTANTE: Esta imagen es para publicar en redes sociales. Debe ser:
-- Visualmente impactante y profesional
-- Con colores vibrantes y buena composición
-- Sin texto superpuesto (a menos que se pida específicamente)
-- Alta calidad fotográfica o estilo gráfico premium`;
+IMPORTANTE: Esta imagen es para publicar en redes sociales. Debe ser visualmente impactante y profesional, con una excelente composición. 
+SE ESTRICTO: NO DEBE HABER TEXTO, LETRAS NI PALABRAS SUPERPUESTAS EN LA IMAGEN (A menos que la idea lo pida explícitamente).`;
 
   if (aiSettings) {
     const agencyContext = `
-[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
-Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
-A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca:
-- Tono/Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
-- Colores representativos: Primario (${aiSettings.primaryColor || '#FFDE00'}), Secundario (${aiSettings.secondaryColor || '#000000'}). Refleja abundantemente estos colores en ropa, fondos, decoraciones o iluminación.
-- Contactos (añade creativamente a carteles/letreros si es orgánico): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.
+[IDENTIDAD DE MARCA]: 
+Incorpora sutil y orgánicamente la identidad de la marca "${aiSettings.agencyName || 'Agencia'}":
+- Tono/Estilo fotográfico o ilustración: ${aiSettings.agencyDesc || 'Estándar, profesional'}
+- Esquema de colores primario: (${aiSettings.primaryColor || '#FFDE00'}). Resalta luces, vestimentas o elementos protagónicos de la imagen con este color.
 `;
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
   }
 
-  const response = await generateImageWithRetry(
-    { contents: [{ text: finalPrompt }] },
-    NANO_BANANA_2
-  );
+  // Usamos DALL-E 3 de forma directa y estable
+  const response = await openai.images.generate({
+    model: "dall-e-3",
+    prompt: finalPrompt,
+    size: size,
+    quality: "standard",
+    n: 1,
+  });
 
-  // Extract image from response (same pattern as Estudio IA)
-  let imageBase64: string | null = null;
-  let imageMimeType = "image/png";
-
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if ((part as any).inlineData) {
-      imageBase64 = (part as any).inlineData.data;
-      imageMimeType = (part as any).inlineData.mimeType || "image/png";
-      break;
-    }
+  const generatedUrl = response.data[0]?.url;
+  if (!generatedUrl) {
+    throw new Error("DALL-E 3 no devolvió ninguna imagen. Intenta de nuevo.");
   }
 
-  if (!imageBase64) {
-    throw new Error("Nano Banana no generó una imagen. Probablemente Google sirvió texto al caer en servidor de respaldo. Intenta de nuevo.");
-  }
-
-  // Upload to Supabase Storage (same bucket as Estudio IA)
-  const imageBuffer = Buffer.from(imageBase64, "base64");
-  const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
-  const fileName = `social_${userId}_${Date.now()}.${ext}`;
+  // Descargamos la imagen temporal de OpenAI para subirla a nuestro propio Supabase
+  const imageResponse = await fetch(generatedUrl);
+  const arrayBuffer = await imageResponse.arrayBuffer();
+  const imageBuffer = Buffer.from(arrayBuffer);
+  
+  const fileName = `social_${userId}_${Date.now()}.png`;
 
   const { error: uploadError } = await supabase.storage
     .from("ai-generations")
     .upload(fileName, imageBuffer, {
-      contentType: imageMimeType,
+      contentType: "image/png",
       upsert: false,
     });
 
@@ -193,7 +179,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 
   return {
     imageUrl: publicUrlData.publicUrl,
-    model: "Nano Banana 2 🍌",
+    model: "DALL-E 3 ✨",
   };
 }
 

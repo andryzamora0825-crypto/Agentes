@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { SocialPost, Platform } from "@/lib/types/social.types";
-import { X, Save, Loader2, Globe, Camera, Calendar } from "lucide-react";
+import { X, Save, Loader2, Globe, Camera, Calendar, Sparkles } from "lucide-react";
 
 interface PostEditorProps {
   post: SocialPost;
@@ -17,6 +17,28 @@ export default function PostEditor({ post, onSave, onClose }: PostEditorProps) {
     post.scheduled_at ? new Date(post.scheduled_at).toISOString().slice(0, 16) : ""
   );
   const [saving, setSaving] = useState(false);
+  const [generatingCaption, setGeneratingCaption] = useState(false);
+
+  const handleGenerateCaption = async () => {
+    if (!post.image_url) return;
+    setGeneratingCaption(true);
+    try {
+      const res = await fetch("/api/social/generate-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: post.image_url, platform }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error generando caption");
+      
+      setCaption(data.caption);
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Ocurrió un error al analizar la imagen.");
+    } finally {
+      setGeneratingCaption(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -70,13 +92,31 @@ export default function PostEditor({ post, onSave, onClose }: PostEditorProps) {
           )}
 
           {/* Caption Editor */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-black text-gray-500 uppercase tracking-widest mb-2">
-              Caption
-              <span className={`ml-auto ${caption.length > 500 ? "text-red-400" : "text-gray-600"}`}>
-                {caption.length} caracteres
-              </span>
-            </label>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                Caption
+                <span className={`${caption.length > 500 ? "text-red-400" : "text-gray-600"}`}>
+                  ({caption.length} caracteres)
+                </span>
+              </label>
+
+              {post.image_url && (
+                <button
+                  onClick={handleGenerateCaption}
+                  disabled={generatingCaption}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 text-[#FFDE00] rounded-lg text-xs font-bold border border-[#FFDE00]/20 transition-colors disabled:opacity-50"
+                  title="Analizar imagen y crear caption con ChatGPT"
+                >
+                  {generatingCaption ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {generatingCaption ? "Analizando imagen..." : "Generar con IA (ChatGPT)"}
+                </button>
+              )}
+            </div>
             <textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
