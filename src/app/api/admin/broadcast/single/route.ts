@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@clerk/nextjs/server";
+import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { generateFullPost } from "@/lib/services/ai-content.service";
 import { createPost } from "@/lib/services/social-posts.service";
 import { publishPost } from "@/lib/services/meta-publisher.service";
@@ -31,29 +31,39 @@ export async function POST(request: Request) {
       .eq("user_id", targetUserId)
       .single();
 
-    if (!settings || (!settings.meta_page_access_token)) {
+    // Obtener aiSettings y tokens perdidos en migración del usuario desde Clerk
+    const client = await clerkClient();
+    const targetUserClerk = await client.users.getUser(targetUserId);
+    const aiSettings = targetUserClerk.publicMetadata?.aiSettings || null;
+    const oldClerkTokens = targetUserClerk.publicMetadata?.socialMediaSettings as any;
+
+    const page_access_token = settings?.meta_page_access_token || oldClerkTokens?.meta_page_access_token;
+    const brand_voice = settings?.brand_voice || "profesional y cercano";
+    const custom_prompt_template = settings?.custom_prompt_template || "";
+
+    if (!page_access_token) {
         return NextResponse.json({ error: "Este cliente no tiene los tokens de Meta configurados (Page Access Token faltante)." }, { status: 400 });
     }
 
     // Construir el "Brand Voice" o prompt final usando la plantilla del cliente
     let finalTopic = topic;
-    const baseVoice = settings.brand_voice || "profesional y cercano";
-    if (settings.custom_prompt_template) {
-       finalTopic = `${topic}\nTono de Voz exigido: ${baseVoice}\nEstilo Visual exigido: ${settings.custom_prompt_template}`;
+    
+    if (custom_prompt_template) {
+       finalTopic = `${topic}\nTono de Voz exigido: ${brand_voice}\nEstilo Visual exigido: ${custom_prompt_template}`;
     } else {
-       finalTopic = `${topic}\nTono de Voz: ${baseVoice}`;
+       finalTopic = `${topic}\nTono de Voz: ${brand_voice}`;
     }
 
-    // Paso 1: Generar con IA
+    // Paso 1: Generar con IA usando aiSettings
     const { caption, imageUrl, imagePrompt, model } = await generateFullPost(
       { 
         topic: finalTopic, 
-        brandVoice: baseVoice, 
+        brandVoice: brand_voice, 
         platform: platform || "both", 
         imageFormat: imageFormat || "square" 
       },
       targetUserId,
-      null // aiSettings
+      aiSettings // <- PASAMOS aiSettings PARA REPLICAR ESTUDIO IA
     );
 
     // Paso 2: Guardar el post asociado al cliente

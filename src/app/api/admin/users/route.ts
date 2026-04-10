@@ -49,9 +49,9 @@ export async function GET() {
         whatsappSettings: meta?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
         socialMediaSettings: {
           isUnlocked: meta?.socialMediaSettings?.isUnlocked || false,
-          meta_page_id: socialSettingsMap[u.id]?.meta_page_id || "",
-          meta_page_access_token: socialSettingsMap[u.id]?.meta_page_access_token || "",
-          meta_ig_user_id: socialSettingsMap[u.id]?.meta_ig_user_id || "",
+          meta_page_id: socialSettingsMap[u.id]?.meta_page_id || meta?.socialMediaSettings?.meta_page_id || "",
+          meta_page_access_token: socialSettingsMap[u.id]?.meta_page_access_token || meta?.socialMediaSettings?.meta_page_access_token || "",
+          meta_ig_user_id: socialSettingsMap[u.id]?.meta_ig_user_id || meta?.socialMediaSettings?.meta_ig_user_id || "",
           auto_generate: socialSettingsMap[u.id]?.auto_generate || false,
         },
         createdAt: u.createdAt,

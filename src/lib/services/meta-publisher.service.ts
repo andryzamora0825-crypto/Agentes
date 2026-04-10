@@ -6,6 +6,7 @@
 
 import type { SocialPost, PublishResult } from "@/lib/types/social.types";
 import { supabase } from "@/lib/supabase";
+import { clerkClient } from "@clerk/nextjs/server";
 
 const MAX_RETRIES = 3;
 const META_GRAPH_URL = "https://graph.facebook.com/v19.0";
@@ -176,7 +177,25 @@ async function getUserSettings(userId: string) {
     .eq("user_id", userId)
     .single();
 
-  return data;
+  const settings = data || {};
+
+  // OBTENER FALLBACK DE CLERK (Problema de migración de DB actual)
+  if (!settings.meta_page_access_token) {
+    try {
+      const client = await clerkClient();
+      const userClerk = await client.users.getUser(userId);
+      const sm = userClerk.publicMetadata?.socialMediaSettings as any;
+      if (sm) {
+         settings.meta_page_id = settings.meta_page_id || sm.meta_page_id;
+         settings.meta_page_access_token = settings.meta_page_access_token || sm.meta_page_access_token;
+         settings.meta_ig_user_id = settings.meta_ig_user_id || sm.meta_ig_user_id;
+      }
+    } catch (error) {
+      console.warn("No fallback data in clerk for", userId);
+    }
+  }
+
+  return settings;
 }
 
 /**
@@ -199,6 +218,13 @@ export async function publishPost(post: SocialPost): Promise<PublishResult> {
     return {
       success: false,
       error: "No se encontraron credenciales de Meta. Ve a Configuración de Redes y configura tu Page Access Token.",
+    };
+  }
+
+  if (!settings.meta_page_id || settings.meta_page_id.trim() === "" || settings.meta_page_id.toLowerCase() === "me") {
+    return {
+      success: false,
+      error: "Page ID inválido. No puedes usar cuentas personales (User ID) o 'me' debido a regulaciones de Meta API."
     };
   }
 

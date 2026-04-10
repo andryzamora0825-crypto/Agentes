@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { clerkClient } from "@clerk/nextjs/server";
 import { supabase } from '@/lib/supabase';
 import { generateFullPost } from '@/lib/services/ai-content.service';
 import { createPost } from '@/lib/services/social-posts.service';
@@ -39,7 +40,13 @@ export async function POST(request: Request) {
     if (!socialSettings || !socialSettings.auto_generate) {
       return NextResponse.json({ error: "El usuario está deshabilitado para generación automática." }, { status: 400 });
     }
-    if (!socialSettings.meta_page_access_token) {
+    const client = await clerkClient();
+    const targetUserClerk = await client.users.getUser(userId);
+    const oldClerkTokens = targetUserClerk.publicMetadata?.socialMediaSettings as any;
+    
+    const page_access_token = socialSettings?.meta_page_access_token || oldClerkTokens?.meta_page_access_token;
+
+    if (!page_access_token) {
       return NextResponse.json({ error: "Este cliente no tiene Tokens de Meta." }, { status: 400 });
     }
 
@@ -62,6 +69,9 @@ export async function POST(request: Request) {
 
     console.log(`[Worker ${userId}] Iniciando IA.`);
 
+    // Obtener aiSettings del usuario desde Clerk
+    const aiSettings = targetUserClerk.publicMetadata?.aiSettings || null;
+
     // 4. Invocar generador IA (Nano Banana + Gemini)
     const { caption, imageUrl, imagePrompt } = await generateFullPost(
       { 
@@ -71,7 +81,7 @@ export async function POST(request: Request) {
         imageFormat: "square" 
       },
       userId,
-      null
+      aiSettings // <- Se pasa aiSettings para aplicar anti-repetición y estilo
     );
 
     if (!imageUrl) {

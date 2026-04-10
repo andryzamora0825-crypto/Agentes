@@ -14,6 +14,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 // Same primary models used in Estudio IA
 const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
+const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
 /**
  * Helper: Intenta generar texto garantizando reintentos severos sobre gemini-2.5-flash.
@@ -137,7 +138,10 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
 
     // --- INYECCIÓN DE PERSONAJE (idéntico a Estudio IA) ---
     if (aiSettings.characterImageUrl) {
-      finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada. Mantén su apariencia, rasgos faciales y estilo reconocibles en la escena generada. El personaje debe ser protagonista o estar visible de forma clara en la imagen.`;
+      finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia (su rostro de referencia ha sido adjuntado). 
+REGLAS PARA EL PERSONAJE:
+- Mantén su apariencia y rasgos reconocibles.
+- EXTREMADAMENTE IMPORTANTE: Varía dinámicamente sus posiciones (volando, saltando, caminando, ángulos de cámara variados, tomas cinematográficas). PROHIBIDO hacer a la persona simplemente "sentada frente a una laptop" o "parada mirando a la cámara aburrida" a menos que se pida estrictamente.`;
     }
   }
 
@@ -177,9 +181,12 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
 
   let response;
   try {
+    const hasRefImages = referenceImages.length > 0;
+    const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+
     // Llamada DIRECTA sin reintentos (si falla, falla rápido en 20s y no a los 2 minutos)
     response = await ai.models.generateContent({
-      model: NANO_BANANA_2,
+      model: modelToUse,
       contents: contentParts,
     });
   } catch (err: any) {
@@ -221,9 +228,11 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
     .from("ai-generations")
     .getPublicUrl(fileName);
 
+  const modelNameUsed = referenceImages.length > 0 ? "Nano Banana Pro 🍌" : "Nano Banana 2 🍌";
+
   return {
     imageUrl: publicUrlData.publicUrl,
-    model: "Nano Banana 2 🍌",
+    model: modelNameUsed,
   };
 }
 
