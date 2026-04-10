@@ -37,7 +37,10 @@ export async function GET() {
         credits: u.publicMetadata?.credits,
         plan: u.publicMetadata?.plan || 'FREE',
         vipExpiresAt: u.publicMetadata?.vipExpiresAt,
-        whatsappSettings: u.publicMetadata?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
+        whatsappSettings: {
+          isUnlocked: (u.publicMetadata?.whatsappSettings as any)?.isUnlocked || false,
+          isActive: (u.publicMetadata?.whatsappSettings as any)?.isActive || false,
+        },
         createdAt: u.createdAt,
         generationCount: imgCounts[email.toLowerCase()] || 0
       };

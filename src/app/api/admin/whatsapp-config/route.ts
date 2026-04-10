@@ -16,6 +16,21 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Falta targetUserId" }, { status: 400 });
     }
 
+    if (providerConfig) {
+      // Validar apiUrl
+      if (providerConfig.apiUrl) {
+        try {
+          new URL(providerConfig.apiUrl);
+        } catch {
+          return NextResponse.json({ error: "apiUrl inválida" }, { status: 400 });
+        }
+      }
+      // Validar idInstance (numérico)
+      if (providerConfig.idInstance && isNaN(Number(providerConfig.idInstance))) {
+        return NextResponse.json({ error: "idInstance debe ser numérico" }, { status: 400 });
+      }
+    }
+
     const client = await clerkClient();
     const targetUser = await client.users.getUser(targetUserId);
     

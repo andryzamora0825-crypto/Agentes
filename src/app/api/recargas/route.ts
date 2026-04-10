@@ -45,13 +45,18 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
 
-    const { error } = await supabase
+    const { error, data: updated } = await supabase
       .from("whatsapp_recargas")
       .update({ status })
       .eq("id", id)
-      .eq("owner_id", user.id);
+      .eq("owner_id", user.id)
+      .select();
 
     if (error) throw error;
+
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: "Recarga no encontrada" }, { status: 404 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

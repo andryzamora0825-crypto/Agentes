@@ -17,9 +17,17 @@ export async function POST(request: Request) {
     
     // Capturamos hasta 10 imágenes (artes)
     const files: File[] = [];
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     for (let i = 0; i < 10; i++) {
       const file = formData.get(`image_${i}`) as File | null;
       if (file && file.size > 0) {
+        if (!ALLOWED_TYPES.includes(file.type)) {
+          return NextResponse.json({ error: `Tipo de archivo no permitido: ${file.type}` }, { status: 400 });
+        }
+        if (file.size > MAX_FILE_SIZE) {
+          return NextResponse.json({ error: `Archivo demasiado grande (máx 10MB)` }, { status: 400 });
+        }
         files.push(file);
       }
     }

@@ -101,11 +101,27 @@ const BOT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 async function executeTool(
   name: string,
   args: Record<string, any>,
-  ctx: { uid: string; sender: string; senderName: string; adminEmail: string; waBaseUrl: string; idInstance: string; apiToken: string; }
+  ctx: { uid: string; sender: string; senderName: string; adminEmail: string; waBaseUrl: string; idInstance: string; apiToken: string; settings?: any; }
 ): Promise<string> {
 
   if (name === "registrar_recarga") {
     const { monto, banco } = args;
+    if (!monto || typeof monto !== "number" || monto <= 0 || monto > 50000) {
+      return `Error: monto inválido (${monto}). Debe ser un número entre 1 y 50000.`;
+    }
+    if (!banco || typeof banco !== "string" || banco.trim() === "") {
+      return "Error: banco no especificado o inválido.";
+    }
+    // Verificar que el banco existe en la lista configurada
+    const banksList = ctx.settings?.banksList || [];
+    const bankNames = banksList.map((b: any) => (b.name || "").toLowerCase());
+    const bancoNormalizado = banco.toLowerCase().trim();
+    const bancoValido = banksList.length === 0 || bankNames.some((bn: string) =>
+      bancoNormalizado.includes(bn) || bn.includes(bancoNormalizado)
+    );
+    if (!bancoValido) {
+      return `Error: el banco "${banco}" no está en la lista de bancos configurados. Los bancos disponibles son: ${banksList.map((b: any) => b.name).join(", ")}`;
+    }
     await supabase.from("whatsapp_recargas").insert({
       owner_id: ctx.uid,
       phone_number: ctx.sender,
@@ -193,7 +209,7 @@ export async function POST(request: Request) {
       const outText = (payload.messageData?.textMessageData?.textMessage || payload.messageData?.extendedTextMessageData?.text || "").toLowerCase().trim();
 
       if (outText === "#contact") {
-        const pauseUntil = new Date(Date.now() + 52560000 * 60 * 1000).toISOString();
+        const pauseUntil = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
         await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
         await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: pauseUntil });
         return NextResponse.json({ success: true, action: "paused_permanent" });
@@ -280,15 +296,16 @@ export async function POST(request: Request) {
     if (!messageText.trim()) return NextResponse.json({ success: true });
 
     // ── DEDUPLICACIÓN DE INMEDIATO ──
-    const messageId = payload.idMessage || "";
+    const messageId = payload.idMessage || `${sender}_${typeMessage}_${Date.now()}`;
     if (messageId) {
       const { error: dedupErr } = await supabase.from("whatsapp_processed_messages").insert({ message_id: messageId });
       if (dedupErr?.code === "23505") return NextResponse.json({ success: true, ignored: true, reason: "Duplicado" });
     }
 
     // ── VERIFICAR PAUSAS ESTRICTAS DE RESPUESTA ──
-    const { data: pauses } = await supabase.from("whatsapp_pauses").select("paused_until")
+    const { data: pauses, error: pausesErr } = await supabase.from("whatsapp_pauses").select("paused_until")
       .eq("owner_id", uid).in("phone_number", ["GLOBAL", sender]);
+    if (pausesErr) console.error("[WEBHOOK/SUPABASE] Error leyendo pausas:", pausesErr.message);
     if (pauses?.some(p => new Date(p.paused_until) > new Date())) {
       return NextResponse.json({ success: true, ignored: true, reason: "Pausado" });
     }
@@ -436,7 +453,7 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
         tool_choice: "auto",
         max_tokens: 300,
         temperature: 0.35,
-      });
+      }, { timeout: 30000 });
 
       // Lógica nativa de Tool execution (max 3 rondas)
       for (let round = 0; round < 3; round++) {
@@ -446,12 +463,20 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
 
           for (const toolCall of choice.message.tool_calls || []) {
             if (toolCall.type !== 'function') continue;
-            let args = {}; try { args = JSON.parse(toolCall.function.arguments); } catch { }
+            let args: Record<string, any> = {};
+            try { args = JSON.parse(toolCall.function.arguments); } catch {
+              console.warn(`[WEBHOOK] Tool args parse error para ${toolCall.function.name}:`, toolCall.function.arguments);
+            }
+            if (toolCall.function.name === "registrar_recarga" && (!args.monto || !args.banco)) {
+              messages.push({ role: "tool", tool_call_id: toolCall.id, content: "Error: argumentos incompletos para registrar_recarga." });
+              continue;
+            }
 
             console.log(`[WEBHOOK] 🔧 Ejecutando Tool: ${toolCall.function.name}`, args);
             const toolResult = await executeTool(toolCall.function.name, args, {
               uid, sender, senderName, adminEmail, waBaseUrl,
               idInstance: providerConfig.idInstance, apiToken: providerConfig.apiTokenInstance,
+              settings,
             });
             messages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
           }
@@ -470,8 +495,11 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
         aiResponse = completion.choices[0]?.message?.content?.trim() || "";
       }
     } catch (e: any) {
-      console.error("[WEBHOOK/OPENAI] Error:", e.stack || e.message);
-      aiResponse = "¡Hola! ¿Dime cómo te podemos ayudar hoy? (Disculpa, tuvimos una breve actualización técnica)";
+      const isTimeout = e?.code === "ETIMEDOUT" || e?.type === "request-timeout" || e?.message?.includes("timeout");
+      console.error(`[WEBHOOK/OPENAI] ${isTimeout ? "Timeout" : "Error"}:`, e.message);
+      aiResponse = isTimeout
+        ? "Disculpa, estamos atendiendo muchas consultas en este momento. ¿Puedes repetir tu mensaje en unos segundos?"
+        : "¡Hola! ¿Dime cómo te podemos ayudar hoy? (Disculpa, tuvimos una breve actualización técnica)";
     }
 
     if (!aiResponse) aiResponse = "¿En qué te puedo ayudar?"; // Safe fallback
@@ -491,8 +519,9 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
     return NextResponse.json({ success: true });
 
   } catch (err: any) {
-    console.error("[WEBHOOK/CRASH]", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    const crashId = `crash_${Date.now()}`;
+    console.error(`[WEBHOOK/CRASH][${crashId}]`, err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: "Internal Server Error", ref: crashId }, { status: 500 });
   }
 }
 
