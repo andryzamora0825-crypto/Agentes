@@ -203,41 +203,63 @@ export async function publishPost(post: SocialPost): Promise<PublishResult> {
   }
 
   let result: PublishResult = { success: false, error: "Plataforma no soportada" };
+  
+  let fbSuccess = post.platform === "instagram"; // Only require FB if asking for FB or both
+  let igSuccess = post.platform === "facebook"; // Only require IG if asking for IG or both
+  let metaPostId = "";
 
   // Retry logic with exponential backoff
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      if (post.platform === "facebook" || post.platform === "both") {
-        result = await publishToFacebook(
+      if ((post.platform === "facebook" || post.platform === "both") && !fbSuccess) {
+        const fbResult = await publishToFacebook(
           settings.meta_page_id!,
           settings.meta_page_access_token!,
           post.caption,
           post.image_url
         );
-        if (!result.success && attempt < MAX_RETRIES) {
-          await delay(attempt * 2000); // 2s, 4s, 6s backoff
-          continue;
+        if (fbResult.success) {
+          fbSuccess = true;
+          metaPostId = fbResult.metaPostId!;
+          result = fbResult;
+        } else {
+          result = fbResult;
         }
       }
 
-      if (post.platform === "instagram" || post.platform === "both") {
+      if ((post.platform === "instagram" || post.platform === "both") && !igSuccess) {
         if (!post.image_url) {
           result = { success: false, error: "Instagram requiere una imagen" };
         } else if (settings.meta_ig_user_id) {
-          result = await publishToInstagram(
+          const igResult = await publishToInstagram(
             settings.meta_ig_user_id,
             settings.meta_page_access_token!,
             post.caption,
             post.image_url
           );
+          if (igResult.success) {
+            igSuccess = true;
+            if (!metaPostId) metaPostId = igResult.metaPostId!;
+            result = igResult;
+          } else {
+            result = igResult;
+          }
         } else {
-          result = { success: false, error: "No se encontró el ID de Instagram" };
+          result = { success: false, error: "No se encontró el ID de Instagram. Configúralo en los ajustes." };
         }
       }
 
-      // If success, break out of retry loop
-      if (result.success) break;
+      // If both required platforms are successful, break out of retry loop
+      if (fbSuccess && igSuccess) {
+        result.success = true;
+        result.metaPostId = metaPostId; // Return at least one valid meta ID
+        break;
+      }
 
+      // If we haven't succeeded on required platforms and still have retries remaining, delay and retry
+      if (attempt < MAX_RETRIES) {
+        await delay(attempt * 2000);
+      }
     } catch (err: any) {
       result = { success: false, error: err.message };
       if (attempt < MAX_RETRIES) {
