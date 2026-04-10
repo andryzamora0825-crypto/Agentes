@@ -42,8 +42,9 @@ const PLATFORM_OPTIONS: { value: Platform; label: string; icon: React.ElementTyp
 ];
 
 export default function SocialDashboardPage() {
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
+  const hasSocialAccess = isAdmin || !!(user?.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
 
   // State
   const [posts, setPosts] = useState<SocialPost[]>([]);
@@ -195,6 +196,26 @@ export default function SocialDashboardPage() {
     });
     fetchPosts();
   };
+
+  // Guard: Solo admin o agentes con acceso pueden ver Social Media
+  if (isLoaded && !hasSocialAccess) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center p-8">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto">
+            <Share2 className="w-8 h-8 text-blue-400" />
+          </div>
+          <h2 className="text-2xl font-black text-white">Social Media</h2>
+          <p className="text-gray-400 text-sm leading-relaxed">
+            Este módulo no está activado para tu cuenta. Contacta al administrador para solicitar acceso a la herramienta de publicación automática en redes sociales.
+          </p>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-xs text-gray-500">
+            🔒 Módulo bloqueado — Solo disponible con activación del admin
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <VipGate>

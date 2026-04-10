@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -515,6 +515,39 @@ export default function AdminPanelPage() {
                      className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${u.whatsappSettings?.isUnlocked ? 'bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 hover:bg-[#25D366]/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
                    >
                      {u.whatsappSettings?.isUnlocked ? 'ACTIVO (Gestionar)' : 'VENDER / ACTIVAR'}
+                   </button>
+                </div>
+
+                {/* Sección 4: Social Media */}
+                <div className="mt-2 flex justify-between items-center border-t border-white/5 pt-4">
+                   <div className="text-[11px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <Share2 className="w-3.5 h-3.5" /> Social Media
+                   </div>
+                   <button
+                     onClick={async () => {
+                       const newState = !u.socialMediaSettings?.isUnlocked;
+                       setProcessingId(u.id);
+                       try {
+                         const res = await fetch("/api/admin/social-config", {
+                           method: "POST",
+                           headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify({ targetUserId: u.id, isUnlocked: newState })
+                         });
+                         if (res.ok) {
+                           setUsers(prev => prev.map(usr => usr.id === u.id ? {
+                             ...usr,
+                             socialMediaSettings: { isUnlocked: newState }
+                           } : usr));
+                         } else {
+                           alert("Error activando Social Media");
+                         }
+                       } catch { alert("Error de conexión"); }
+                       finally { setProcessingId(null); }
+                     }}
+                     disabled={processingId === u.id}
+                     className={`px-3 py-1 rounded-md text-xs font-bold transition-colors disabled:opacity-50 ${u.socialMediaSettings?.isUnlocked ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
+                   >
+                     {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : u.socialMediaSettings?.isUnlocked ? 'ACTIVO ✓' : 'ACTIVAR'}
                    </button>
                 </div>
 

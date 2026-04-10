@@ -50,6 +50,7 @@ export async function GET() {
 
     // Retorno normal
     const hasWhatsappBot = !!(user.publicMetadata as any)?.whatsappSettings?.isUnlocked;
+    const hasSocialMedia = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
     
     return NextResponse.json({ 
       success: true, 
@@ -57,7 +58,8 @@ export async function GET() {
       isNew: false, 
       plan: currentPlan,
       daysLeft: daysLeft,
-      hasWhatsappBot
+      hasWhatsappBot,
+      hasSocialMedia
     });
 
   } catch (error: any) {
