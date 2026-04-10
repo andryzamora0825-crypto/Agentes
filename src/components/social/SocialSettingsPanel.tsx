@@ -99,6 +99,28 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
     }
   };
 
+  const handleFetchIgId = async () => {
+    if (!settings.meta_page_id || !settings.meta_page_access_token) {
+      setError("Primero debes colocar y guardar tu Page ID y Token de Facebook");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`https://graph.facebook.com/v19.0/${settings.meta_page_id}?fields=instagram_business_account&access_token=${settings.meta_page_access_token}`);
+      const data = await res.json();
+      
+      if (data?.instagram_business_account?.id) {
+        setSettings({ ...settings, meta_ig_user_id: data.instagram_business_account.id });
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 3000);
+      } else {
+        setError(data.error?.message || "No se encontró una cuenta de Instagram Business vinculada a esta página de Facebook.");
+      }
+    } catch {
+      setError("Error al consultar la API de Meta.");
+    }
+  };
+
   const hasMetaConfig = !!settings.meta_page_id && !!settings.meta_page_access_token;
 
   if (loading) {
@@ -291,10 +313,19 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
 
           {/* Instagram User ID */}
           <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-gray-400 mb-1.5">
-              <Camera className="w-3.5 h-3.5 text-pink-400" />
-              Instagram Business User ID (opcional)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="flex items-center gap-2 text-xs font-bold text-gray-400">
+                <Camera className="w-3.5 h-3.5 text-pink-400" />
+                Instagram Business User ID (opcional)
+              </label>
+              <button
+                onClick={handleFetchIgId}
+                disabled={!settings.meta_page_id || !settings.meta_page_access_token}
+                className="text-[10px] font-bold text-pink-400 hover:text-pink-300 disabled:opacity-30 disabled:cursor-not-allowed bg-pink-500/10 px-2 py-1 rounded"
+              >
+                Autocompletar ID
+              </button>
+            </div>
             <input
               type={showTokens ? "text" : "password"}
               value={settings.meta_ig_user_id}
