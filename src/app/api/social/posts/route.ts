@@ -18,8 +18,9 @@ export async function GET(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const userEmail = user.primaryEmailAddress?.emailAddress;
-    if (userEmail !== ADMIN_EMAIL) {
-      return NextResponse.json({ error: "Acceso restringido al administrador." }, { status: 403 });
+    const isUnlocked = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+    if (userEmail !== ADMIN_EMAIL && !isUnlocked) {
+      return NextResponse.json({ error: "Acceso restringido." }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -57,8 +58,9 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const userEmail = user.primaryEmailAddress?.emailAddress;
-    if (userEmail !== ADMIN_EMAIL) {
-      return NextResponse.json({ error: "Acceso restringido al administrador." }, { status: 403 });
+    const isUnlocked = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+    if (userEmail !== ADMIN_EMAIL && !isUnlocked) {
+      return NextResponse.json({ error: "Acceso restringido." }, { status: 403 });
     }
 
     const body = await request.json();

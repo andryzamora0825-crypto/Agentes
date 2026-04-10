@@ -44,7 +44,8 @@ const PLATFORM_OPTIONS: { value: Platform; label: string; icon: React.ElementTyp
 export default function SocialDashboardPage() {
   const { user, isLoaded } = useUser();
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
-  
+  const hasSocialAccess = isAdmin || !!(user?.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+
   // State
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -52,7 +53,6 @@ export default function SocialDashboardPage() {
   const [activeFilter, setActiveFilter] = useState<PostStatus | "all">("all");
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [hasSocialAccess, setHasSocialAccess] = useState<boolean | null>(null);
 
   // Generate form state
   const [showGenerator, setShowGenerator] = useState(false);
@@ -64,18 +64,6 @@ export default function SocialDashboardPage() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [genError, setGenError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
-
-  // Check access via server (avoids Clerk client cache issues)
-  useEffect(() => {
-    if (isAdmin) {
-      setHasSocialAccess(true);
-      return;
-    }
-    fetch("/api/user/sync")
-      .then(res => res.json())
-      .then(data => setHasSocialAccess(data.hasSocialMedia || false))
-      .catch(() => setHasSocialAccess(false));
-  }, [isAdmin]);
 
   // Fetch posts
   const fetchPosts = useCallback(async () => {
@@ -210,15 +198,7 @@ export default function SocialDashboardPage() {
   };
 
   // Guard: Solo admin o agentes con acceso pueden ver Social Media
-  if (hasSocialAccess === null) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#FFDE00] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!hasSocialAccess) {
+  if (isLoaded && !hasSocialAccess) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-8">
         <div className="text-center space-y-4 max-w-md">
@@ -257,39 +237,42 @@ export default function SocialDashboardPage() {
               </p>
             </div>
 
-            {isAdmin && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setShowSettings(!showSettings); setShowGenerator(false); }}
-                  className={`p-3 rounded-xl border transition-all ${
-                    showSettings
-                      ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                      : "bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/10"
-                  }`}
-                  title="Configuración de Redes"
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => fetchPosts()}
-                  className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white p-3 rounded-xl border border-white/10 transition-all"
-                  title="Recargar"
-                >
-                  <RefreshCw className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => { setShowGenerator(!showGenerator); setShowSettings(false); }}
-                  className={`font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all active:scale-95 ${
-                    showGenerator
-                      ? "bg-white/10 text-gray-300 border border-white/10"
-                      : "bg-[#FFDE00] text-black hover:bg-[#FFC107] shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)]"
-                  }`}
-                >
-                  <Sparkles className={`w-5 h-5 ${showGenerator ? "" : "fill-black"}`} />
-                  {showGenerator ? "Cerrar" : "Generar Post"}
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              {/* Configuración — visible para TODOS (agentes necesitan enlazar sus páginas) */}
+              <button
+                onClick={() => { setShowSettings(!showSettings); setShowGenerator(false); }}
+                className={`p-3 rounded-xl border transition-all ${
+                  showSettings
+                    ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                    : "bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/10"
+                }`}
+                title="Configuración de Redes"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+
+              {/* Botones de gestión: Recargar y Generar */}
+                <>
+                  <button
+                    onClick={() => fetchPosts()}
+                    className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white p-3 rounded-xl border border-white/10 transition-all"
+                    title="Recargar"
+                  >
+                    <RefreshCw className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => { setShowGenerator(!showGenerator); setShowSettings(false); }}
+                    className={`font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all active:scale-95 ${
+                      showGenerator
+                        ? "bg-white/10 text-gray-300 border border-white/10"
+                        : "bg-[#FFDE00] text-black hover:bg-[#FFC107] shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)]"
+                    }`}
+                  >
+                    <Sparkles className={`w-5 h-5 ${showGenerator ? "" : "fill-black"}`} />
+                    {showGenerator ? "Cerrar" : "Generar Post"}
+                  </button>
+                </>
+            </div>
           </div>
         </div>
 
@@ -306,13 +289,13 @@ export default function SocialDashboardPage() {
           </div>
         )}
 
-        {/* ═══ Settings Panel ═══ */}
-        {showSettings && isAdmin && (
+        {/* ═══ Settings Panel (visible para todos) ═══ */}
+        {showSettings && (
           <SocialSettingsPanel onClose={() => setShowSettings(false)} />
         )}
 
         {/* ═══ Generator Panel ═══ */}
-        {showGenerator && isAdmin && (
+        {showGenerator && (
           <div className="bg-[#121212] rounded-3xl border border-white/5 p-5 sm:p-8 shadow-2xl relative overflow-hidden">
             {/* Glow */}
             <div className="absolute top-0 right-0 w-48 h-48 bg-[#FFDE00]/5 rounded-full blur-[80px] pointer-events-none" />

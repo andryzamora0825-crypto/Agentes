@@ -27,11 +27,12 @@ export async function POST(request: Request) {
     if (user) {
       userId = user.id;
       const userEmail = user.primaryEmailAddress?.emailAddress;
-      isAuthorized = userEmail === ADMIN_EMAIL;
+      const isUnlocked = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+      isAuthorized = userEmail === ADMIN_EMAIL || isUnlocked;
       
       if (!isAuthorized) {
         return NextResponse.json(
-          { error: "Solo el administrador puede generar contenido." },
+          { error: "No tienes el módulo de Social Media activado." },
           { status: 403 }
         );
       }

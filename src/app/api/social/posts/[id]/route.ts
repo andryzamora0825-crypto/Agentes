@@ -20,7 +20,8 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const userEmail = user.primaryEmailAddress?.emailAddress;
-    if (userEmail !== ADMIN_EMAIL) {
+    const isUnlocked = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+    if (userEmail !== ADMIN_EMAIL && !isUnlocked) {
       return NextResponse.json({ error: "Acceso restringido." }, { status: 403 });
     }
 
@@ -79,7 +80,8 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const userEmail = user.primaryEmailAddress?.emailAddress;
-    if (userEmail !== ADMIN_EMAIL) {
+    const isUnlocked = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+    if (userEmail !== ADMIN_EMAIL && !isUnlocked) {
       return NextResponse.json({ error: "Acceso restringido." }, { status: 403 });
     }
 

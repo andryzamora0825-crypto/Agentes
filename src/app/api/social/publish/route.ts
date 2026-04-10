@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const user = await currentUser();
     if (user) {
       const userEmail = user.primaryEmailAddress?.emailAddress;
-      isAuthorized = userEmail === ADMIN_EMAIL;
+      const isUnlocked = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
+      isAuthorized = userEmail === ADMIN_EMAIL || isUnlocked;
     } else {
       isAuthorized = validateCronAuth(request);
     }
