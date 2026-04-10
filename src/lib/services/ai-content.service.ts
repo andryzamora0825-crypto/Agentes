@@ -12,34 +12,67 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // Same primary models used in Estudio IA
 const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
-const TEXT_MODEL = "gemini-2.5-flash"; 
-const FALLBACK_MODEL = "gemini-1.5-flash"; // Requested fallback for 503 errors
 
 /**
- * Helper: Intenta generar con el modelo principal, si hay 503 usa el fallback
+ * Helper: Intenta generar texto garantizando reintentos severos sobre gemini-2.5-flash.
+ * Si falla, mostramos el error EXACTO para entender qué pasa.
  */
-async function generateWithFallback(params: any, primaryModel: string) {
-  try {
-    return await ai.models.generateContent({
-      ...params,
-      model: primaryModel,
-    });
-  } catch (error: any) {
-    const is503 = error?.status === 503 || 
-                  error?.status === "UNAVAILABLE" || 
-                  error?.message?.includes("503") || 
-                  error?.message?.includes("high demand") ||
-                  error?.message?.includes("overloaded");
+async function generateText(params: any) {
+  const model = "gemini-2.5-flash";
+  let lastError: any = null;
 
-    if (is503) {
-      console.warn(`[SOCIAL AI FALLBACK] ${primaryModel} está congestionado (503). Cambiando a ${FALLBACK_MODEL}...`);
-      return await ai.models.generateContent({
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
         ...params,
-        model: FALLBACK_MODEL,
+        model: model,
       });
+      return response;
+    } catch (error: any) {
+      lastError = error;
+      const is503 = error?.status === 503 || 
+                    error?.status === "UNAVAILABLE" || 
+                    error?.message?.includes("503") || 
+                    error?.message?.includes("high demand") ||
+                    error?.message?.includes("overloaded") ||
+                    error?.message?.includes("Too Many Requests");
+
+      if (is503 && attempt < 3) {
+        console.warn(`[SOCIAL AI TEXT] ${model} 503 Congestión. Retraso de ${attempt * 3}s (Intento ${attempt}/3)...`);
+        await new Promise(res => setTimeout(res, attempt * 3000));
+        continue;
+      }
+      
+      // Si el error NO es 503, rompemos inmediatamente porque es otro problema (ej. 400, auth)
+      if (!is503) break;
     }
-    throw error;
   }
+
+  // Si falló todas las veces o hubo un error fatal (400, etc), lanzamos el error original de Google.
+  throw new Error(`Google AI falló generando texto con el error: ${lastError?.message || JSON.stringify(lastError)}`);
+}
+
+/**
+ * Helper para Imagen: Solo reintenta con 3.1 (porque sabemos que este sí funciona y existe)
+ */
+async function generateImageWithRetry(params: any, modelToUse: string, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        ...params,
+        model: modelToUse,
+      });
+      return response;
+    } catch (error: any) {
+      if (attempt < retries) {
+        console.warn(`[SOCIAL AI IMAGE RETRY] ${modelToUse} falló. Reintentando en ${attempt * 2}s...`);
+        await new Promise(res => setTimeout(res, attempt * 2000));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`Nano Banana no pudo generar la imagen tras ${retries} intentos.`);
 }
 
 /**
@@ -69,9 +102,8 @@ REGLAS:
 - Sé creativo y engagement-oriented
 `;
 
-  const response = await generateWithFallback(
-    { contents: [{ text: systemPrompt }] },
-    TEXT_MODEL
+  const response = await generateText(
+    { contents: [{ text: systemPrompt }] }
   );
 
   const caption = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
@@ -120,7 +152,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
   }
 
-  const response = await generateWithFallback(
+  const response = await generateImageWithRetry(
     { contents: [{ text: finalPrompt }] },
     NANO_BANANA_2
   );
@@ -173,28 +205,17 @@ export async function generateFullPost(
   userId: string,
   aiSettings?: any
 ): Promise<{ caption: string; imageUrl: string; imagePrompt: string; model: string }> {
+
+  // 🔴 MEDIDA DE EXTREMA URGENCIA (SOLUCIÓN DEFINITIVA):
+  // El maldito modelo de texto de Google sigue fallando con 503 globalmente.
+  // Por orden del usuario, he ANULADO la generación del caption (copys, hashtags, etc) por IA.
+  // Hemos replicado EXACTAMENTE el flujo de Estudio IA: solo agarramos el string bruto 
+  // y lo mandamos de frente al generador de imágenes.
   
-  // Step 1: Generate caption
-  const caption = await generateCaption(params);
+  const caption = params.topic.trim(); // Usamos lo que escribiste como "caption" temporal
+  const imagePrompt = params.topic.trim(); // Lo pasamos directamente a Nano Banana 2
 
-  // Step 2: Build a smart image prompt from the topic
-  const imagePromptResponse = await generateWithFallback(
-    {
-      contents: [{
-        text: `Basado en este tema para redes sociales: "${params.topic}"
-        
-Genera UN prompt corto (máximo 2 frases) en inglés para generar una imagen atractiva para este post de redes sociales. 
-El prompt debe describir una escena visual impactante, profesional y moderna.
-Responde SOLO con el prompt, sin explicaciones.`,
-      }],
-    },
-    TEXT_MODEL
-  );
-
-  const imagePrompt = imagePromptResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-    || `Professional social media post about: ${params.topic}`;
-
-  // Step 3: Generate image
+  // Esta es la llamada idéntica de Estudio IA (que sabemos que funciona).
   const { imageUrl, model } = await generateImage(
     imagePrompt,
     userId,

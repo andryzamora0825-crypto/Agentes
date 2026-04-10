@@ -78,9 +78,11 @@ async function publishToFacebook(
       };
     }
 
+    const metaPostId = data.id || data.post_id;
     return {
       success: true,
-      metaPostId: data.id || data.post_id,
+      metaPostId,
+      postUrl: `https://facebook.com/${metaPostId}`,
     };
   } catch (err: any) {
     return {
@@ -139,9 +141,22 @@ async function publishToInstagram(
       };
     }
 
+    // Step 3: Fetch the dynamic permalink from Meta
+    let postUrl: string | undefined;
+    try {
+      const permalinkRes = await fetch(`${META_GRAPH_URL}/${publishData.id}?fields=permalink&access_token=${accessToken}`);
+      if (permalinkRes.ok) {
+        const permalinkData = await permalinkRes.json();
+        postUrl = permalinkData.permalink;
+      }
+    } catch (e) {
+      console.warn("[SOCIAL] No se pudo obtener el permalink de Instagram", e);
+    }
+
     return {
       success: true,
       metaPostId: publishData.id,
+      postUrl,
     };
   } catch (err: any) {
     return {

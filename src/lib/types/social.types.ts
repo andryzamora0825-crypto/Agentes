@@ -71,6 +71,7 @@ export interface UpdatePostDTO {
 export interface PublishResult {
   success: boolean;
   metaPostId?: string;
+  postUrl?: string; // NUEVO: URL directa al post publicado
   error?: string;
 }
 
