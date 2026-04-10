@@ -134,6 +134,45 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
    - Aplica sutilmente Colores Primario (${aiSettings.primaryColor || '#FFDE00'}) y Secundario (${aiSettings.secondaryColor || '#000000'}) en la iluminación, fondos, o detalles, pero sin forzar a que toda la ropa sea amarilla/negra si no tiene sentido con la petición.
    - Si encaja naturalmente en la escena, incluye el teléfono: ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
+
+    // --- INYECCIÓN DE PERSONAJE (idéntico a Estudio IA) ---
+    if (aiSettings.characterImageUrl) {
+      finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada. Mantén su apariencia, rasgos faciales y estilo reconocibles en la escena generada. El personaje debe ser protagonista o estar visible de forma clara en la imagen.`;
+    }
+  }
+
+  // --- RECOPILAR IMÁGENES DE REFERENCIA (logos, brand, personaje) ---
+  const referenceImages: { base64: string; mimeType: string }[] = [];
+  if (aiSettings) {
+    const urlsToFetch = [
+      aiSettings.agencyLogoUrl, 
+      aiSettings.inspLogoUrl, 
+      aiSettings.brandLogoUrl,
+      aiSettings.characterImageUrl
+    ].filter(Boolean);
+    
+    for (const url of urlsToFetch) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const arrayBuffer = await res.arrayBuffer();
+          referenceImages.push({
+            base64: Buffer.from(arrayBuffer).toString("base64"),
+            mimeType: res.headers.get('content-type') || "image/png"
+          });
+        }
+      } catch (e) {
+        console.error("[SOCIAL] Error descargando imagen de referencia:", e);
+      }
+    }
+  }
+
+  // Construir el contenido final: texto + imágenes de referencia (idéntico a Estudio IA)
+  const contentParts: any[] = [{ text: finalPrompt }];
+  for (const refImg of referenceImages) {
+    contentParts.push({
+      inlineData: { data: refImg.base64, mimeType: refImg.mimeType }
+    });
   }
 
   let response;
@@ -141,7 +180,7 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
     // Llamada DIRECTA sin reintentos (si falla, falla rápido en 20s y no a los 2 minutos)
     response = await ai.models.generateContent({
       model: NANO_BANANA_2,
-      contents: [{ text: finalPrompt }],
+      contents: contentParts,
     });
   } catch (err: any) {
     console.error("🔴 Error DENTRO de Nano Banana Gemini:", err);

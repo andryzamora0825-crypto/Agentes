@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Settings,
   Save,
@@ -16,6 +16,8 @@ import {
   X,
   HelpCircle,
 } from "lucide-react";
+
+const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "2426882634447043";
 
 interface SocialSettingsData {
   meta_page_id: string;
@@ -39,6 +41,7 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   const [settings, setSettings] = useState<SocialSettingsData>({
     meta_page_id: "",
@@ -99,6 +102,83 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
     }
   };
 
+  // ═══════════════════════════════════════════════════════
+  // FACEBOOK OAUTH — Conectar con un clic (sin Graph API Explorer)
+  // ═══════════════════════════════════════════════════════
+  const handleFacebookConnect = useCallback(() => {
+    setConnecting(true);
+    setError(null);
+
+    const redirectUri = `${window.location.origin}/dashboard/social/callback`;
+    const permissions = [
+      "pages_show_list",
+      "pages_manage_posts",
+      "pages_read_engagement",
+      "instagram_basic",
+      "instagram_content_publish"
+    ].join(",");
+
+    const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${permissions}&response_type=token`;
+
+    // Open popup
+    const popup = window.open(oauthUrl, "facebook_oauth", "width=600,height=700,scrollbars=yes");
+
+    // Listen for the token from the callback page
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === "META_OAUTH_TOKEN") {
+        window.removeEventListener("message", handleMessage);
+        const accessToken = event.data.accessToken;
+        
+        // Auto-configure using the received token (same as Arreglador Mágico Strategy 1)
+        try {
+          const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${accessToken}`);
+          const pagesData = await pagesRes.json();
+
+          if (pagesData.data && pagesData.data.length > 0) {
+            const page = pagesData.data[0];
+            const newSettings = {
+              ...settings,
+              meta_page_id: page.id,
+              meta_page_access_token: page.access_token || accessToken
+            };
+            if (page.instagram_business_account?.id) {
+              newSettings.meta_ig_user_id = page.instagram_business_account.id;
+            }
+            setSettings(newSettings);
+            setSuccess(true);
+            setError(`✅ ¡Conectado! Página "${page.name}" configurada automáticamente. ${page.instagram_business_account?.id ? '📸 Instagram encontrado.' : '⚠️ Sin Instagram vinculado.'} ¡Dale a GUARDAR!`);
+            setTimeout(() => setSuccess(false), 8000);
+          } else {
+            // Token received but no pages — store token and let user try Arreglador Mágico
+            setSettings({ ...settings, meta_page_access_token: accessToken });
+            setError("Token recibido pero no se encontraron páginas. Prueba el Arreglador Mágico abajo.");
+          }
+        } catch (err: any) {
+          setError(`Error auto-configurando: ${err.message}`);
+        }
+        setConnecting(false);
+      }
+
+      if (event.data?.type === "META_OAUTH_ERROR") {
+        window.removeEventListener("message", handleMessage);
+        setError(`❌ Facebook rechazó la conexión: ${event.data.error}`);
+        setConnecting(false);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    // Check if popup was closed without completing
+    const checkPopup = setInterval(() => {
+      if (popup && popup.closed) {
+        clearInterval(checkPopup);
+        setConnecting(false);
+      }
+    }, 1000);
+  }, [settings]);
+
   const handleFetchIgId = async () => {
     if (!settings.meta_page_access_token) {
       setError("Necesitas colocar al menos tu Token de Acceso.");
@@ -141,17 +221,23 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
       // ══════════════════════════════════════════
       if (settings.meta_page_id) {
         try {
-          const directRes = await fetch(`https://graph.facebook.com/v19.0/${settings.meta_page_id}?fields=id,name,instagram_business_account&access_token=${token}`);
+          const directRes = await fetch(`https://graph.facebook.com/v19.0/${settings.meta_page_id}?fields=id,name,access_token,instagram_business_account&access_token=${token}`);
           const directData = await directRes.json();
           
           if (directData.id && !directData.error) {
-            const newSettings = { ...settings, meta_page_id: directData.id };
+            const newSettings = { 
+              ...settings, 
+              meta_page_id: directData.id,
+              // Si la API devuelve un Page Access Token dedicado, usarlo (es el que permite PUBLICAR)
+              meta_page_access_token: directData.access_token || token
+            };
             if (directData.instagram_business_account?.id) {
               newSettings.meta_ig_user_id = directData.instagram_business_account.id;
             }
             setSettings(newSettings);
             setSuccess(true);
-            setError(`✅ ¡ÉXITO con Estrategia 2! Página "${directData.name}" confirmada. ${directData.instagram_business_account?.id ? 'Instagram Business encontrado.' : '⚠️ Sin Instagram vinculado.'} ¡Dale a GUARDAR!`);
+            const gotPageToken = !!directData.access_token;
+            setError(`✅ ¡ÉXITO con Estrategia 2! Página "${directData.name}" confirmada. ${gotPageToken ? '🔑 Page Token de PUBLICACIÓN obtenido.' : '⚠️ Sin Page Token dedicado, usando token actual.'} ${directData.instagram_business_account?.id ? '📸 Instagram Business encontrado.' : '⚠️ Sin Instagram vinculado.'} ¡Dale a GUARDAR!`);
             setTimeout(() => setSuccess(false), 8000);
             return;
           }
@@ -285,12 +371,32 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
       )}
 
       <div className="space-y-8">
-        {/* ═══ META GRAPH API ═══ */}
+        {/* ═══ CONECTAR CON FACEBOOK (ONE CLICK) ═══ */}
+        <div className="space-y-4">
+          <button
+            onClick={handleFacebookConnect}
+            disabled={connecting}
+            className="w-full py-4 bg-[#1877F2] hover:bg-[#166AE0] disabled:opacity-50 text-white rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-[0_0_25px_rgba(24,119,242,0.3)] active:scale-[0.98]"
+          >
+            {connecting ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            )}
+            {connecting ? "Conectando con Facebook..." : "🔗 Conectar con Facebook (1 clic)"}
+          </button>
+          <p className="text-[10px] text-gray-600 text-center">
+            Conecta tu cuenta de Facebook para autoconfigurar todo: Page ID, Token de publicación e Instagram.
+            Sin necesidad de copiar tokens manualmente.
+          </p>
+        </div>
+
+        {/* ═══ CONFIGURACIÓN MANUAL (META GRAPH API) ═══ */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
               <Key className="w-3.5 h-3.5" />
-              Meta Graph API (Facebook + Instagram)
+              Configuración Manual (avanzado)
             </h3>
             <button
               onClick={() => setShowGuide(!showGuide)}
