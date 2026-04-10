@@ -36,7 +36,7 @@ export default function AdminPanelPage() {
 
   // Estados del modal de Social Media
   const [editingSocial, setEditingSocial] = useState<any | null>(null);
-  const [socialForm, setSocialForm] = useState({ isUnlocked: false, meta_page_id: "", meta_page_access_token: "", meta_ig_user_id: "" });
+  const [socialForm, setSocialForm] = useState({ isUnlocked: false, meta_page_id: "", meta_page_access_token: "", meta_ig_user_id: "", auto_generate: false });
 
   // Estados del modal Galería Secreta (Admin-only)
   const [galleryUser, setGalleryUser] = useState<any | null>(null);
@@ -63,6 +63,7 @@ export default function AdminPanelPage() {
         meta_page_id: editingSocial.socialMediaSettings?.meta_page_id || "",
         meta_page_access_token: editingSocial.socialMediaSettings?.meta_page_access_token || "",
         meta_ig_user_id: editingSocial.socialMediaSettings?.meta_ig_user_id || "",
+        auto_generate: editingSocial.socialMediaSettings?.auto_generate || false,
       });
     }
   }, [editingSocial]);
@@ -121,7 +122,8 @@ export default function AdminPanelPage() {
           isUnlocked: socialForm.isUnlocked,
           meta_page_id: socialForm.meta_page_id,
           meta_page_access_token: socialForm.meta_page_access_token,
-          meta_ig_user_id: socialForm.meta_ig_user_id
+          meta_ig_user_id: socialForm.meta_ig_user_id,
+          auto_generate: socialForm.auto_generate
         })
       });
 
@@ -132,7 +134,8 @@ export default function AdminPanelPage() {
             isUnlocked: socialForm.isUnlocked, 
             meta_page_id: socialForm.meta_page_id,
             meta_page_access_token: socialForm.meta_page_access_token,
-            meta_ig_user_id: socialForm.meta_ig_user_id
+            meta_ig_user_id: socialForm.meta_ig_user_id,
+            auto_generate: socialForm.auto_generate
           } 
         } : u));
         setEditingSocial(null); // Cerrar modal
@@ -1047,6 +1050,23 @@ export default function AdminPanelPage() {
                          value={socialForm.meta_ig_user_id}
                          onChange={e => setSocialForm({ ...socialForm, meta_ig_user_id: e.target.value })}
                        />
+                     </div>
+
+                     <div className="pt-4 border-t border-blue-500/20 mt-2">
+                       <label className="flex items-center gap-3 bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 cursor-pointer hover:bg-blue-500/20 transition-colors">
+                          <input 
+                            type="checkbox" 
+                            className="w-5 h-5 accent-blue-400"
+                            checked={socialForm.auto_generate}
+                            onChange={e => setSocialForm({ ...socialForm, auto_generate: e.target.checked })}
+                          />
+                          <div className="flex flex-col">
+                            <span className={`text-sm font-bold ${socialForm.auto_generate ? 'text-blue-400' : 'text-gray-400'}`}>
+                              {socialForm.auto_generate ? 'BOT PILOTO AUTOMÁTICO (ACTIVADO)' : 'ACTIVAR BOT PILOTO AUTOMÁTICO'}
+                            </span>
+                            <span className="text-[10px] text-gray-500 max-w-xs leading-tight mt-1">Generará máx. 3 posts al día en horarios aleatorios. Usa las plantillas de la config del cliente.</span>
+                          </div>
+                       </label>
                      </div>
 
                    </div>

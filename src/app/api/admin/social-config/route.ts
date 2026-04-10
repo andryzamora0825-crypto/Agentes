@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { targetUserId, isUnlocked, meta_page_id, meta_page_access_token, meta_ig_user_id } = body;
+    const { targetUserId, isUnlocked, meta_page_id, meta_page_access_token, meta_ig_user_id, auto_generate } = body;
 
     if (!targetUserId) {
         return NextResponse.json({ error: "Falta targetUserId" }, { status: 400 });
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
           meta_page_id: meta_page_id || null,
           meta_page_access_token: meta_page_access_token || null,
           meta_ig_user_id: meta_ig_user_id || null,
+          auto_generate: !!auto_generate,
         })
         .eq("user_id", targetUserId);
     } else {
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
           meta_page_id: meta_page_id || null,
           meta_page_access_token: meta_page_access_token || null,
           meta_ig_user_id: meta_ig_user_id || null,
+          auto_generate: !!auto_generate,
         });
     }
 

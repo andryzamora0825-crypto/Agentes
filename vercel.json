@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/social/generate",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/social/publish",
-      "schedule": "*/30 * * * *"
+      "path": "/api/cron/auto-publish-trigger",
+      "schedule": "0 14,18,23 * * *"
     }
   ]
 }

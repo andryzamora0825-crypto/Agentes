@@ -52,6 +52,7 @@ export async function GET() {
           meta_page_id: socialSettingsMap[u.id]?.meta_page_id || "",
           meta_page_access_token: socialSettingsMap[u.id]?.meta_page_access_token || "",
           meta_ig_user_id: socialSettingsMap[u.id]?.meta_ig_user_id || "",
+          auto_generate: socialSettingsMap[u.id]?.auto_generate || false,
         },
         createdAt: u.createdAt,
         generationCount: imgCounts[email.toLowerCase()] || 0
