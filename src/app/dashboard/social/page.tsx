@@ -212,7 +212,7 @@ export default function SocialDashboardPage() {
               </h1>
               <p className="text-gray-400 mt-2 text-base flex items-center gap-2">
                 Genera, aprueba y publica contenido automáticamente con{" "}
-                <span className="text-[#FFDE00] font-black flex items-center gap-1"><Sparkles className="w-4 h-4" /> DALL-E 3 + ChatGPT</span>
+                <span className="text-[#FFDE00] font-black flex items-center gap-1"><Bot className="w-4 h-4" /> Nano Banana</span>
               </p>
             </div>
 
@@ -279,8 +279,8 @@ export default function SocialDashboardPage() {
             {/* Model indicator */}
             <div className="flex items-center gap-2 mb-5">
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border bg-[#FFDE00]/10 border-[#FFDE00]/20 text-[#FFDE00]">
-                <Sparkles className="w-3.5 h-3.5" />
-                DALL-E 3 + ChatGPT Vision
+                <Bot className="w-3.5 h-3.5" />
+                Nano Banana 2 — Texto + Imagen
               </div>
             </div>
 
@@ -401,7 +401,7 @@ export default function SocialDashboardPage() {
                 {generating ? (
                   <>
                     <Loader2 className="w-6 h-6 animate-spin" />
-                    DALL-E 3 generando...
+                    Nano Banana generando...
                   </>
                 ) : (
                   <>
@@ -419,8 +419,8 @@ export default function SocialDashboardPage() {
                     <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00] drop-shadow-[0_0_10px_rgba(255,222,0,0.8)]" />
                     <h3 className="font-bold text-white text-lg">Generando contenido con IA...</h3>
                     <p className="text-sm text-gray-400 max-w-md">
-                      DALL-E 3 está trabajando como artista para crear la imagen de tu post. Esto puede tomar
-                      15-20 segundos.
+                      Nano Banana está creando tu imagen. Esto puede tomar
+                      15-30 segundos dependiendo de la disponibilidad del servidor.
                     </p>
                   </div>
                 </div>
