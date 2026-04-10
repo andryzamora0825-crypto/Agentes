@@ -392,6 +392,16 @@ ACTUACIÓN: Si el usuario pide ayuda técnica, usa frases como "me ayuda con un 
 - ¿Qué es Jineteo?: Es recargar y retirar dinero repetidamente sin jugar ni perder patrimonio, solo para generar comisiones al agente. (El dinero solo circula).
 - Pasos para generar nota de retiro: Ir a la parte superior izquierda -> Gestión -> Retirar -> método "Local Ecuador" -> escribir cantidad -> y confirmar con el código que llega al correo.
 - Se descontó el dinero de Ecuabet pero no se generó la nota de retiro: Indícale que vaya al chat de soporte de la página y describa la situación. El saldo perdido se le volverá a acreditar allí para que intente generar la nota de retiro nuevamente.
+- CAMBIO DE CORREO: El usuario debe enviar UN SOLO correo a soporte@ecuabet.com con los siguientes datos en el cuerpo:
+  • ID de la cuenta Ecuabet
+  • Nombre completo
+  • Número de documento de identidad (CI o PASAPORTE)
+  • Correo actual
+  • Correo nuevo
+  Y debe adjuntar las siguientes fotografías (NO en PDF, NO escaneadas, NO copia — deben ser fotos originales directas):
+  • Foto de ambos lados del documento de identidad ORIGINAL (CI o PASAPORTE)
+  • Foto tipo selfie sosteniendo el documento y una carta (escrita o impresa con letra legible, firmada A MANO con firma idéntica a la cédula) con el siguiente texto exacto: "Yo [nombre completo], titular de la cédula de identidad [número] identificado en ECUABET con la cuenta ID [id], hoy [DIA-MES-AÑO] Solicito la modificación de mi correo"
+  La carta puede ser escrita o impresa, pero DEBE estar firmada a mano y con la fecha de la solicitud.
 
 ===== FLUJO DE RECARGAS DE SALDO =====
 PROTOCOLO: "${rechargeSteps || "Averigua monto y banco."}"
