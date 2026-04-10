@@ -322,21 +322,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, action: "scammer" });
     }
 
-    // INDICADOR TYPING (No bloquea)
-    fetch(`${waBaseUrl}/waInstance${providerConfig.idInstance}/sendAction/${providerConfig.apiTokenInstance}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatId: sender, action: "typing" }), signal: AbortSignal.timeout(3000),
-    }).catch(() => { });
-
     // INSERCIÓN DIRECTA
     const { data: insertedChat } = await supabase.from("whatsapp_chats")
       .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
       .select('id').single();
 
-    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (3 SEGS) ──
-    // Vercel Pro nos permite esperar más. Si el cliente escribe otra línea rápidamente 
-    // o si GreenAPI tiene latencia entregando los Webhooks, esto evitará el doble disparo.
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (5 SEGS) ──
+    // Espera 5 segundos antes de procesar para capturar todos los mensajes del mismo turno.
+    // Si el usuario manda 3 mensajes rápidos, solo el último invoca a OpenAI con todos agrupados.
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     if (insertedChat?.id) {
       const { data: latestMsg } = await supabase.from("whatsapp_chats")
@@ -354,12 +348,34 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── HISTORIAL DE CONVERSACIÓN RAPIDO ──
+    // Typing justo antes de procesar (debounce ya pasó, ahora sí vamos a responder)
+    fetch(`${waBaseUrl}/waInstance${providerConfig.idInstance}/sendAction/${providerConfig.apiTokenInstance}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId: sender, action: "typing" }), signal: AbortSignal.timeout(3000),
+    }).catch(() => { });
+
+    // ── HISTORIAL DE CONVERSACIÓN ──
     const { data: rawHistory } = await supabase.from("whatsapp_chats")
       .select("role, content").eq("owner_id", uid).eq("phone_number", sender)
-      .order("created_at", { ascending: true }).limit(30);
+      .order("created_at", { ascending: true }).limit(40);
 
     const history = rawHistory || [];
+
+    // ── AGRUPAR MENSAJES DEL TURNO ACTUAL ──
+    // Detectar todos los mensajes del cliente desde la última respuesta del bot.
+    // Si mandó 3 mensajes seguidos, los agrupamos en un solo "turno" para OpenAI.
+    let turnStart = 0;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === "model") {
+        turnStart = i + 1;
+        break;
+      }
+    }
+    const currentTurnMsgs = history.slice(turnStart).filter(m => m.role === "user");
+    const isMultiTurn = currentTurnMsgs.length > 1;
+    if (isMultiTurn) {
+      console.log(`[WEBHOOK] 📦 Turno multi-mensaje: ${currentTurnMsgs.length} mensajes agrupados para análisis`);
+    }
 
     // ── OBTENER TAGS DEL CLIENTE PARA CONTEXTO ──
     const { data: userTags } = await supabase.from("whatsapp_contact_tags")
@@ -422,9 +438,23 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt }];
 
-    // Inyectar el historial (excluyendo el último porque el LLM lo verá como el "prompt")
-    for (const msg of history) {
-      messages.push({ role: msg.role === "model" ? "assistant" : "user", content: msg.content });
+    if (isMultiTurn) {
+      // Inyectar historial hasta antes del turno actual
+      const historyBeforeTurn = history.slice(0, turnStart);
+      for (const msg of historyBeforeTurn) {
+        messages.push({ role: msg.role === "model" ? "assistant" : "user", content: msg.content });
+      }
+      // Agrupar los mensajes del turno en uno solo para que la IA los analice juntos
+      const grouped = currentTurnMsgs.map((m, i) => `[${i + 1}] ${m.content}`).join("\n");
+      messages.push({
+        role: "user",
+        content: `[IMPORTANTE: El cliente envió ${currentTurnMsgs.length} mensajes seguidos. Analízalos todos como una sola consulta y responde TODO en un único mensaje coherente.]\n${grouped}`,
+      });
+    } else {
+      // Turno normal: inyectar historial completo
+      for (const msg of history) {
+        messages.push({ role: msg.role === "model" ? "assistant" : "user", content: msg.content });
+      }
     }
 
     let aiResponse = "";
@@ -434,8 +464,8 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
         messages,
         tools: BOT_TOOLS,
         tool_choice: "auto",
-        max_tokens: 300,
-        temperature: 0.35,
+        max_tokens: 600,
+        temperature: 0.3,
       });
 
       // Lógica nativa de Tool execution (max 3 rondas)
@@ -457,7 +487,7 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
           }
 
           completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", messages, tools: BOT_TOOLS, tool_choice: "auto", max_tokens: 300, temperature: 0.35,
+            model: "gpt-4o-mini", messages, tools: BOT_TOOLS, tool_choice: "auto", max_tokens: 600, temperature: 0.3,
           });
         } else {
           break; // Fin del proceso LLM
