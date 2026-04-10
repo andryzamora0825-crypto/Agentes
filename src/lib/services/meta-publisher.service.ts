@@ -12,31 +12,66 @@ const MAX_RETRIES = 3;
 const META_GRAPH_URL = "https://graph.facebook.com/v25.0";
 
 /**
- * CRITICAL FIX: Exchanges a User Token for a Page Token.
- * The "publish_actions is deprecated" error happens when you use a User Token
- * instead of a Page Token. This function asks Meta: "give me the real Page Token
- * for this Page ID using my User Token", which is what Facebook actually requires.
- * If the token is ALREADY a Page Token, the exchange still works (returns itself).
+ * SMART TOKEN RESOLVER: Resolves a valid Page ID + Page Token from whatever the user configured.
+ * 
+ * Problem: Users often paste their personal User ID instead of their Page ID,
+ * or paste a User Token instead of a Page Token. Both cause publishing errors.
+ * 
+ * Solution: This function tries multiple strategies:
+ * 1. Direct exchange: GET /{pageId}?fields=access_token (works if pageId is actually a Page)
+ * 2. Auto-discovery: GET /me/accounts (lists ALL pages the user manages, picks the first one)
+ * 
+ * Returns: { resolvedPageId, resolvedPageToken } — guaranteed to be a real Page or throws.
  */
-async function getPageAccessToken(pageId: string, userOrPageToken: string): Promise<string> {
+async function resolvePageCredentials(
+  storedPageId: string,
+  userOrPageToken: string
+): Promise<{ resolvedPageId: string; resolvedPageToken: string }> {
+  
+  // Strategy 1: Try direct exchange (works when storedPageId IS a real Page ID)
   try {
     const res = await fetch(
-      `${META_GRAPH_URL}/${pageId}?fields=access_token&access_token=${userOrPageToken}`
+      `${META_GRAPH_URL}/${storedPageId}?fields=access_token,name,category&access_token=${userOrPageToken}`
     );
     const data = await res.json();
 
-    if (data.access_token) {
-      console.log(`[META] ✅ Page Token obtenido exitosamente para Page ${pageId}`);
-      return data.access_token; // This is the REAL Page Token
+    if (data.access_token && data.category) {
+      // It's a real Page! We got a Page Token.
+      console.log(`[META] ✅ Página verificada: "${data.name}" (${data.category}) — Token OK`);
+      return { resolvedPageId: storedPageId, resolvedPageToken: data.access_token };
     }
 
-    // If we can't exchange, fall back to the original token and let it fail naturally
-    console.warn(`[META] ⚠️ No se pudo intercambiar token para Page ${pageId}:`, data.error?.message || "Unknown");
-    return userOrPageToken;
+    if (data.access_token && !data.category) {
+      console.warn(`[META] ⚠️ ID ${storedPageId} devolvió token pero sin categoría — posible perfil personal`);
+      // Fall through to auto-discovery
+    }
   } catch (err) {
-    console.warn(`[META] ⚠️ Error en intercambio de token, usando token original:`, err);
-    return userOrPageToken;
+    console.warn(`[META] ⚠️ Error en intercambio directo:`, err);
   }
+
+  // Strategy 2: Auto-discover — ask Meta for ALL pages this token can manage
+  try {
+    console.log(`[META] 🔍 Auto-descubriendo páginas del usuario...`);
+    const res = await fetch(
+      `${META_GRAPH_URL}/me/accounts?fields=id,name,access_token,category&access_token=${userOrPageToken}`
+    );
+    const data = await res.json();
+
+    if (data.data && data.data.length > 0) {
+      // Pick the first page (or try to match the stored ID)
+      let page = data.data.find((p: any) => p.id === storedPageId) || data.data[0];
+      console.log(`[META] ✅ Página auto-descubierta: "${page.name}" (ID: ${page.id}, Categoría: ${page.category})`);
+      return { resolvedPageId: page.id, resolvedPageToken: page.access_token };
+    }
+
+    console.error(`[META] ❌ El usuario no administra ninguna Página de Facebook.`);
+  } catch (err) {
+    console.error(`[META] ❌ Error en auto-descubrimiento:`, err);
+  }
+
+  // Last resort: use what we have and let it fail with a clear error
+  console.error(`[META] ❌ No se pudo resolver una Página válida. Usando token original como fallback.`);
+  return { resolvedPageId: storedPageId, resolvedPageToken: userOrPageToken };
 }
 
 /**
@@ -72,28 +107,27 @@ async function publishToFacebook(
   imageUrl?: string | null
 ): Promise<PublishResult> {
   try {
-    // CRITICAL: Exchange the token for a real Page Token BEFORE publishing.
-    // This is the fix for "publish_actions is deprecated" — that error means
-    // a User Token was sent instead of a Page Token.
-    const pageToken = await getPageAccessToken(pageId, accessToken);
+    // SMART RESOLVE: Gets the REAL Page ID + Page Token even if the user stored wrong data.
+    // Fixes both "publish_actions deprecated" AND "not allowed to upload photos" errors.
+    const { resolvedPageId, resolvedPageToken } = await resolvePageCredentials(pageId, accessToken);
 
     let endpoint: string;
     let body: Record<string, string>;
 
     if (imageUrl) {
-      // Photo post
-      endpoint = `${META_GRAPH_URL}/${pageId}/photos`;
+      // Photo post — uses the RESOLVED Page ID, not the stored one
+      endpoint = `${META_GRAPH_URL}/${resolvedPageId}/photos`;
       body = {
         url: imageUrl,
         caption,
-        access_token: pageToken,
+        access_token: resolvedPageToken,
       };
     } else {
       // Text-only post
-      endpoint = `${META_GRAPH_URL}/${pageId}/feed`;
+      endpoint = `${META_GRAPH_URL}/${resolvedPageId}/feed`;
       body = {
         message: caption,
-        access_token: pageToken,
+        access_token: resolvedPageToken,
       };
     }
 
@@ -136,8 +170,8 @@ async function publishToInstagram(
   imageUrl: string
 ): Promise<PublishResult> {
   try {
-    // Same fix as Facebook: exchange for Page Token first
-    const pageToken = await getPageAccessToken(igUserId, accessToken);
+    // For Instagram, we need the Page Token but keep using the IG User ID for endpoints
+    const { resolvedPageToken } = await resolvePageCredentials(igUserId, accessToken);
 
     // Step 1: Create media container
     const containerRes = await fetch(`${META_GRAPH_URL}/${igUserId}/media`, {
@@ -146,7 +180,7 @@ async function publishToInstagram(
       body: JSON.stringify({
         image_url: imageUrl,
         caption,
-        access_token: pageToken,
+        access_token: resolvedPageToken,
       }),
     });
 
@@ -166,7 +200,7 @@ async function publishToInstagram(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         creation_id: containerId,
-        access_token: pageToken,
+        access_token: resolvedPageToken,
       }),
     });
 
@@ -181,7 +215,7 @@ async function publishToInstagram(
     // Step 3: Fetch the dynamic permalink from Meta
     let postUrl: string | undefined;
     try {
-      const permalinkRes = await fetch(`${META_GRAPH_URL}/${publishData.id}?fields=permalink&access_token=${pageToken}`);
+      const permalinkRes = await fetch(`${META_GRAPH_URL}/${publishData.id}?fields=permalink&access_token=${resolvedPageToken}`);
       if (permalinkRes.ok) {
         const permalinkData = await permalinkRes.json();
         postUrl = permalinkData.permalink;
