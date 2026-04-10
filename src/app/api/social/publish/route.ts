@@ -59,7 +59,7 @@ export async function POST(request: Request) {
             .update({
               status: "published",
               published_at: new Date().toISOString(),
-              meta_post_id: result.metaPostId || null,
+              meta_post_id: result.postUrl || result.metaPostId || null,
             })
             .eq("id", post.id);
 

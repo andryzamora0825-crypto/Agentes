@@ -121,14 +121,15 @@ export default function PostCard({
           )}
 
           {/* Error message */}
-          {post.last_error && post.status === "failed" && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-3">
+          {post.last_error && (
+            <div className={`bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-3 ${post.status === "failed" ? "opacity-100" : "opacity-80"}`}>
               <p className="text-[10px] text-red-400 font-bold line-clamp-2">
-                <AlertTriangle className="w-3 h-3 shrink-0" /> {post.last_error}
+                <AlertTriangle className="w-3 h-3 shrink-0 inline mr-1" />
+                {post.last_error}
               </p>
-              {post.retry_count > 0 && (
+              {post.retry_count > 0 && post.status !== "published" && (
                 <p className="text-[9px] text-red-500/60 mt-1">
-                  Intentos: {post.retry_count}/3
+                  Intentos de publicación: {post.retry_count}/3
                 </p>
               )}
             </div>
@@ -201,6 +202,19 @@ export default function PostCard({
               >
                 <Trash2 className="w-3 h-3" />
               </button>
+            )}
+
+            {/* Ver Link (only for published) */}
+            {post.status === "published" && post.meta_post_id && (
+              <a
+                href={post.meta_post_id.startsWith("http") ? post.meta_post_id : `https://facebook.com/${post.meta_post_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-400 px-2 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border border-fuchsia-500/20"
+              >
+                <Eye className="w-3 h-3" />
+                Ver Link
+              </a>
             )}
           </div>
 
