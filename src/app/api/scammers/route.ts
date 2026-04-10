@@ -108,14 +108,11 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const rawPhone = searchParams.get('phone');
+    const phone = searchParams.get('phone');
 
-    if (!rawPhone) {
+    if (!phone) {
       return NextResponse.json({ error: "Se requiere un número de teléfono para la búsqueda." }, { status: 400 });
     }
-    
-    // Normalizar el número para la búsqueda ignorando espacios y guiones
-    const phone = rawPhone.replace(/[\s-]/g, '');
 
     const { data, error } = await supabase
       .from('scammers')

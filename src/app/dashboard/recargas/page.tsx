@@ -69,19 +69,11 @@ export default function RecargasPage() {
   const updateStatus = async (id: string, status: string) => {
     setUpdatingId(id);
     try {
-      const res = await fetch("/api/recargas", {
+      await fetch("/api/recargas", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status })
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${res.status}`);
-      }
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Error al actualizar la recarga");
-      }
       setRecargas(prev => prev.filter(r => r.id !== id));
       if (status === "completed") {
         setConfirmSuccess(true);
