@@ -44,8 +44,7 @@ const PLATFORM_OPTIONS: { value: Platform; label: string; icon: React.ElementTyp
 export default function SocialDashboardPage() {
   const { user, isLoaded } = useUser();
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
-  const hasSocialAccess = isAdmin || !!(user?.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
-
+  
   // State
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -53,6 +52,7 @@ export default function SocialDashboardPage() {
   const [activeFilter, setActiveFilter] = useState<PostStatus | "all">("all");
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [hasSocialAccess, setHasSocialAccess] = useState<boolean | null>(null);
 
   // Generate form state
   const [showGenerator, setShowGenerator] = useState(false);
@@ -64,6 +64,18 @@ export default function SocialDashboardPage() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [genError, setGenError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
+
+  // Check access via server (avoids Clerk client cache issues)
+  useEffect(() => {
+    if (isAdmin) {
+      setHasSocialAccess(true);
+      return;
+    }
+    fetch("/api/user/sync")
+      .then(res => res.json())
+      .then(data => setHasSocialAccess(data.hasSocialMedia || false))
+      .catch(() => setHasSocialAccess(false));
+  }, [isAdmin]);
 
   // Fetch posts
   const fetchPosts = useCallback(async () => {
@@ -198,7 +210,15 @@ export default function SocialDashboardPage() {
   };
 
   // Guard: Solo admin o agentes con acceso pueden ver Social Media
-  if (isLoaded && !hasSocialAccess) {
+  if (hasSocialAccess === null) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#FFDE00] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!hasSocialAccess) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-8">
         <div className="text-center space-y-4 max-w-md">

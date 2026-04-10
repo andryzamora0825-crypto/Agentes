@@ -174,6 +174,7 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
     const checkPopup = setInterval(() => {
       if (popup && popup.closed) {
         clearInterval(checkPopup);
+        window.removeEventListener("message", handleMessage);
         setConnecting(false);
       }
     }, 1000);
