@@ -20,6 +20,16 @@ export default function AdminPanelPage() {
   const [deployingStatus, setDeployingStatus] = useState(false);
   const [deployProgress, setDeployProgress] = useState({ total: 0, current: 0, logs: [] as string[] });
 
+  // Estados del Centro de Difusión (Broadcast Meta)
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTopic, setBroadcastTopic] = useState("");
+  const [broadcastPlatform, setBroadcastPlatform] = useState<"facebook" | "instagram" | "both">("both");
+  const [broadcastImageFormat, setBroadcastImageFormat] = useState<"square" | "landscape" | "portrait">("square");
+  const [broadcastSelectedUsers, setBroadcastSelectedUsers] = useState<string[]>([]);
+  const [broadcastSearch, setBroadcastSearch] = useState("");
+  const [broadcastDeploying, setBroadcastDeploying] = useState(false);
+  const [broadcastProgress, setBroadcastProgress] = useState({ total: 0, current: 0, logs: [] as string[] });
+
   // Estados del modal de WhatsApp
   const [editingWa, setEditingWa] = useState<any | null>(null);
   const [waForm, setWaForm] = useState({ isUnlocked: false, apiUrl: "", idInstance: "", apiTokenInstance: "" });
@@ -324,6 +334,68 @@ export default function AdminPanelPage() {
     }
   };
 
+  const deployBroadcast = async () => {
+    if (broadcastSelectedUsers.length === 0) {
+      alert("Selecciona al menos un agente.");
+      return;
+    }
+    if (!broadcastTopic.trim()) {
+      alert("Por favor ingresa el tema/prompt.");
+      return;
+    }
+    if (!confirm(`¿Desplegar publicación a ${broadcastSelectedUsers.length} agentes? Esto tomará su tiempo ya que genera IA iterativamente.`)) return;
+
+    setBroadcastDeploying(true);
+    setBroadcastProgress({ total: broadcastSelectedUsers.length, current: 0, logs: ["Iniciando Centro de Difusión Global de Redes Sociales..."] });
+
+    for (let i = 0; i < broadcastSelectedUsers.length; i++) {
+      const targetUserId = broadcastSelectedUsers[i];
+      const u = users.find(x => x.id === targetUserId);
+      const name = u ? u.name : targetUserId;
+
+      setBroadcastProgress(p => ({ 
+        ...p, 
+        current: i + 1, 
+        logs: [...p.logs, `⏳ [${i+1}/${broadcastSelectedUsers.length}] Generando IA para ${name}...`] 
+      }));
+
+      try {
+        const res = await fetch("/api/admin/broadcast/single", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            targetUserId: targetUserId, 
+            topic: broadcastTopic, 
+            platform: broadcastPlatform, 
+            imageFormat: broadcastImageFormat 
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setBroadcastProgress(p => ({ 
+            ...p, 
+            logs: [...p.logs, `✅ ${name}: Publicado en Meta (${data.postUrl || 'OK'})`] 
+          }));
+        } else {
+          setBroadcastProgress(p => ({ 
+            ...p, 
+            logs: [...p.logs, `❌ ${name}: Error - ${data.error}`] 
+          }));
+        }
+      } catch (err: any) {
+        setBroadcastProgress(p => ({ 
+           ...p, 
+           logs: [...p.logs, `❌ ${name}: Falló conexión HTTP - ${err.message}`] 
+        }));
+      }
+    }
+
+    setBroadcastProgress(p => ({ ...p, logs: [...p.logs, "🎉 ¡Difusión finalizada!"] }));
+    setBroadcastDeploying(false);
+  };
+
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(search.toLowerCase()) || 
     u.email.toLowerCase().includes(search.toLowerCase())
@@ -433,6 +505,169 @@ export default function AdminPanelPage() {
                   
                   {!deployingStatus && deployProgress.logs.some(l => l.includes('finalizado')) && (
                      <button onClick={() => { setDeployingStatus(false); setDeployProgress({total:0, current:0, logs:[]}); }} className="mt-4 text-xs font-bold text-gray-500 hover:text-white underline">
+                       Cerrar y Limpiar
+                     </button>
+                  )}
+                </div>
+              )}
+            </div>
+         </div>
+      </div>
+
+      {/* Campaña de Difusión Global Meta (Redes Sociales) */}
+      <div className="bg-[#121212] border border-white/5 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden mt-8">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+         <div className="flex items-start gap-4 z-10 relative">
+            <div className="bg-fuchsia-500/20 p-3 rounded-2xl hidden sm:block">
+              <Share2 className="w-8 h-8 text-fuchsia-400" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+                <span className="sm:hidden"><Share2 className="w-6 h-6 text-fuchsia-400" /></span>
+                Centro de Difusión Global (Meta)
+              </h2>
+              <p className="text-gray-400 text-sm mb-6 max-w-2xl">
+                Alimenta este módulo con un caso base y nuestro sistema distribuirá publicaciones independientes en Facebook e Instagram para cada uno de los clientes seleccionados, aplicando su propio <b>Tono de Voz</b> e identidad gráfica.
+              </p>
+
+              <div className="space-y-4 max-w-3xl">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Tema Central / Prompt (Requerido)</label>
+                  <textarea 
+                    value={broadcastTopic}
+                    onChange={e => setBroadcastTopic(e.target.value)}
+                    placeholder="Ej: Hoy es el día del agua. Genera un post sobre la importancia de la calidad del agua..."
+                    className="w-full bg-[#0A0A0A] text-white border border-white/10 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50 resize-y min-h-[100px] text-sm custom-scrollbar"
+                    disabled={broadcastDeploying}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Plataforma Objetivo</label>
+                    <select 
+                      value={broadcastPlatform}
+                      onChange={(e) => setBroadcastPlatform(e.target.value as any)}
+                      className="w-full bg-[#0A0A0A] text-white py-3 px-4 rounded-xl border border-white/10 focus:outline-none focus:border-fuchsia-500 text-sm appearance-none outline-none"
+                      disabled={broadcastDeploying}
+                    >
+                      <option value="both">Ambas (Facebook e Instagram)</option>
+                      <option value="facebook">Solo Facebook (Feed)</option>
+                      <option value="instagram">Solo Instagram (Feed)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Formato de Imagen</label>
+                    <select 
+                      value={broadcastImageFormat}
+                      onChange={(e) => setBroadcastImageFormat(e.target.value as any)}
+                      className="w-full bg-[#0A0A0A] text-white py-3 px-4 rounded-xl border border-white/10 focus:outline-none focus:border-fuchsia-500 text-sm appearance-none outline-none"
+                      disabled={broadcastDeploying}
+                    >
+                      <option value="square">Cuadrado (1:1)</option>
+                      <option value="portrait">Vertical (4:5)</option>
+                      <option value="landscape">Horizontal (16:9)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex justify-between items-center">
+                    <span>Seleccionar Destinos (Agentes con Social Media Desbloqueado)</span>
+                    <button 
+                      onClick={() => {
+                        const valid = users.filter(u => u.socialMediaSettings?.isUnlocked).map(u => u.id);
+                        if (broadcastSelectedUsers.length === valid.length) setBroadcastSelectedUsers([]);
+                        else setBroadcastSelectedUsers(valid);
+                      }}
+                      className="text-fuchsia-400 hover:text-white transition-colors"
+                      disabled={broadcastDeploying}
+                    >
+                      {broadcastSelectedUsers.length === users.filter(u => u.socialMediaSettings?.isUnlocked).length ? "Desmarcar Todos" : "Marcar Todos"}
+                    </button>
+                  </label>
+
+                  <div className="mb-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <input 
+                        type="text"
+                        placeholder="Buscar por nombre o correo en est listado..."
+                        value={broadcastSearch}
+                        onChange={(e) => setBroadcastSearch(e.target.value)}
+                        className="w-full bg-[#0A0A0A] text-white py-2 pl-9 pr-4 rounded-xl border border-white/10 focus:outline-none focus:border-fuchsia-500 text-xs"
+                        disabled={broadcastDeploying}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0A0A0A] border border-white/10 rounded-2xl max-h-48 overflow-y-auto p-2 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {users.filter(u => u.socialMediaSettings?.isUnlocked).length === 0 ? (
+                      <div className="col-span-full p-4 text-center text-gray-500 text-xs">No hay clientes con el módulo Social Media activo.</div>
+                    ) : (
+                       users.filter(u => u.socialMediaSettings?.isUnlocked)
+                         .filter(u => u.name?.toLowerCase().includes(broadcastSearch.toLowerCase()) || u.email?.toLowerCase().includes(broadcastSearch.toLowerCase()))
+                         .map(u => (
+                         <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-white/5 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-white/5">
+                           <input 
+                             type="checkbox"
+                             checked={broadcastSelectedUsers.includes(u.id)}
+                             onChange={(e) => {
+                               if (e.target.checked) setBroadcastSelectedUsers(prev => [...prev, u.id]);
+                               else setBroadcastSelectedUsers(prev => prev.filter(id => id !== u.id));
+                             }}
+                             disabled={broadcastDeploying}
+                             className="rounded border-none outline-none bg-black/50 w-4 h-4 checked:bg-fuchsia-500 appearance-none flex items-center justify-center after:content-['✓'] after:text-white after:text-[10px] after:opacity-0 checked:after:opacity-100 shrink-0"
+                           />
+                           <div className="flex flex-col overflow-hidden min-w-0">
+                             <span className="text-xs text-white truncate max-w-full">{u.name}</span>
+                             <span className="text-[10px] text-gray-500 truncate max-w-full">{u.email}</span>
+                           </div>
+                         </label>
+                       ))
+                    )}
+                  </div>
+                </div>
+
+                <button 
+                  onClick={deployBroadcast}
+                  disabled={broadcastDeploying || !broadcastTopic.trim() || broadcastSelectedUsers.length === 0}
+                  className="mt-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 w-full sm:w-auto justify-center"
+                >
+                  {broadcastDeploying ? <Loader2 className="w-5 h-5 animate-spin" /> : <Share2 className="w-5 h-5" />}
+                  {broadcastDeploying ? "Transmitiendo al Mundo..." : `Difundir a ${broadcastSelectedUsers.length} Agentes`}
+                </button>
+              </div>
+
+              {/* Logs de Despliegue Broadcast */}
+              {broadcastProgress.logs.length > 0 && (
+                <div className="mt-6 bg-[#0A0A0A] border border-white/5 rounded-2xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-black uppercase text-gray-500 tracking-widest">Panel de Emisión</span>
+                    {broadcastProgress.total > 0 && (
+                      <span className="text-xs font-bold text-fuchsia-400">{broadcastProgress.current} / {broadcastProgress.total} Destinos</span>
+                    )}
+                  </div>
+                  
+                  {broadcastProgress.total > 0 && (
+                    <div className="w-full bg-white/5 h-2 rounded-full mb-4 overflow-hidden">
+                      <div 
+                        className="bg-fuchsia-500 h-full transition-all duration-500" 
+                        style={{ width: `${(broadcastProgress.current / broadcastProgress.total) * 100}%` }}
+                      ></div>
+                    </div>
+                  )}
+
+                  <div className="max-h-60 overflow-y-auto space-y-2 text-xs font-mono pr-2 custom-scrollbar">
+                    {broadcastProgress.logs.map((log, idx) => (
+                      <div key={idx} className={log.includes('✅') ? 'text-green-400' : log.includes('❌') ? 'text-red-400' : 'text-gray-400'}>
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {!broadcastDeploying && broadcastProgress.logs.some(l => l.includes('finalizada')) && (
+                     <button onClick={() => { setBroadcastDeploying(false); setBroadcastProgress({total:0, current:0, logs:[]}); }} className="mt-4 text-xs font-bold text-gray-500 hover:text-white underline">
                        Cerrar y Limpiar
                      </button>
                   )}
