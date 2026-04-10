@@ -17,44 +17,33 @@ const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
 const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
 /**
- * Helper: Intenta generar texto garantizando reintentos severos sobre gemini-2.5-flash.
- * Si falla, mostramos el error EXACTO para entender qué pasa.
+ * Helper: Generates text using OpenAI GPT-4o-mini (replaces the unstable Gemini text model)
  */
-async function generateText(params: any) {
-  const model = "gemini-2.5-flash";
+async function generateTextOpenAI(systemPrompt: string): Promise<string> {
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const response = await ai.models.generateContent({
-        ...params,
-        model: model,
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "system", content: systemPrompt }],
+        max_tokens: 300,
+        temperature: 0.7,
       });
-      return response;
+
+      return response.choices[0].message.content || "";
     } catch (error: any) {
       lastError = error;
-      const is503 = error?.status === 503 ||
-        error?.status === "UNAVAILABLE" ||
-        error?.message?.includes("503") ||
-        error?.message?.includes("high demand") ||
-        error?.message?.includes("overloaded") ||
-        error?.message?.includes("Too Many Requests");
-
-      if (is503 && attempt < 3) {
-        console.warn(`[SOCIAL AI TEXT] ${model} 503 Congestión. Retraso de ${attempt * 3}s (Intento ${attempt}/3)...`);
-        await new Promise(res => setTimeout(res, attempt * 3000));
+      if (error?.status === 429 && attempt < 3) {
+        await new Promise(res => setTimeout(res, attempt * 2000));
         continue;
       }
-
-      // Si el error NO es 503, rompemos inmediatamente porque es otro problema (ej. 400, auth)
-      if (!is503) break;
+      break;
     }
   }
 
-  // Si falló todas las veces o hubo un error fatal (400, etc), lanzamos el error original de Google.
-  throw new Error(`Google AI falló generando texto con el error: ${lastError?.message || JSON.stringify(lastError)}`);
+  throw new Error(`OpenAI falló generando texto con el error: ${lastError?.message || JSON.stringify(lastError)}`);
 }
-
 
 
 /**
@@ -81,14 +70,10 @@ REGLAS:
 - NO añadas "Caption:" ni etiquetas
 - Escribe directamente el texto listo para publicar
 - Usa español latinoamericano
-- Sé creativo y engagement-oriented
+- Sé creativo y genera alta interacción (engagement)
 `;
 
-  const response = await generateText(
-    { contents: [{ text: systemPrompt }] }
-  );
-
-  const caption = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const caption = await generateTextOpenAI(systemPrompt);
   return caption.trim();
 }
 
@@ -245,16 +230,13 @@ export async function generateFullPost(
   aiSettings?: any
 ): Promise<{ caption: string; imageUrl: string; imagePrompt: string; model: string }> {
 
-  // 🔴 MEDIDA DE EXTREMA URGENCIA (SOLUCIÓN DEFINITIVA):
-  // El maldito modelo de texto de Google sigue fallando con 503 globalmente.
-  // Por orden del usuario, he ANULADO la generación del caption (copys, hashtags, etc) por IA.
-  // Hemos replicado EXACTAMENTE el flujo de Estudio IA: solo agarramos el string bruto 
-  // y lo mandamos de frente al generador de imágenes.
+  // 1. Generar texto de la publicación adaptativo usando OpenAI
+  const caption = await generateCaption({ ...params, customTemplate: undefined });
 
-  const caption = params.topic.trim(); // Usamos lo que escribiste como "caption" temporal
-  const imagePrompt = params.topic.trim(); // Lo pasamos directamente a Nano Banana 2
+  // 2. Usar el prompt base o caption generado para la imagen
+  const imagePrompt = params.topic.trim(); // Lo pasamos directo como en Estudio IA
 
-  // Esta es la llamada idéntica de Estudio IA (que sabemos que funciona).
+  // 3. Generar la imagen visual adaptada a la marca y personajes (Nano Banana)
   const { imageUrl, model } = await generateImage(
     imagePrompt,
     userId,

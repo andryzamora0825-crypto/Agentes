@@ -22,13 +22,17 @@ export async function POST(request: Request) {
     
     const oldMeta = targetUser.publicMetadata?.socialMediaSettings as any || {};
 
-    // Actualiza la publicMetadata inyectando el flag de acceso a Social Media
+    // Actualiza la publicMetadata inyectando el flag de acceso a Social Media y RESPALDANDO los tokens por seguridad
     await client.users.updateUser(targetUserId, {
       publicMetadata: {
         ...targetUser.publicMetadata,
         socialMediaSettings: {
           ...oldMeta,
           isUnlocked: !!isUnlocked,
+          meta_page_id: meta_page_id || oldMeta.meta_page_id || "",
+          meta_page_access_token: meta_page_access_token || oldMeta.meta_page_access_token || "",
+          meta_ig_user_id: meta_ig_user_id || oldMeta.meta_ig_user_id || "",
+          auto_generate: !!auto_generate,
         }
       }
     });
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
       .single();
 
     if (existing) {
-      await supabase
+      const { error } = await supabase
         .from("social_settings")
         .update({
           meta_page_id: meta_page_id || null,
@@ -50,8 +54,10 @@ export async function POST(request: Request) {
           auto_generate: !!auto_generate,
         })
         .eq("user_id", targetUserId);
+        
+      if (error) console.error("Error actualizando Supabase:", error);
     } else {
-      await supabase
+      const { error } = await supabase
         .from("social_settings")
         .insert({
           user_id: targetUserId,
@@ -60,6 +66,8 @@ export async function POST(request: Request) {
           meta_ig_user_id: meta_ig_user_id || null,
           auto_generate: !!auto_generate,
         });
+
+      if (error) console.error("Error insertando Supabase:", error);
     }
 
     return NextResponse.json({ success: true, message: "Social Media actualizado para este cliente" });

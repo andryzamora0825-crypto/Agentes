@@ -9,7 +9,35 @@ import { supabase } from "@/lib/supabase";
 import { clerkClient } from "@clerk/nextjs/server";
 
 const MAX_RETRIES = 3;
-const META_GRAPH_URL = "https://graph.facebook.com/v19.0";
+const META_GRAPH_URL = "https://graph.facebook.com/v25.0";
+
+/**
+ * CRITICAL FIX: Exchanges a User Token for a Page Token.
+ * The "publish_actions is deprecated" error happens when you use a User Token
+ * instead of a Page Token. This function asks Meta: "give me the real Page Token
+ * for this Page ID using my User Token", which is what Facebook actually requires.
+ * If the token is ALREADY a Page Token, the exchange still works (returns itself).
+ */
+async function getPageAccessToken(pageId: string, userOrPageToken: string): Promise<string> {
+  try {
+    const res = await fetch(
+      `${META_GRAPH_URL}/${pageId}?fields=access_token&access_token=${userOrPageToken}`
+    );
+    const data = await res.json();
+
+    if (data.access_token) {
+      console.log(`[META] ✅ Page Token obtenido exitosamente para Page ${pageId}`);
+      return data.access_token; // This is the REAL Page Token
+    }
+
+    // If we can't exchange, fall back to the original token and let it fail naturally
+    console.warn(`[META] ⚠️ No se pudo intercambiar token para Page ${pageId}:`, data.error?.message || "Unknown");
+    return userOrPageToken;
+  } catch (err) {
+    console.warn(`[META] ⚠️ Error en intercambio de token, usando token original:`, err);
+    return userOrPageToken;
+  }
+}
 
 /**
  * Check if we're in mock mode (no real Meta credentials configured)
@@ -44,6 +72,11 @@ async function publishToFacebook(
   imageUrl?: string | null
 ): Promise<PublishResult> {
   try {
+    // CRITICAL: Exchange the token for a real Page Token BEFORE publishing.
+    // This is the fix for "publish_actions is deprecated" — that error means
+    // a User Token was sent instead of a Page Token.
+    const pageToken = await getPageAccessToken(pageId, accessToken);
+
     let endpoint: string;
     let body: Record<string, string>;
 
@@ -53,14 +86,14 @@ async function publishToFacebook(
       body = {
         url: imageUrl,
         caption,
-        access_token: accessToken,
+        access_token: pageToken,
       };
     } else {
       // Text-only post
       endpoint = `${META_GRAPH_URL}/${pageId}/feed`;
       body = {
         message: caption,
-        access_token: accessToken,
+        access_token: pageToken,
       };
     }
 
@@ -103,6 +136,9 @@ async function publishToInstagram(
   imageUrl: string
 ): Promise<PublishResult> {
   try {
+    // Same fix as Facebook: exchange for Page Token first
+    const pageToken = await getPageAccessToken(igUserId, accessToken);
+
     // Step 1: Create media container
     const containerRes = await fetch(`${META_GRAPH_URL}/${igUserId}/media`, {
       method: "POST",
@@ -110,7 +146,7 @@ async function publishToInstagram(
       body: JSON.stringify({
         image_url: imageUrl,
         caption,
-        access_token: accessToken,
+        access_token: pageToken,
       }),
     });
 
@@ -130,7 +166,7 @@ async function publishToInstagram(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         creation_id: containerId,
-        access_token: accessToken,
+        access_token: pageToken,
       }),
     });
 
@@ -145,7 +181,7 @@ async function publishToInstagram(
     // Step 3: Fetch the dynamic permalink from Meta
     let postUrl: string | undefined;
     try {
-      const permalinkRes = await fetch(`${META_GRAPH_URL}/${publishData.id}?fields=permalink&access_token=${accessToken}`);
+      const permalinkRes = await fetch(`${META_GRAPH_URL}/${publishData.id}?fields=permalink&access_token=${pageToken}`);
       if (permalinkRes.ok) {
         const permalinkData = await permalinkRes.json();
         postUrl = permalinkData.permalink;
