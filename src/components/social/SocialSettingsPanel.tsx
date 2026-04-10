@@ -100,24 +100,114 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
   };
 
   const handleFetchIgId = async () => {
-    if (!settings.meta_page_id || !settings.meta_page_access_token) {
-      setError("Primero debes colocar y guardar tu Page ID y Token de Facebook");
+    if (!settings.meta_page_access_token) {
+      setError("Necesitas colocar al menos tu Token de Acceso.");
       return;
     }
     
     try {
-      const res = await fetch(`https://graph.facebook.com/v19.0/${settings.meta_page_id}?fields=instagram_business_account&access_token=${settings.meta_page_access_token}`);
-      const data = await res.json();
+      setSaving(true);
+      setError(null);
+      const token = settings.meta_page_access_token;
       
-      if (data?.instagram_business_account?.id) {
-        setSettings({ ...settings, meta_ig_user_id: data.instagram_business_account.id });
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
-      } else {
-        setError(data.error?.message || "No se encontró una cuenta de Instagram Business vinculada a esta página de Facebook.");
+      // ══════════════════════════════════════════
+      // ESTRATEGIA 1: me/accounts (Token de Usuario Personal que admina páginas)
+      // ══════════════════════════════════════════
+      try {
+        const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${token}`);
+        const pagesData = await pagesRes.json();
+        
+        if (pagesData.data && pagesData.data.length > 0) {
+          const page = pagesData.data[0];
+          const newSettings = { 
+            ...settings, 
+            meta_page_id: page.id,
+            meta_page_access_token: page.access_token || token
+          };
+          if (page.instagram_business_account?.id) {
+            newSettings.meta_ig_user_id = page.instagram_business_account.id;
+          }
+          setSettings(newSettings);
+          setSuccess(true);
+          setError(`✅ ¡ÉXITO con Estrategia 1! Página "${page.name}" (ID: ${page.id}) detectada. ${page.instagram_business_account?.id ? 'Instagram Business también encontrado.' : '⚠️ Sin Instagram Business vinculado.'} ¡Dale a GUARDAR!`);
+          setTimeout(() => setSuccess(false), 8000);
+          return;
+        }
+      } catch {}
+
+      // ══════════════════════════════════════════
+      // ESTRATEGIA 2: Consulta DIRECTA al Page ID si ya tiene uno guardado
+      // (funciona con tokens de System User que tienen la página como activo)
+      // ══════════════════════════════════════════
+      if (settings.meta_page_id) {
+        try {
+          const directRes = await fetch(`https://graph.facebook.com/v19.0/${settings.meta_page_id}?fields=id,name,instagram_business_account&access_token=${token}`);
+          const directData = await directRes.json();
+          
+          if (directData.id && !directData.error) {
+            const newSettings = { ...settings, meta_page_id: directData.id };
+            if (directData.instagram_business_account?.id) {
+              newSettings.meta_ig_user_id = directData.instagram_business_account.id;
+            }
+            setSettings(newSettings);
+            setSuccess(true);
+            setError(`✅ ¡ÉXITO con Estrategia 2! Página "${directData.name}" confirmada. ${directData.instagram_business_account?.id ? 'Instagram Business encontrado.' : '⚠️ Sin Instagram vinculado.'} ¡Dale a GUARDAR!`);
+            setTimeout(() => setSuccess(false), 8000);
+            return;
+          }
+        } catch {}
       }
-    } catch {
-      setError("Error al consultar la API de Meta.");
+
+      // ══════════════════════════════════════════
+      // ESTRATEGIA 3: Buscar negocios → páginas de cada negocio  
+      // (funciona con Business Manager tokens)
+      // ══════════════════════════════════════════
+      try {
+        const bizRes = await fetch(`https://graph.facebook.com/v19.0/me?fields=businesses.limit(5){id,name,owned_pages.limit(10){id,name,access_token,instagram_business_account}}&access_token=${token}`);
+        const bizData = await bizRes.json();
+        
+        if (bizData.businesses?.data) {
+          for (const biz of bizData.businesses.data) {
+            if (biz.owned_pages?.data?.length > 0) {
+              const page = biz.owned_pages.data[0];
+              const newSettings = { 
+                ...settings, 
+                meta_page_id: page.id,
+                meta_page_access_token: page.access_token || token
+              };
+              if (page.instagram_business_account?.id) {
+                newSettings.meta_ig_user_id = page.instagram_business_account.id;
+              }
+              setSettings(newSettings);
+              setSuccess(true);
+              setError(`✅ ¡ÉXITO con Estrategia 3! Página "${page.name}" encontrada a través del negocio "${biz.name}". ${page.instagram_business_account?.id ? 'Instagram encontrado.' : '⚠️ Sin Instagram.'} ¡GUARDAR!`);
+              setTimeout(() => setSuccess(false), 8000);
+              return;
+            }
+          }
+        }
+      } catch {}
+
+      // ══════════════════════════════════════════
+      // ESTRATEGIA 4: Diagnóstico — ¿Quién eres?
+      // ══════════════════════════════════════════
+      try {
+        const meRes = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name&access_token=${token}`);
+        const meData = await meRes.json();
+        
+        if (meData.error) {
+          setError(`❌ Token inválido o expirado: ${meData.error.message}`);
+        } else {
+          setError(`❌ Todas las estrategias fallaron. Tu token pertenece a "${meData.name}" (ID: ${meData.id}), pero NO tiene acceso a ninguna Página de Facebook. SOLUCIÓN: En el Graph API Explorer, dale a "Generate Access Token", y cuando salga la ventana de Facebook, MARCA con el check (☑️) tu Página antes de continuar.`);
+        }
+      } catch {
+        setError("❌ Error de red conectando con Meta. Verifica tu conexión a internet.");
+      }
+
+    } catch (err: any) {
+      setError(`Error inesperado: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -283,15 +373,24 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
 
           {/* Facebook Page ID */}
           <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-gray-400 mb-1.5">
-              <Globe className="w-3.5 h-3.5 text-blue-400" />
-              Facebook Page ID
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="flex items-center gap-2 text-xs font-bold text-gray-400">
+                <Globe className="w-3.5 h-3.5 text-blue-400" />
+                Facebook Page ID
+              </label>
+              <button
+                onClick={handleFetchIgId}
+                disabled={!settings.meta_page_access_token || saving}
+                className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-not-allowed bg-emerald-500/10 px-2 py-1 rounded shadow-[0_0_10px_rgba(16,185,129,0.2)] whitespace-nowrap"
+              >
+                {saving ? "Escaneando Meta..." : "✨ Arreglador Mágico Meta (Clickea aquí)"}
+              </button>
+            </div>
             <input
               type={showTokens ? "text" : "password"}
               value={settings.meta_page_id}
               onChange={(e) => setSettings({ ...settings, meta_page_id: e.target.value })}
-              placeholder="Ej: 123456789012345"
+              placeholder="Ej: 123456789012345 (Dejar vacío e intentar Arreglo Mágico)"
               className="w-full bg-[#050505] text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/50 text-sm placeholder-gray-700"
             />
           </div>
@@ -318,13 +417,6 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
                 <Camera className="w-3.5 h-3.5 text-pink-400" />
                 Instagram Business User ID (opcional)
               </label>
-              <button
-                onClick={handleFetchIgId}
-                disabled={!settings.meta_page_id || !settings.meta_page_access_token}
-                className="text-[10px] font-bold text-pink-400 hover:text-pink-300 disabled:opacity-30 disabled:cursor-not-allowed bg-pink-500/10 px-2 py-1 rounded"
-              >
-                Autocompletar ID
-              </button>
             </div>
             <input
               type={showTokens ? "text" : "password"}

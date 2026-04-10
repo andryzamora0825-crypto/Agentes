@@ -123,13 +123,16 @@ IMPORTANTE: Esta imagen es para publicar en redes sociales. Debe ser:
 
   if (aiSettings) {
     const agencyContext = `
-[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
+[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA Y CREATIVIDAD]: 
 Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
-A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca:
-- Tono/Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
-- Colores representativos: Primario (${aiSettings.primaryColor || '#FFDE00'}), Secundario (${aiSettings.secondaryColor || '#000000'}). Refleja abundantemente estos colores en ropa, fondos, decoraciones o iluminación.
-- Contactos (añade creativamente a carteles/letreros si es orgánico): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.
-`;
+REGLAS DE ORO PARA EVITAR REPETICIÓN:
+1. PRIORIDAD ABSOLUTA AL TEMA PEDIDO: La imagen debe representar PRIMERO lo que el usuario pide en su idea principal.
+2. DIVERSIDAD EXTREMA: NUNCA repitas la misma escena aburrida (EJ: prohíbo terminantemente usar siempre mostradores, cajas registradoras, o personas de pie apuntando a la cámara).
+3. VARÍA EL CONTEXTO: Usa ángulos creativos, fondos abstractos, vistas desde arriba, escenas en exteriores, acción dinámica, o tecnología moderna, dependiendo de la idea.
+4. INTEGRACIÓN DE MARCA SUTIL Y ELEGANTE: 
+   - Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
+   - Aplica sutilmente Colores Primario (${aiSettings.primaryColor || '#FFDE00'}) y Secundario (${aiSettings.secondaryColor || '#000000'}) en la iluminación, fondos, o detalles, pero sin forzar a que toda la ropa sea amarilla/negra si no tiene sentido con la petición.
+   - Si encaja naturalmente en la escena, incluye el teléfono: ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
   }
 
