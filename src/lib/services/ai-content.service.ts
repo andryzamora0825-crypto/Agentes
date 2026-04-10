@@ -32,19 +32,19 @@ async function generateText(params: any) {
       return response;
     } catch (error: any) {
       lastError = error;
-      const is503 = error?.status === 503 || 
-                    error?.status === "UNAVAILABLE" || 
-                    error?.message?.includes("503") || 
-                    error?.message?.includes("high demand") ||
-                    error?.message?.includes("overloaded") ||
-                    error?.message?.includes("Too Many Requests");
+      const is503 = error?.status === 503 ||
+        error?.status === "UNAVAILABLE" ||
+        error?.message?.includes("503") ||
+        error?.message?.includes("high demand") ||
+        error?.message?.includes("overloaded") ||
+        error?.message?.includes("Too Many Requests");
 
       if (is503 && attempt < 3) {
         console.warn(`[SOCIAL AI TEXT] ${model} 503 Congestión. Retraso de ${attempt * 3}s (Intento ${attempt}/3)...`);
         await new Promise(res => setTimeout(res, attempt * 3000));
         continue;
       }
-      
+
       // Si el error NO es 503, rompemos inmediatamente porque es otro problema (ej. 400, auth)
       if (!is503) break;
     }
@@ -54,28 +54,7 @@ async function generateText(params: any) {
   throw new Error(`Google AI falló generando texto con el error: ${lastError?.message || JSON.stringify(lastError)}`);
 }
 
-/**
- * Helper para Imagen: Solo reintenta con 3.1 (porque sabemos que este sí funciona y existe)
- */
-async function generateImageWithRetry(params: any, modelToUse: string, retries = 3) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const response = await ai.models.generateContent({
-        ...params,
-        model: modelToUse,
-      });
-      return response;
-    } catch (error: any) {
-      if (attempt < retries) {
-        console.warn(`[SOCIAL AI IMAGE RETRY] ${modelToUse} falló. Reintentando en ${attempt * 2}s...`);
-        await new Promise(res => setTimeout(res, attempt * 2000));
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error(`Nano Banana no pudo generar la imagen tras ${retries} intentos.`);
-}
+
 
 /**
  * Generates a social media caption using Gemini text model
@@ -154,10 +133,17 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
   }
 
-  const response = await generateImageWithRetry(
-    { contents: [{ text: finalPrompt }] },
-    NANO_BANANA_2
-  );
+  let response;
+  try {
+    // Llamada DIRECTA sin reintentos (si falla, falla rápido en 20s y no a los 2 minutos)
+    response = await ai.models.generateContent({
+      model: NANO_BANANA_2,
+      contents: [{ text: finalPrompt }],
+    });
+  } catch (err: any) {
+    console.error("🔴 Error DENTRO de Nano Banana Gemini:", err);
+    throw new Error(`El modelo de imagen de Google falló: ${err?.message || "Error desconocido"}`);
+  }
 
   // Extract image from response (same pattern as Estudio IA)
   let imageBase64: string | null = null;
@@ -213,7 +199,7 @@ export async function generateFullPost(
   // Por orden del usuario, he ANULADO la generación del caption (copys, hashtags, etc) por IA.
   // Hemos replicado EXACTAMENTE el flujo de Estudio IA: solo agarramos el string bruto 
   // y lo mandamos de frente al generador de imágenes.
-  
+
   const caption = params.topic.trim(); // Usamos lo que escribiste como "caption" temporal
   const imagePrompt = params.topic.trim(); // Lo pasamos directamente a Nano Banana 2
 
