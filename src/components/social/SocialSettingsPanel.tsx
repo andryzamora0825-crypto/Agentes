@@ -123,6 +123,12 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
     // Open popup
     const popup = window.open(oauthUrl, "facebook_oauth", "width=600,height=700,scrollbars=yes");
 
+    if (!popup) {
+      setConnecting(false);
+      setError("❌ Tu navegador bloqueó la ventana emergente. Por favor, permite las ventanas emergentes para este sitio e intenta de nuevo.");
+      return;
+    }
+
     // Listen for the token from the callback page
     const handleMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
