@@ -37,17 +37,18 @@ export async function GET() {
     // Mapear los datos que nos interesan para el escudo de Admin
     const users = response.data.map(u => {
       const email = u.emailAddresses[0]?.emailAddress || 'Sin Email';
+      const meta = u.publicMetadata as any;
       return {
         id: u.id,
         name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Desconocido',
         email: email,
         avatar: u.imageUrl,
-        credits: u.publicMetadata?.credits,
-        plan: u.publicMetadata?.plan || 'FREE',
-        vipExpiresAt: u.publicMetadata?.vipExpiresAt,
-        whatsappSettings: u.publicMetadata?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
+        credits: meta?.credits,
+        plan: meta?.plan || 'FREE',
+        vipExpiresAt: meta?.vipExpiresAt,
+        whatsappSettings: meta?.whatsappSettings || { isUnlocked: false, providerConfig: { apiUrl: "", idInstance: "", apiTokenInstance: "" } },
         socialMediaSettings: {
-          isUnlocked: u.publicMetadata?.socialMediaSettings?.isUnlocked || false,
+          isUnlocked: meta?.socialMediaSettings?.isUnlocked || false,
           meta_page_id: socialSettingsMap[u.id]?.meta_page_id || "",
           meta_page_access_token: socialSettingsMap[u.id]?.meta_page_access_token || "",
           meta_ig_user_id: socialSettingsMap[u.id]?.meta_ig_user_id || "",
