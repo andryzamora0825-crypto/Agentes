@@ -10,9 +10,37 @@ import type { GenerateContentParams } from "@/lib/types/social.types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-// Same models used in Estudio IA
+// Same primary models used in Estudio IA
 const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
-const TEXT_MODEL = "gemini-2.5-flash"; // Fixed to use the standard 2.5 flash model
+const TEXT_MODEL = "gemini-2.5-flash"; 
+const FALLBACK_MODEL = "gemini-1.5-flash"; // Requested fallback for 503 errors
+
+/**
+ * Helper: Intenta generar con el modelo principal, si hay 503 usa el fallback
+ */
+async function generateWithFallback(params: any, primaryModel: string) {
+  try {
+    return await ai.models.generateContent({
+      ...params,
+      model: primaryModel,
+    });
+  } catch (error: any) {
+    const is503 = error?.status === 503 || 
+                  error?.status === "UNAVAILABLE" || 
+                  error?.message?.includes("503") || 
+                  error?.message?.includes("high demand") ||
+                  error?.message?.includes("overloaded");
+
+    if (is503) {
+      console.warn(`[SOCIAL AI FALLBACK] ${primaryModel} está congestionado (503). Cambiando a ${FALLBACK_MODEL}...`);
+      return await ai.models.generateContent({
+        ...params,
+        model: FALLBACK_MODEL,
+      });
+    }
+    throw error;
+  }
+}
 
 /**
  * Generates a social media caption using Gemini text model
@@ -41,10 +69,10 @@ REGLAS:
 - Sé creativo y engagement-oriented
 `;
 
-  const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: [{ text: systemPrompt }],
-  });
+  const response = await generateWithFallback(
+    { contents: [{ text: systemPrompt }] },
+    TEXT_MODEL
+  );
 
   const caption = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
   return caption.trim();
@@ -92,10 +120,10 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
   }
 
-  const response = await ai.models.generateContent({
-    model: NANO_BANANA_2,
-    contents: [{ text: finalPrompt }],
-  });
+  const response = await generateWithFallback(
+    { contents: [{ text: finalPrompt }] },
+    NANO_BANANA_2
+  );
 
   // Extract image from response (same pattern as Estudio IA)
   let imageBase64: string | null = null;
@@ -110,7 +138,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
   }
 
   if (!imageBase64) {
-    throw new Error("Nano Banana no generó una imagen. El prompt puede necesitar ajustes.");
+    throw new Error("Nano Banana no generó una imagen. Probablemente Google sirvió texto al caer en servidor de respaldo. Intenta de nuevo.");
   }
 
   // Upload to Supabase Storage (same bucket as Estudio IA)
@@ -150,16 +178,18 @@ export async function generateFullPost(
   const caption = await generateCaption(params);
 
   // Step 2: Build a smart image prompt from the topic
-  const imagePromptResponse = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: [{
-      text: `Basado en este tema para redes sociales: "${params.topic}"
-      
+  const imagePromptResponse = await generateWithFallback(
+    {
+      contents: [{
+        text: `Basado en este tema para redes sociales: "${params.topic}"
+        
 Genera UN prompt corto (máximo 2 frases) en inglés para generar una imagen atractiva para este post de redes sociales. 
 El prompt debe describir una escena visual impactante, profesional y moderna.
 Responde SOLO con el prompt, sin explicaciones.`,
-    }],
-  });
+      }],
+    },
+    TEXT_MODEL
+  );
 
   const imagePrompt = imagePromptResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
     || `Professional social media post about: ${params.topic}`;
