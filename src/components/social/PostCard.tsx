@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Loader2,
   Image as ImageIcon,
+  AlertTriangle,
 } from "lucide-react";
 
 interface PostCardProps {
