@@ -322,28 +322,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, action: "scammer" });
     }
 
-    // INSERCIÓN DIRECTA
+    // INSERCIÓN — pedimos también created_at para el chequeo de debounce
     const { data: insertedChat } = await supabase.from("whatsapp_chats")
       .insert({ owner_id: uid, phone_number: sender, role: "user", content: messageText })
-      .select('id').single();
+      .select('id, created_at').single();
 
-    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (5 SEGS) ──
-    // Espera 5 segundos antes de procesar para capturar todos los mensajes del mismo turno.
-    // Si el usuario manda 3 mensajes rápidos, solo el último invoca a OpenAI con todos agrupados.
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    // ── DEBOUNCE INTELIGENTE PARA MENSAJES FRAGMENTADOS (6 SEGS) ──
+    // Espera 6 segundos para capturar todos los mensajes del mismo turno.
+    // Solo la invocación del ÚLTIMO mensaje pasará el chequeo y responderá.
+    await new Promise(resolve => setTimeout(resolve, 6000));
 
-    if (insertedChat?.id) {
-      const { data: latestMsg } = await supabase.from("whatsapp_chats")
-        .select("id")
+    if (insertedChat?.created_at) {
+      // Chequeo confiable: ¿existe algún mensaje insertado DESPUÉS del mío?
+      // Si sí → soy un fragmento viejo → abortar.
+      // Usar created_at es más robusto que comparar IDs (evita colisiones de orden).
+      const { count } = await supabase.from("whatsapp_chats")
+        .select("id", { count: "exact", head: true })
         .eq("owner_id", uid)
         .eq("phone_number", sender)
         .eq("role", "user")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .gt("created_at", insertedChat.created_at);
 
-      if (latestMsg && latestMsg.id !== insertedChat.id) {
-        console.log(`[WEBHOOK] 🛑 Mensaje fragmentado detectado. Abortando instancia vieja (${messageText}).`);
+      if (count && count > 0) {
+        console.log(`[WEBHOOK] 🛑 Fragmento viejo detectado (${count} mensajes más nuevos). Abortando: "${messageText}"`);
         return NextResponse.json({ success: true, ignored: true, reason: "Fragmentado" });
       }
     }
