@@ -8,9 +8,9 @@ export const maxDuration = 120; // 2 min máximo — si no responde en 90s, es u
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // Nano Banana 2 — capa gratuita + de pago, texto a imagen
-const NANO_BANANA_2   = "gemini-2.0-flash-preview-image-generation";
+const NANO_BANANA_2   = "gemini-3.1-flash-image-preview";
 // Nano Banana Pro — requiere billing, alta fidelidad + imágenes de referencia
-const NANO_BANANA_PRO = "gemini-2.0-flash-preview-image-generation";
+const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
 // Helper: fetch con timeout para evitar cuelgues en imágenes de referencia
 async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {

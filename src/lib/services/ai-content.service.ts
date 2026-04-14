@@ -13,8 +13,8 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 // Same primary models used in Estudio IA
-const NANO_BANANA_2 = "gemini-2.0-flash-preview-image-generation";
-const NANO_BANANA_PRO = "gemini-2.0-flash-preview-image-generation";
+const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
+const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
 // Helper: fetch con timeout para evitar cuelgues
 async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
