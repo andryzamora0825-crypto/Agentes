@@ -13,8 +13,19 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 // Same primary models used in Estudio IA
-const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
-const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
+const NANO_BANANA_2 = "gemini-2.0-flash-preview-image-generation";
+const NANO_BANANA_PRO = "gemini-2.0-flash-preview-image-generation";
+
+// Helper: fetch con timeout para evitar cuelgues
+async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Helper: Generates text using OpenAI GPT-4o-mini (replaces the unstable Gemini text model)
@@ -142,7 +153,7 @@ REGLAS PARA EL PERSONAJE:
     
     for (const url of urlsToFetch) {
       try {
-        const res = await fetch(url);
+        const res = await fetchWithTimeout(url, 8000);
         if (res.ok) {
           const arrayBuffer = await res.arrayBuffer();
           referenceImages.push({
@@ -169,14 +180,24 @@ REGLAS PARA EL PERSONAJE:
     const hasRefImages = referenceImages.length > 0;
     const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
 
-    // Llamada DIRECTA sin reintentos (si falla, falla rápido en 20s y no a los 2 minutos)
-    response = await ai.models.generateContent({
-      model: modelToUse,
-      contents: contentParts,
-    });
+    // ═══ FIX CRÍTICO: responseModalities + timeout ═══
+    const abortController = new AbortController();
+    const geminiTimer = setTimeout(() => abortController.abort(), 90_000); // 90s máx
+    try {
+      response = await ai.models.generateContent({
+        model: modelToUse,
+        contents: contentParts,
+        config: {
+          responseModalities: ["TEXT", "IMAGE"],
+        },
+      });
+    } finally {
+      clearTimeout(geminiTimer);
+    }
   } catch (err: any) {
-    console.error("🔴 Error DENTRO de Nano Banana Gemini:", err);
-    throw new Error(`El modelo de imagen de Google falló: ${err?.message || "Error desconocido"}`);
+    const isTimeout = err?.name === "AbortError";
+    console.error("🔴 Error DENTRO de Nano Banana Gemini:", isTimeout ? "TIMEOUT (>90s)" : err);
+    throw new Error(isTimeout ? "Timeout: el modelo tardó más de 90 segundos" : `El modelo de imagen de Google falló: ${err?.message || "Error desconocido"}`);
   }
 
   // Extract image from response (same pattern as Estudio IA)

@@ -99,6 +99,14 @@ export default function EstudioIAPage() {
     return () => document.removeEventListener('paste', handlePaste);
   }, [handlePaste]);
 
+  // Tiempo transcurrido durante la generación (para feedback visual)
+  const [elapsedSec, setElapsedSec] = useState(0);
+  useEffect(() => {
+    if (!generating) { setElapsedSec(0); return; }
+    const interval = setInterval(() => setElapsedSec(s => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [generating]);
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
@@ -106,6 +114,11 @@ export default function EstudioIAPage() {
     setGenerating(true);
     setErrorMsg(null);
     setLastModel(null);
+
+    // Timeout del lado del cliente: 100s — no esperamos 5 minutos nunca más
+    const abortController = new AbortController();
+    const clientTimeout = setTimeout(() => abortController.abort(), 100_000);
+
     try {
       const fd = new FormData();
       fd.append("prompt", prompt);
@@ -114,7 +127,11 @@ export default function EstudioIAPage() {
       fd.append("imageFormat", imageFormat);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
-      const res = await fetch("/api/ai/generate", { method: "POST", body: fd });
+      const res = await fetch("/api/ai/generate", { 
+        method: "POST", 
+        body: fd,
+        signal: abortController.signal,
+      });
       const data = await res.json();
 
       if (res.ok) {
@@ -131,9 +148,14 @@ export default function EstudioIAPage() {
           setErrorMsg(data.error || "Nano Banana no respondió. Intenta de nuevo.");
         }
       }
-    } catch (err) {
-      setErrorMsg("Error interno conectando con el servidor.");
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        setErrorMsg("La generación tardó demasiado (>100s) y fue cancelada. Intenta con un prompt más corto o sin imágenes de referencia.");
+      } else {
+        setErrorMsg("Error interno conectando con el servidor.");
+      }
     } finally {
+      clearTimeout(clientTimeout);
       setGenerating(false);
     }
   };
@@ -446,6 +468,10 @@ export default function EstudioIAPage() {
                       ? 'Nano Banana Pro está analizando tus imágenes de referencia y generando. Puede tomar 20–40 segundos.'
                       : 'Nano Banana 2 está renderizando los píxeles. Esto suele tomar de 10 a 20 segundos.'}
                   </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="w-2 h-2 rounded-full bg-[#FFDE00] animate-pulse"></div>
+                    <span className="text-xs font-mono font-bold text-[#FFDE00]/80">{elapsedSec}s transcurridos</span>
+                  </div>
                 </div>
               </div>
             )}

@@ -3,14 +3,26 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-export const maxDuration = 300; // Vercel Pro: 5 Minutos (Protege el saldo de timeouts fantasmas)
+export const maxDuration = 120; // 2 min máximo — si no responde en 90s, es un error real
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // Nano Banana 2 — capa gratuita + de pago, texto a imagen
-const NANO_BANANA_2   = "gemini-3.1-flash-image-preview";
+const NANO_BANANA_2   = "gemini-2.0-flash-preview-image-generation";
 // Nano Banana Pro — requiere billing, alta fidelidad + imágenes de referencia
-const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
+const NANO_BANANA_PRO = "gemini-2.0-flash-preview-image-generation";
+
+// Helper: fetch con timeout para evitar cuelgues en imágenes de referencia
+async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -81,21 +93,26 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 `;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
-      // Inyectar imágenes de marca pre-guardadas como referencias
+      // Inyectar imágenes de marca pre-guardadas como referencias (con timeout de 8s cada una)
       const urlsToFetch = [aiSettings.agencyLogoUrl, aiSettings.inspLogoUrl, aiSettings.brandLogoUrl].filter(Boolean);
-      for (const url of urlsToFetch) {
+      const fetchPromises = urlsToFetch.map(async (url: string) => {
         try {
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url, 8000);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
-            referenceImages.push({ 
+            return { 
               base64: Buffer.from(arrayBuffer).toString("base64"), 
               mimeType: res.headers.get('content-type') || "image/png" 
-            });
+            };
           }
         } catch (e) {
-          console.error("Error trayendo imagen de agencia:", e);
+          console.warn("⚠️ Timeout/error trayendo imagen de agencia (ignorando):", (e as Error).message);
         }
+        return null;
+      });
+      const results = await Promise.all(fetchPromises);
+      for (const r of results) {
+        if (r) referenceImages.push(r);
       }
     }
 
@@ -104,7 +121,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
       const aiSettings: any = user.publicMetadata.aiSettings;
       if (aiSettings.characterImageUrl) {
         try {
-          const res = await fetch(aiSettings.characterImageUrl);
+          const res = await fetchWithTimeout(aiSettings.characterImageUrl, 8000);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             referenceImages.push({
@@ -113,7 +130,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
             });
           }
         } catch (e) {
-          console.error("Error trayendo imagen de personaje:", e);
+          console.warn("⚠️ Timeout/error trayendo imagen de personaje (ignorando):", (e as Error).message);
         }
         finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada. Mantén su apariencia, rasgos faciales y estilo reconocibles en la escena generada. El personaje debe ser protagonista o estar visible de forma clara en la imagen.`;
       }
@@ -157,10 +174,24 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         });
       }
 
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-      });
+      // ═══ FIX CRÍTICO: responseModalities + timeout con AbortController ═══
+      // Sin responseModalities: ["TEXT", "IMAGE"], el SDK NUNCA devuelve imágenes
+      // y se queda colgado hasta que Vercel mata la función (5 min timeout fantasma)
+      const abortController = new AbortController();
+      const geminiTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s máx
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            responseModalities: ["TEXT", "IMAGE"],
+          },
+        });
+      } finally {
+        clearTimeout(geminiTimeout);
+      }
 
       // 4. Extraer la imagen generada de la respuesta
       let imageBase64: string | null = null;
@@ -176,7 +207,12 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 
       if (!imageBase64) {
         // Gemini a veces solo devuelve texto en lugar de imagen — reembolsar
-        throw new Error("Nano Banana no devolvió una imagen. Puede que el prompt sea problemático.");
+        const textParts = response.candidates?.[0]?.content?.parts
+          ?.filter((p: any) => p.text)
+          ?.map((p: any) => p.text)
+          ?.join(" ") || "";
+        console.warn("⚠️ Gemini respondió solo texto:", textParts.slice(0, 200));
+        throw new Error("Nano Banana no devolvió una imagen. El modelo respondió con texto. Intenta reformular el prompt.");
       }
 
       // 5. Guardar en Supabase Storage para inmortalidad
@@ -222,9 +258,16 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
       await client.users.updateUserMetadata(user.id, {
         publicMetadata: { credits: currentCredits },
       });
+      
+      // Mensaje de error más descriptivo
+      const isTimeout = apiError?.name === "AbortError" || apiError?.message?.includes("abort");
+      const friendlyMsg = isTimeout
+        ? "Nano Banana tardó demasiado (>90s). Intenta con un prompt más simple. Tus créditos fueron reembolsados."
+        : apiError?.message || "Nano Banana falló. Tus créditos han sido reembolsados.";
+        
       console.error("Error en Nano Banana:", apiError?.message || apiError);
       return NextResponse.json({
-        error: apiError?.message || "Nano Banana falló. Tus créditos han sido reembolsados.",
+        error: friendlyMsg,
       }, { status: 500 });
     }
 
