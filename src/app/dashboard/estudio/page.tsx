@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, Film, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
@@ -135,8 +136,7 @@ export default function EstudioIAPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setPrompt("");
-        setRefImages([]);
+        // Se deja intacto el prompt y las refImages (Opción 1)
         setLastModel(data.model || null);
         loadHistory();
       } else {
@@ -209,6 +209,19 @@ export default function EstudioIAPage() {
     }
   };
 
+  const handleRetry = (img: any) => {
+    setPrompt(img.prompt);
+    
+    // Buscar el textarea y hacer scroll/focus hacia él
+    setTimeout(() => {
+      const textarea = document.getElementById("prompt-input");
+      if (textarea) {
+        textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+        textarea.focus();
+      }
+    }, 100);
+  };
+
   return (
     <VipGate>
       <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-10">
@@ -216,13 +229,24 @@ export default function EstudioIAPage() {
         {/* Encabezado Principal */}
         <div className="relative">
           <div className="absolute top-0 left-0 w-32 h-32 bg-[#FFDE00]/20 rounded-full blur-[60px] -z-10"></div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 drop-shadow-md">
-            <div className="bg-[#FFDE00] p-2 rounded-xl shadow-[0_0_15px_rgba(255,222,0,0.4)]">
-              <Sparkles className="w-8 h-8 text-black" />
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 drop-shadow-md">
+                <div className="bg-[#FFDE00] p-2 rounded-xl shadow-[0_0_15px_rgba(255,222,0,0.4)]">
+                  <Sparkles className="w-8 h-8 text-black" />
+                </div>
+                Estudio IA
+              </h1>
+              <p className="text-gray-400 mt-2 text-lg">Escribe tu idea creativa y la IA la pintará en segundos — ahora con <span className="text-[#FFDE00] font-black">Nano Banana 🍌</span>.</p>
             </div>
-            Estudio IA
-          </h1>
-          <p className="text-gray-400 mt-2 text-lg">Escribe tu idea creativa y la IA la pintará en segundos — ahora con <span className="text-[#FFDE00] font-black">Nano Banana 🍌</span>.</p>
+            {/* Tab Navigation */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#FFDE00]/10 border border-[#FFDE00]/30 text-[#FFDE00] shadow-[0_0_10px_rgba(255,222,0,0.1)]">
+                <Sparkles className="w-4 h-4" />
+                Imágenes
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Panel de Generación */}
@@ -335,6 +359,7 @@ export default function EstudioIAPage() {
             {/* Prompt Textarea */}
             <div className="relative group">
               <textarea
+                id="prompt-input"
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 placeholder=""
@@ -514,25 +539,31 @@ export default function EstudioIAPage() {
                     &quot;{img.prompt}&quot;
                   </p>
 
-                  {/* Botones de acción siempre visibles (Fix para Safari / iOS) */}
-                  <div className="flex items-center gap-2 mt-4">
-                    <button 
-                      onClick={() => setLightboxUrl(img.image_url)} 
-                      className="flex-1 bg-white/5 hover:bg-white/10 text-white p-2 rounded-xl flex justify-center items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors border border-white/10"
-                    >
-                      <Eye className="w-4 h-4" /> Ver
-                    </button>
+                  {/* Botones de acción 2x2 (Diseño balanceado) */}
+                  <div className="grid grid-cols-2 gap-2 mt-4">
                     <button 
                       onClick={() => forceDownload(img.image_url, `ecuabet_ia_${img.id.slice(0,6)}.png`)} 
-                      className="flex-1 bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 text-[#FFDE00] p-2 rounded-xl flex justify-center items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors border border-[#FFDE00]/20"
+                      className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 text-[#FFDE00] p-2 rounded-xl flex justify-center items-center gap-1.5 text-xs font-bold uppercase tracking-widest transition-colors border border-[#FFDE00]/20"
                     >
-                      <Download className="w-4 h-4" /> Bajar
+                      <Download className="w-4 h-4 shrink-0" /> Bajar
+                    </button>
+                    <button 
+                      onClick={() => handleRetry(img)} 
+                      className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 p-2 rounded-xl flex justify-center items-center gap-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors border border-purple-500/20"
+                    >
+                      <RefreshCw className="w-4 h-4 shrink-0" /> Repetir
+                    </button>
+                    <button 
+                      onClick={() => setLightboxUrl(img.image_url)} 
+                      className="bg-white/5 hover:bg-white/10 text-white p-2 rounded-xl flex justify-center items-center gap-1.5 text-xs font-bold uppercase tracking-widest transition-colors border border-white/10"
+                    >
+                      <Eye className="w-4 h-4 shrink-0" /> Ver
                     </button>
                     <button 
                       onClick={() => setDeleteConfirm(img.id)} 
-                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-xl border border-red-500/20 transition-colors"
+                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-xl flex justify-center items-center gap-1.5 text-xs font-bold uppercase tracking-widest border border-red-500/20 transition-colors"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4 shrink-0" /> Borrar
                     </button>
                   </div>
 

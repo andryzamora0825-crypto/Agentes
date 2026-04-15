@@ -1,0 +1,37 @@
+commit 074c062d36db4d5b66e93ec3816f3afe64d8fb1a
+Author: Andry Zamtools <andry@zamtools.com>
+Date:   Mon Apr 6 23:38:30 2026 -0500
+
+    fix(ai-video): rewrite operations polling with native REST API
+
+diff --git a/src/app/api/ai/video-status/route.ts b/src/app/api/ai/video-status/route.ts
+index 5239bb3..ad0c9d8 100644
+--- a/src/app/api/ai/video-status/route.ts
++++ b/src/app/api/ai/video-status/route.ts
+@@ -46,13 +46,22 @@ export async function GET(request: Request) {
+ 
+     let operation: any;
+     try {
+-      operation = await ai.operations.getVideosOperation({ 
+-        operation: { name: operationName } as any 
++      // Uso vía Fetch Directo al REST API para esquivar bugs del SDK oficial de Google
++      const reqUrl = `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${process.env.GEMINI_API_KEY}`;
++      const res = await fetch(reqUrl, { 
++        method: "GET",
++        headers: { "Content-Type": "application/json" },
++        cache: "no-store"
+       });
++      operation = await res.json();
++      
++      if (!res.ok) {
++        throw new Error(operation?.error?.message || `API HTTP ${res.status}`);
++      }
+     } catch (opErr: any) {
+-      console.error("[video-status] Error consultando operación:", opErr?.message, opErr);
++      console.error("[video-status] Error consultando operación vía FETCH:", opErr?.message, opErr);
+       await supabase.from("ai_videos").update({ status: "failed" }).eq("id", videoId);
+-      return NextResponse.json({ status: "failed", error: `SDK Error: ${opErr?.message || 'Failed to get operation'}` });
++      return NextResponse.json({ status: "failed", error: `Fetch API Error: ${opErr?.message || 'Failed to get operation'}` });
+     }
+ 
+     console.log(`[video-status] Operation done: ${operation.done}`);
