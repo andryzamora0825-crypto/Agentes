@@ -67,18 +67,17 @@ export async function POST(request: Request) {
 
     // --- Mapeo de formatos a instrucciones de aspecto ---
     const FORMAT_MAP: Record<string, string> = {
-      square:     "OBLIGATORIO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles. NO generes forma rectangular.",
-      vertical:   "OBLIGATORIO: La imagen DEBE ser VERTICAL MUY ALTA y ANGOSTA (9:16), como 768x1365 píxeles. La altura debe ser mucho mayor que el ancho. Formato tipo celular/Stories/Reels.",
-      horizontal: "OBLIGATORIO: La imagen DEBE ser HORIZONTAL MUY ANCHA y BAJA (16:9), como 1365x768 píxeles. El ancho debe ser mucho mayor que la altura. Formato tipo YouTube/pantalla de PC.",
-      portrait:   "OBLIGATORIO: La imagen DEBE ser VERTICAL tipo RETRATO (4:5), como 819x1024 píxeles. Ligeramente más alta que ancha. Formato Instagram Retrato.",
-      landscape:  "OBLIGATORIO: La imagen DEBE ser HORIZONTAL tipo PAISAJE (3:2), como 1024x683 píxeles. Más ancha que alta. Formato publicidad/web.",
-      whatsapp:   "OBLIGATORIO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles. Formato WhatsApp estado/perfil.",
+      square:     "OBLIGATORIO: Generar la imagen en proporción CUADRADA (1:1). NO generar rectangular.",
+      vertical:   "OBLIGATORIO: Generar la imagen en proporción VERTICAL ALTA (9:16), ideal para Stories/Reels.",
+      horizontal: "OBLIGATORIO: Generar la imagen en proporción HORIZONTAL ANCHA (16:9), ideal para YouTube/PC.",
+      portrait:   "OBLIGATORIO: Generar la imagen en proporción RETRATO VERTICAL (4:5), ideal para Instagram feed.",
+      landscape:  "OBLIGATORIO: Generar la imagen en proporción PAISAJE HORIZONTAL (3:2), ideal para web.",
+      whatsapp:   "OBLIGATORIO: Generar la imagen en proporción CUADRADA (1:1).",
     };
-    const formatInstruction = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
+    const targetDirection = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
 
-    // --- INYECCIÓN DE IDENTIDAD DE AGENCIA ---
-    let finalPrompt = `[INSTRUCCIÓN DE FORMATO CRÍTICA - MÁXIMA PRIORIDAD]: ${formatInstruction}\n\n${prompt}`;
-
+    // Usamos el prompt base
+    let finalPrompt = prompt;
 
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
@@ -132,9 +131,12 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         } catch (e) {
           console.warn("⚠️ Timeout/error trayendo imagen de personaje (ignorando):", (e as Error).message);
         }
-        finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada. Mantén su apariencia, rasgos faciales y estilo reconocibles en la escena generada. El personaje debe ser protagonista o estar visible de forma clara en la imagen.`;
+        finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada.`;
       }
     }
+
+    // Refuerzo vital del formato al final del prompt para que el modelo no lo olvide
+    finalPrompt += `\n\n[INSTRUCCIONES FINALES DE FORMATO FíSICO]: ${targetDirection} \nES ESTRICTAMENTE CRÍTICO OBEDECER LA PROPORCIÓN SOLICITADA.`;
 
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);

@@ -34,6 +34,8 @@ export default function EstudioIAPage() {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const originalPromptRef = useRef("");
   const refInputRef = useRef<HTMLInputElement>(null);
 
   const baseCost = refImages.length > 0 ? 150 : 100;
@@ -104,6 +106,7 @@ export default function EstudioIAPage() {
         recognitionRef.current.stop();
       }
       setIsListening(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       return;
     }
 
@@ -116,24 +119,63 @@ export default function EstudioIAPage() {
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.lang = 'es-ES';
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setPrompt(prev => prev ? prev + ' ' + transcript : transcript);
-      
-      // Auto-resize the textarea after placing text
-      setTimeout(() => {
-        const textarea = document.getElementById("prompt-input");
-        if (textarea) {
-          textarea.style.height = 'auto';
-          textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
-        }
-      }, 50);
+    const resetSilenceTimer = () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        if (recognitionRef.current) recognitionRef.current.stop();
+        setIsListening(false);
+      }, 5000);
     };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      originalPromptRef.current = prompt; // Guardar el texto existente antes de dictar
+      resetSilenceTimer();
+    };
+
+    recognition.onresult = (event: any) => {
+      resetSilenceTimer();
+
+      let sessionFinal = '';
+      let sessionInterim = '';
+      
+      for (let i = 0; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          sessionFinal += event.results[i][0].transcript + ' ';
+        } else {
+          sessionInterim += event.results[i][0].transcript;
+        }
+      }
+
+      const sessionText = (sessionFinal + sessionInterim).trim();
+
+      if (sessionText) {
+        setPrompt(() => {
+          const base = originalPromptRef.current ? originalPromptRef.current.trim() + ' ' : '';
+          return (base + sessionText).replace(/\s+/g, ' ');
+        });
+        
+        setTimeout(() => {
+          const textarea = document.getElementById("prompt-input");
+          if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+          }
+        }, 50);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
 
     try {
       recognition.start();
@@ -433,11 +475,11 @@ export default function EstudioIAPage() {
                   }}
                   onFocus={() => setShowAttachMenu(false)}
                   placeholder="Pregunta lo que quieras"
-                  className="w-full bg-transparent text-white/90 focus:outline-none resize-none py-3 min-h-[44px] max-h-[150px] text-[15px] placeholder-zinc-500 custom-scrollbar"
+                  className="w-full bg-transparent text-white/90 focus:outline-none !outline-none !ring-0 focus:!ring-0 !border-0 focus:!border-0 !shadow-none focus:!shadow-none resize-none py-3 min-h-[44px] max-h-[150px] text-[15px] placeholder-zinc-500 custom-scrollbar"
                   style={{ height: '44px' }}
                 />
 
-                {/* Actions (Mic & Submit) */}
+                {/* Actions (Mic ONLY inside the pill) */}
                 <div className="flex items-center gap-1 shrink-0 p-1">
                   {isListening ? (
                     <button
@@ -446,31 +488,16 @@ export default function EstudioIAPage() {
                       className="h-10 px-4 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors flex items-center gap-2 text-sm font-medium animate-pulse"
                     >
                       <Mic className="w-4 h-4" />
-                      Escuchando
+                      <span className="hidden sm:inline">Escuchando</span>
                     </button>
-                  ) : !prompt.trim() ? (
+                  ) : (
                     <button
                       type="button"
                       onClick={toggleVoiceMode}
                       className="h-10 px-4 rounded-full bg-white/5 text-white/80 hover:bg-white/10 transition-colors flex items-center gap-2 text-sm font-medium"
                     >
                       <Mic className="w-4 h-4" />
-                      Voz
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={generating}
-                      className="h-10 w-10 sm:w-auto sm:px-5 rounded-full bg-[#FFDE00] text-black hover:brightness-110 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
-                    >
-                      {generating ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                       ) : (
-                         <>
-                           <Sparkles className="w-4 h-4" />
-                           <span className="hidden sm:inline font-bold">Generar</span>
-                         </>
-                       )}
+                      <span className="hidden sm:inline">Voz</span>
                     </button>
                   )}
                 </div>
@@ -488,6 +515,29 @@ export default function EstudioIAPage() {
                 />
               </div>
             </div>
+
+            {/* Generar Button (Debajo del pill) */}
+            <div className="flex justify-end mt-3">
+              <button
+                type="submit"
+                disabled={generating || !prompt.trim()}
+                className={`h-11 px-8 rounded-full flex items-center justify-center gap-2 transition-all active:scale-95 text-sm font-semibold
+                  ${prompt.trim() && !generating 
+                    ? 'bg-[#FFDE00] text-black hover:brightness-110 shadow-[0_0_15px_rgba(255,222,0,0.3)]' 
+                    : 'bg-white/[0.05] text-white/30 cursor-not-allowed'
+                  }`}
+              >
+                {generating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generar</span>
+                  </>
+                )}
+              </button>
+            </div>
+
 
             {/* Loading State */}
             {generating && (
@@ -537,51 +587,53 @@ export default function EstudioIAPage() {
             {images.map((img) => (
               <div key={img.id} className="bg-[#141414] rounded-lg overflow-hidden border border-white/[0.06] group relative flex flex-col hover:border-white/[0.12] transition-colors">
 
-                <div className="relative aspect-square w-full bg-[#09090b] flex items-center justify-center">
-                  <img src={img.image_url} alt="IA Art" className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
+                <div className="relative aspect-square w-full bg-[#09090b] flex items-center justify-center overflow-hidden">
+                  <img src={img.image_url} alt="IA Art" className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105" />
                 </div>
 
-                <div className="p-4 flex-1 flex flex-col justify-between z-10 border-t border-white/[0.06]">
-                  <p className="text-xs font-medium text-zinc-400 line-clamp-2 leading-relaxed">
+                <div className="p-4 flex-1 flex flex-col z-10 border-t border-white/[0.06]">
+                  <p className="text-xs font-medium text-zinc-400 line-clamp-3 leading-relaxed">
                     &quot;{img.prompt}&quot;
                   </p>
 
-                  {/* Action buttons 2x2 */}
-                  <div className="grid grid-cols-2 gap-1.5 mt-3">
-                    <button 
-                      onClick={() => forceDownload(img.image_url, `zamtools_ia_${img.id.slice(0,6)}.png`)} 
-                      className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/15 text-[#FFDE00] py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-[#FFDE00]/15"
-                    >
-                      <Download className="w-3.5 h-3.5 shrink-0" /> Bajar
-                    </button>
-                    <button 
-                      onClick={() => handleRetry(img)} 
-                      className="bg-purple-500/10 hover:bg-purple-500/15 text-purple-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-purple-500/15"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Repetir
-                    </button>
-                    <button 
-                      onClick={() => setLightboxUrl(img.image_url)} 
-                      className="bg-white/[0.04] hover:bg-white/[0.06] text-zinc-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-white/[0.06]"
-                    >
-                      <Eye className="w-3.5 h-3.5 shrink-0" /> Ver
-                    </button>
-                    <button 
-                      onClick={() => setDeleteConfirm(img.id)} 
-                      className="bg-red-500/10 hover:bg-red-500/15 text-red-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold border border-red-500/15 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 shrink-0" /> Borrar
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06]">
-                    <div className="flex items-center gap-2">
-                      <img src={img.author_avatar_url || "https://ui-avatars.com/api/?name=Agente"} alt="Yo" className="w-6 h-6 rounded-full border border-white/[0.08]" />
-                      <span className="text-[10px] font-medium text-zinc-400 truncate max-w-[80px]">{img.author_name}</span>
+                  <div className="mt-auto">
+                    {/* Action buttons 2x2 */}
+                    <div className="grid grid-cols-2 gap-1.5 mt-4">
+                      <button 
+                        onClick={() => forceDownload(img.image_url, `zamtools_ia_${img.id.slice(0,6)}.png`)} 
+                        className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/15 text-[#FFDE00] py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-[#FFDE00]/15"
+                      >
+                        <Download className="w-3.5 h-3.5 shrink-0" /> Bajar
+                      </button>
+                      <button 
+                        onClick={() => handleRetry(img)} 
+                        className="bg-purple-500/10 hover:bg-purple-500/15 text-purple-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-purple-500/15"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Repetir
+                      </button>
+                      <button 
+                        onClick={() => setLightboxUrl(img.image_url)} 
+                        className="bg-white/[0.04] hover:bg-white/[0.06] text-zinc-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-white/[0.06]"
+                      >
+                        <Eye className="w-3.5 h-3.5 shrink-0" /> Ver
+                      </button>
+                      <button 
+                        onClick={() => setDeleteConfirm(img.id)} 
+                        className="bg-red-500/10 hover:bg-red-500/15 text-red-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold border border-red-500/15 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 shrink-0" /> Borrar
+                      </button>
                     </div>
-                    <span className="text-[10px] text-zinc-600 font-medium">
-                      {formatDistanceToNow(new Date(img.created_at), { locale: es, addSuffix: true })}
-                    </span>
+
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06]">
+                      <div className="flex items-center gap-2">
+                        <img src={img.author_avatar_url || "https://ui-avatars.com/api/?name=Agente"} alt="Yo" className="w-6 h-6 rounded-full border border-white/[0.08]" />
+                        <span className="text-[10px] font-medium text-zinc-400 truncate max-w-[80px]">{img.author_name}</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-600 font-medium">
+                        {formatDistanceToNow(new Date(img.created_at), { locale: es, addSuffix: true })}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

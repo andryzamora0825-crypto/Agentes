@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import VipGate from "@/components/VipGate";
 import {
   FileText, UploadCloud, Copy, Check, Loader2, ImageIcon, X,
-  Hash, KeyRound, Zap, Clipboard,
+  Hash, KeyRound, Zap, Clipboard, ArrowLeft, RefreshCw
 } from "lucide-react";
 
 interface ExtractedData { nota: string | null; clave: string | null; }
@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExtractedData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [iframeRetirosKey, setIframeRetirosKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((f: File) => {
@@ -196,19 +197,43 @@ export default function DashboardPage() {
 
         {/* Right: Ecuabet Viewer */}
         <div className="rounded-lg border border-white/[0.08] overflow-hidden h-[450px] sm:h-[650px] flex flex-col bg-[#141414]">
-          <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
+          <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between z-20">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-subtle" />
-              <span className="text-xs text-white/50 font-medium">Caja Ecuabet</span>
+              <span className="text-xs text-white/50 font-medium hidden sm:inline">Caja Ecuabet</span>
             </div>
-            <a href="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" target="_blank" rel="noreferrer" className="text-[11px] text-white/25 hover:text-white/40 transition-colors">Abrir ↗</a>
+            <div className="flex items-center gap-1.5">
+              <button 
+                onClick={() => setIframeRetirosKey(k => k + 1)}
+                className="text-[10px] sm:text-[10px] font-semibold text-zinc-400 bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md transition-colors border border-white/10 flex items-center gap-1.5 uppercase tracking-wider"
+                title="Retroceder al inicio"
+              >
+                <ArrowLeft className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Atrás</span>
+              </button>
+              
+              <button 
+                onClick={() => setIframeRetirosKey(k => k + 1)}
+                className="text-[10px] sm:text-[10px] font-semibold text-zinc-400 bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md transition-colors border border-white/10 flex items-center gap-1.5 uppercase tracking-wider"
+                title="Recargar caja"
+              >
+                <RefreshCw className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Recargar</span>
+              </button>
+
+              <div className="w-px h-4 bg-white/10 mx-1 hidden sm:block"></div>
+
+              <a href="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" target="_blank" rel="noreferrer" className="text-[10px] sm:text-[10px] font-semibold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-2 py-1 rounded-md transition-colors border border-[#FFDE00]/30 flex items-center gap-1.5 uppercase tracking-wider">
+                Abrir ↗
+              </a>
+            </div>
           </div>
           <div className="flex-1 relative bg-[#0A0A0A]" style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="absolute inset-0 flex items-center justify-center z-0">
               <Loader2 className="w-5 h-5 text-white/15 animate-spin" />
             </div>
             <div className="absolute inset-0 z-10 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
-              <iframe src="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" className="w-full h-full border-none bg-white" title="Caja Ecuabet" />
+              <iframe key={iframeRetirosKey} src="https://caja.ecuabet.com/#!/top/pagoNotaRetiro" className="w-full h-full border-none bg-white" title="Caja Ecuabet" />
             </div>
           </div>
         </div>

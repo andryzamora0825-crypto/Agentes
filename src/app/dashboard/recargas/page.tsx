@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { DollarSign, Clock, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, ShieldAlert, MessageSquare, Filter, Loader2, Lock, ShoppingBag, ExternalLink } from "lucide-react";
+import { DollarSign, Clock, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, ShieldAlert, MessageSquare, Filter, Loader2, Lock, ShoppingBag, ExternalLink, ArrowLeft } from "lucide-react";
 import VipGate from "@/components/VipGate";
 import { useRouter } from "next/navigation";
 
@@ -30,6 +30,7 @@ export default function RecargasPage() {
   const [hasWhatsappBot, setHasWhatsappBot] = useState<boolean | null>(null); // null = loading
   const [confirmModal, setConfirmModal] = useState<Recarga | null>(null);
   const [confirmSuccess, setConfirmSuccess] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
 
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
 
@@ -380,9 +381,32 @@ export default function RecargasPage() {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
               <span className="text-white/80 font-bold text-xs tracking-widest uppercase truncate max-w-[140px] sm:max-w-none">Sistema Caja Ecuabet</span>
             </div>
-            <a href="https://caja.ecuabet.com/#!/top/recargarCredito" target="_blank" rel="noreferrer" className="text-[10px] sm:text-[10px] font-semibold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-2 py-1 rounded-md transition-colors border border-[#FFDE00]/30 flex items-center gap-1.5 truncate max-w-[130px] sm:max-w-none uppercase tracking-wider">
-              <ExternalLink className="w-3 h-3 shrink-0" /> Abrir Externamente
-            </a>
+            
+            <div className="flex items-center gap-1.5">
+              <button 
+                onClick={() => setIframeKey(k => k + 1)}
+                className="text-[10px] sm:text-[10px] font-semibold text-zinc-400 bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md transition-colors border border-white/10 flex items-center gap-1.5 uppercase tracking-wider"
+                title="Retroceder al inicio"
+              >
+                <ArrowLeft className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Atrás</span>
+              </button>
+              
+              <button 
+                onClick={() => setIframeKey(k => k + 1)}
+                className="text-[10px] sm:text-[10px] font-semibold text-zinc-400 bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md transition-colors border border-white/10 flex items-center gap-1.5 uppercase tracking-wider"
+                title="Recargar caja"
+              >
+                <RefreshCw className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Recargar</span>
+              </button>
+
+              <div className="w-px h-4 bg-white/10 mx-1 hidden sm:block"></div>
+
+              <a href="https://caja.ecuabet.com/#!/top/recargarCredito" target="_blank" rel="noreferrer" className="text-[10px] sm:text-[10px] font-semibold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-2 py-1 rounded-md transition-colors border border-[#FFDE00]/30 flex items-center gap-1.5 truncate max-w-[130px] sm:max-w-none uppercase tracking-wider">
+                <ExternalLink className="w-3 h-3 shrink-0" /> Abrir Externamente
+              </a>
+            </div>
           </div>
           <div className="flex-1 w-full bg-[#0d0d0d] relative" style={{ WebkitOverflowScrolling: "touch" }}>
             {/* Loading placeholder underneath iframe */}
@@ -393,6 +417,7 @@ export default function RecargasPage() {
             {/* The actual iframe */}
             <div className="absolute inset-0 z-10 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
               <iframe 
+                key={iframeKey}
                 src="https://caja.ecuabet.com/#!/top/recargarCredito" 
                 className="w-full h-full border-none bg-white"
                 title="Caja Ecuabet - Recargar Crédito"
