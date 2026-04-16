@@ -32,8 +32,10 @@ export default function EstudioIAPage() {
   const [deleting, setDeleting] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
   const originalPromptRef = useRef("");
   const refInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,82 +101,78 @@ export default function EstudioIAPage() {
     return () => clearInterval(interval);
   }, [generating]);
 
-  const toggleVoiceMode = () => {
+  const toggleVoiceMode = async () => {
     if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
       }
       setIsListening(false);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       return;
     }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Tu navegador no soporta grabar voz (usa Chrome, Edge o Safari).");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-    recognition.lang = 'es-ES';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    
-    const resetSilenceTimer = () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        if (recognitionRef.current) recognitionRef.current.stop();
-        setIsListening(false);
-      }, 5000);
-    };
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      originalPromptRef.current = prompt; // Guardar el texto existente antes de dictar
-      resetSilenceTimer();
-    };
-
-    recognition.onresult = (event: any) => {
-      // Como interimResults es false, el navegador esperará a que termine de hablar
-      // y entregará el resultado final todo de golpe.
-      let finalStr = '';
-      for (let i = 0; i < event.results.length; ++i) {
-        finalStr += event.results[i][0].transcript;
-      }
-      
-      const sessionText = finalStr.trim();
-
-      if (sessionText) {
-        setPrompt(() => {
-          const base = originalPromptRef.current ? originalPromptRef.current.trim() + ' ' : '';
-          return (base + " " + sessionText).replace(/\s+/g, ' ');
-        });
-        
-        setTimeout(() => {
-          const textarea = document.getElementById("prompt-input");
-          if (textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
-          }
-        }, 50);
-      }
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    };
-    recognition.onerror = () => {
-      setIsListening(false);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    };
 
     try {
-      recognition.start();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType });
+        
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+
+        setIsTranscribing(true);
+
+        const formData = new FormData();
+        formData.append("audio", audioBlob);
+
+        try {
+          const res = await fetch("/api/ai/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json();
+          if (data.success && data.text) {
+            setPrompt(prev => {
+              const base = prev ? prev.trim() + " " : "";
+              return (base + data.text).replace(/\s+/g, " ");
+            });
+            setTimeout(() => {
+              const textarea = document.getElementById("prompt-input");
+              if (textarea) {
+                textarea.style.height = 'auto';
+                textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+              }
+            }, 50);
+          } else {
+            setErrorMsg(data.error || "No se pudo transcribir el audio.");
+          }
+        } catch (e) {
+          console.error("Transcribe error", e);
+          setErrorMsg("Error de conexión al transcribir voz.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      originalPromptRef.current = prompt;
+      mediaRecorder.start();
+      setIsListening(true);
+      
     } catch (e) {
       console.error(e);
-      setIsListening(false);
+      alert("No se pudo acceder al micrófono. Asegúrate de dar los permisos a la aplicación o navegador.");
     }
   };
 
@@ -445,14 +443,22 @@ export default function EstudioIAPage() {
 
                 {/* Actions (Mic ONLY inside the pill) */}
                 <div className="flex items-center gap-1 shrink-0 p-1">
-                  {isListening ? (
+                  {isTranscribing ? (
+                    <button
+                      type="button"
+                      className="h-10 px-4 rounded-full bg-blue-500/10 text-blue-400 transition-colors flex items-center gap-2 text-sm font-medium animate-pulse cursor-wait"
+                    >
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="hidden sm:inline">Traduciendo</span>
+                    </button>
+                  ) : isListening ? (
                     <button
                       type="button"
                       onClick={toggleVoiceMode}
                       className="h-10 px-4 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors flex items-center gap-2 text-sm font-medium animate-pulse"
                     >
                       <Mic className="w-4 h-4" />
-                      <span className="hidden sm:inline">Escuchando</span>
+                      <span className="hidden sm:inline">Parar (Grabando)</span>
                     </button>
                   ) : (
                     <button
