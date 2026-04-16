@@ -48,8 +48,13 @@ export default function SidebarNav() {
   ];
 
   return (
-    <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-      {navItems.map((item) => {
+    <nav className="flex-1 px-4 lg:px-3 py-5 lg:py-3 space-y-1 lg:space-y-0.5 overflow-y-auto">
+      {/* Section label — solo visible en móvil */}
+      <p className="lg:hidden text-[10px] font-semibold text-white/20 uppercase tracking-[0.15em] px-3 pb-3">
+        Menú principal
+      </p>
+
+      {navItems.map((item, index) => {
         if (item.adminOnly && !isAdmin) return null;
         if (item.vipOnly && !isVip) return null;
         if (item.requiresBot && !hasWhatsappBot && !isAdmin) return null;
@@ -64,22 +69,70 @@ export default function SidebarNav() {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
-              isActive 
-                ? "bg-white/[0.06] text-white font-medium" 
-                : "text-white/35 hover:text-white/60 hover:bg-white/[0.03]"
-            }`}
+            className={`
+              flex items-center gap-3.5 lg:gap-2.5
+              px-4 lg:px-3 py-3.5 lg:py-2
+              rounded-2xl lg:rounded-lg
+              text-[15px] lg:text-[13px]
+              font-medium
+              transition-all duration-200
+              active:scale-[0.97]
+              ${isActive 
+                ? "bg-white/[0.08] lg:bg-white/[0.06] text-white shadow-sm shadow-white/[0.02]" 
+                : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
+              }
+            `}
           >
-            <Icon className="w-4 h-4 shrink-0" />
-            {item.name}
+            <div className={`
+              w-9 h-9 lg:w-auto lg:h-auto lg:p-0
+              flex items-center justify-center
+              rounded-xl lg:rounded-none
+              transition-colors duration-200
+              ${isActive 
+                ? 'bg-[#FFDE00]/10 lg:bg-transparent text-[#FFDE00]' 
+                : 'bg-white/[0.04] lg:bg-transparent text-inherit'
+              }
+            `}>
+              <Icon className="w-[18px] h-[18px] lg:w-4 lg:h-4 shrink-0" />
+            </div>
+            <span>{item.name}</span>
+            {isActive && (
+              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#FFDE00] lg:hidden" />
+            )}
           </Link>
         );
       })}
 
-      {/* Credits */}
+      {/* Credits Card */}
       {credits !== null && (
-        <div className="mt-4 mx-1 pt-4 border-t border-white/[0.06]">
-          <div className="flex items-center justify-between px-2">
+        <div className="mt-6 lg:mt-4 mx-1 pt-5 lg:pt-4 border-t border-white/[0.06]">
+          {/* Móvil: tarjeta grande premium */}
+          <div className="lg:hidden mx-1 p-5 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/[0.08]">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[10px] text-white/30 uppercase tracking-widest font-semibold">Créditos</div>
+                <div className="text-2xl font-bold text-white mt-1">{credits.toLocaleString()}</div>
+              </div>
+              {plan === "VIP" ? (
+                <div className="flex flex-col items-end">
+                  <span className="text-[11px] font-bold text-[#FFDE00] bg-[#FFDE00]/[0.1] px-3 py-1.5 rounded-xl border border-[#FFDE00]/20">
+                    ⭐ VIP
+                  </span>
+                  <span className="text-[10px] text-white/25 mt-1.5">{daysLeft} días restantes</span>
+                </div>
+              ) : (
+                <Link 
+                  href="/dashboard/tienda" 
+                  className="text-[12px] font-semibold text-black bg-gradient-to-r from-[#FFDE00] to-[#FFB800] px-4 py-2 rounded-xl hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-[#FFDE00]/10"
+                >
+                  Recargar
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Desktop: compacto */}
+          <div className="hidden lg:flex items-center justify-between px-2">
             <div>
               <div className="text-[10px] text-white/25 uppercase tracking-wider font-medium">Créditos</div>
               <div className="text-sm font-semibold text-white/80 mt-0.5">{credits.toLocaleString()}</div>

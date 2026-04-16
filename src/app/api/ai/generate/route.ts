@@ -34,7 +34,6 @@ export async function POST(request: Request) {
     let prompt = "";
     let useAgencyIdentity = false;
     let useAgencyCharacter = false;
-    let imageFormat = "square";
     let referenceImages: { base64: string; mimeType: string }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
@@ -42,7 +41,6 @@ export async function POST(request: Request) {
       prompt = formData.get("prompt") as string;
       useAgencyIdentity = formData.get("useAgencyIdentity") === "true";
       useAgencyCharacter = formData.get("useAgencyCharacter") === "true";
-      imageFormat = (formData.get("imageFormat") as string) || "square";
 
       // Hasta 3 imágenes de referencia directas desde el formulario
       for (let i = 0; i < 3; i++) {
@@ -58,23 +56,12 @@ export async function POST(request: Request) {
       prompt = body.prompt;
       useAgencyIdentity = body.useAgencyIdentity === true;
       useAgencyCharacter = body.useAgencyCharacter === true;
-      imageFormat = body.imageFormat || "square";
     }
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "Falta el prompt" }, { status: 400 });
     }
 
-    // --- Mapeo de formatos a instrucciones de aspecto ---
-    const FORMAT_MAP: Record<string, string> = {
-      square:     "OBLIGATORIO: Generar la imagen en proporción CUADRADA (1:1). NO generar rectangular.",
-      vertical:   "OBLIGATORIO: Generar la imagen en proporción VERTICAL ALTA (9:16), ideal para Stories/Reels.",
-      horizontal: "OBLIGATORIO: Generar la imagen en proporción HORIZONTAL ANCHA (16:9), ideal para YouTube/PC.",
-      portrait:   "OBLIGATORIO: Generar la imagen en proporción RETRATO VERTICAL (4:5), ideal para Instagram feed.",
-      landscape:  "OBLIGATORIO: Generar la imagen en proporción PAISAJE HORIZONTAL (3:2), ideal para web.",
-      whatsapp:   "OBLIGATORIO: Generar la imagen en proporción CUADRADA (1:1).",
-    };
-    const targetDirection = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
 
     // Usamos el prompt base
     let finalPrompt = prompt;
@@ -136,7 +123,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
     }
 
     // Refuerzo vital del formato al final del prompt para que el modelo no lo olvide
-    finalPrompt += `\n\n[INSTRUCCIONES FINALES DE FORMATO FíSICO]: ${targetDirection} \nES ESTRICTAMENTE CRÍTICO OBEDECER LA PROPORCIÓN SOLICITADA.`;
+    finalPrompt += `\n\n[INSTRUCCIONES FINALES]: ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ EN SU PROMPT.`;
 
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);

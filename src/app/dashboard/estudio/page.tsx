@@ -27,9 +27,6 @@ export default function EstudioIAPage() {
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [useAgencyIdentity, setUseAgencyIdentity] = useState(true);
   const [useAgencyCharacter, setUseAgencyCharacter] = useState(false);
-  const [imageFormat, setImageFormat] = useState("landscape");
-  // Ref para almacenar el dictado por partes
-  const activeSessionFinalRef = useRef("");
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -197,7 +194,6 @@ export default function EstudioIAPage() {
       fd.append("prompt", prompt);
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
       fd.append("useAgencyCharacter", String(useAgencyCharacter));
-      fd.append("imageFormat", imageFormat);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
       const res = await fetch("/api/ai/generate", { 
@@ -290,16 +286,16 @@ export default function EstudioIAPage() {
 
   return (
     <VipGate>
-      <div className="p-5 sm:p-8 max-w-6xl mx-auto space-y-6 animate-fade-in">
+      <div className="p-5 sm:p-8 max-w-6xl mx-auto space-y-6">
 
         {/* Header */}
-        <div>
+        <div className="animate-slide-down">
           <h1 className="text-lg font-semibold text-white/90 tracking-tight">Estudio IA</h1>
           <p className="text-sm text-white/30 mt-1">Escribe tu idea y la IA la pintará en segundos.</p>
         </div>
 
         {/* Generation Panel */}
-        <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6">
+        <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6 animate-slide-up">
 
           {/* Model indicator + cost */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
@@ -377,34 +373,6 @@ export default function EstudioIAPage() {
               </div>
             </div>
 
-            {/* Format Selector */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Monitor className="w-3.5 h-3.5 text-zinc-600" />
-                <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-wider">Dimensiones</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {FORMAT_OPTIONS.map((fmt) => {
-                  const selected = imageFormat === fmt.id;
-                  const IconEl = fmt.icon === 'monitor' ? Monitor : fmt.icon === 'phone' ? Smartphone : fmt.icon === 'rect-h' ? RectangleHorizontal : fmt.icon === 'rect-v' ? RectangleVertical : Square;
-                  return (
-                    <button
-                      key={fmt.id}
-                      type="button"
-                      onClick={() => setImageFormat(fmt.id)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all text-xs ${selected
-                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/25 text-[#FFDE00]'
-                          : 'bg-white/[0.02] border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-400'
-                        }`}
-                    >
-                      <IconEl className="w-3 h-3" />
-                      <span className="font-medium">{fmt.label}</span>
-                      <span className="text-[9px] font-[family-name:var(--font-mono)] opacity-60">{fmt.ratio}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Consolidated Input Area (Estilo Chat) */}
             <div className="relative bg-[#0A0A0A] border border-white/[0.08] rounded-[28px] focus-within:border-[#FFDE00]/30 transition-colors shadow-inner flex flex-col">
@@ -470,7 +438,7 @@ export default function EstudioIAPage() {
                     e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
                   }}
                   onFocus={() => setShowAttachMenu(false)}
-                  placeholder="Pregunta lo que quieras"
+                  placeholder="Describe tu imagen aquí"
                   className="w-full bg-transparent text-white/90 focus:outline-none !outline-none !ring-0 focus:!ring-0 !border-0 focus:!border-0 !shadow-none focus:!shadow-none resize-none py-3 min-h-[44px] max-h-[150px] text-[15px] placeholder-zinc-500 custom-scrollbar"
                   style={{ height: '44px' }}
                 />
@@ -519,7 +487,7 @@ export default function EstudioIAPage() {
                 disabled={generating || !prompt.trim()}
                 className={`h-11 px-8 rounded-full flex items-center justify-center gap-2 transition-all active:scale-95 text-sm font-semibold
                   ${prompt.trim() && !generating 
-                    ? 'bg-[#FFDE00] text-black hover:brightness-110 shadow-[0_0_15px_rgba(255,222,0,0.3)]' 
+                    ? 'bg-[#FFDE00] text-black hover:brightness-110 shadow-[0_0_15px_rgba(255,222,0,0.3)] animate-glow' 
                     : 'bg-white/[0.05] text-white/30 cursor-not-allowed'
                   }`}
               >
@@ -537,7 +505,7 @@ export default function EstudioIAPage() {
 
             {/* Loading State */}
             {generating && (
-              <div className="flex items-center justify-center p-8 border border-white/[0.06] rounded-xl bg-[#09090b] overflow-hidden relative">
+              <div className="flex items-center justify-center p-8 border border-white/[0.06] rounded-xl bg-[#09090b] overflow-hidden relative animate-scale-in">
                 <div className="absolute inset-0 bg-[#FFDE00]/[0.03] animate-pulse"></div>
                 <div className="flex flex-col items-center text-center space-y-3 z-10">
                   <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00]" />
@@ -558,7 +526,7 @@ export default function EstudioIAPage() {
         </div>
 
         {/* History Section */}
-        <div className="pt-6 border-t border-white/[0.06]">
+        <div className="pt-6 border-t border-white/[0.06] animate-fade-in">
           <div>
             <h2 className="text-base font-semibold text-white/80">Historial</h2>
             {!loadingHistory && (
@@ -573,15 +541,15 @@ export default function EstudioIAPage() {
         {loadingHistory ? (
           <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-[#FFDE00]" /></div>
         ) : images?.length === 0 ? (
-          <div className="bg-[#141414] border border-white/[0.06] rounded-lg p-12 flex flex-col items-center justify-center text-center">
-            <ImageIcon className="w-12 h-12 text-zinc-700 mb-3" />
+          <div className="bg-[#141414] border border-white/[0.06] rounded-lg p-12 flex flex-col items-center justify-center text-center animate-scale-in">
+            <ImageIcon className="w-12 h-12 text-zinc-700 mb-3 animate-float" />
             <h3 className="text-base font-semibold text-zinc-500">Sin imágenes aún</h3>
             <p className="text-zinc-600 mt-1 text-sm">Las imágenes que generes aparecerán aquí.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {images.map((img) => (
-              <div key={img.id} className="bg-[#141414] rounded-lg overflow-hidden border border-white/[0.06] group relative flex flex-col hover:border-white/[0.12] transition-colors">
+            {images.map((img, idx) => (
+              <div key={img.id} className={`bg-[#141414] rounded-lg overflow-hidden border border-white/[0.06] group relative flex flex-col hover:border-white/[0.12] transition-all duration-300 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-1 animate-card-enter stagger-${Math.min(idx + 1, 8)}`}>
 
                 <div className="relative aspect-square w-full bg-[#09090b] flex items-center justify-center overflow-hidden">
                   <img src={img.image_url} alt="IA Art" className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105" />
@@ -655,7 +623,7 @@ export default function EstudioIAPage() {
           <img
             src={lightboxUrl}
             alt="Vista completa"
-            className="max-w-full max-h-[90vh] object-contain rounded-xl"
+            className="max-w-full max-h-[90vh] object-contain rounded-xl animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           />
         </div>

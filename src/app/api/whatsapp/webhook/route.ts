@@ -106,21 +106,39 @@ async function executeTool(
 
   if (name === "registrar_recarga") {
     const { monto, banco } = args;
-    await supabase.from("whatsapp_recargas").insert({
-      owner_id: ctx.uid,
-      phone_number: ctx.sender,
-      client_name: ctx.senderName,
-      amount: monto,
-      bank: banco,
-      status: "pending",
-      is_scammer: false,
-    });
+
+    // ── DEDUPLICACIÓN: Si ya hay una recarga pendiente de este número, actualizar en vez de duplicar ──
+    const { data: existing } = await supabase.from("whatsapp_recargas")
+      .select("id")
+      .eq("owner_id", ctx.uid)
+      .eq("phone_number", ctx.sender)
+      .eq("status", "pending")
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from("whatsapp_recargas")
+        .update({ amount: monto, bank: banco, client_name: ctx.senderName })
+        .eq("id", existing.id);
+      console.log(`[TOOL] ♻️ Recarga actualizada (dedup): $${monto} - ${banco}`);
+    } else {
+      await supabase.from("whatsapp_recargas").insert({
+        owner_id: ctx.uid,
+        phone_number: ctx.sender,
+        client_name: ctx.senderName,
+        amount: monto,
+        bank: banco,
+        status: "pending",
+        is_scammer: false,
+      });
+      console.log(`[TOOL] ✅ Recarga registrada: $${monto} - ${banco}`);
+    }
+
     await supabase.from("whatsapp_contact_tags")
       .upsert([
         { owner_id: ctx.uid, phone_number: ctx.sender, tag: "recarga_pendiente" },
         { owner_id: ctx.uid, phone_number: ctx.sender, tag: "cuentas_entregadas" }
       ], { onConflict: "owner_id,phone_number,tag" });
-    console.log(`[TOOL] ✅ Recarga registrada: $${monto} - ${banco}`);
     return `¡ACCIÓN COMPLETADA! Recarga registrada. AHORA DEBES RESPONDER AL CLIENTE: Entrégale de forma amable los datos exactos de la cuenta bancaria del banco '${banco}' (búscalos en tu lista de BANCOS DISPONIBLES). Además de darle la cuenta, ES ABSOLUTAMENTE OBLIGATORIO que termines el mensaje diciéndole textualmente: "Me ayuda con el comprobante de la transferencia y el ID de su cuenta Ecuabet. Recuerde que el titular de la cuenta bancaria debe ser el mismo de la cuenta Ecuabet". NO PUEDES despedirte sin añadir esa frase exacta y los datos bancarios completos.`;
   }
 
@@ -212,7 +230,7 @@ export async function POST(request: Request) {
       }
 
       // Evitar sobreescribir pausa permanente si el humano escribe
-      const { data: existingPause, error: pauseErr } = await supabase.from("whatsapp_pauses")
+      const { data: existingPause } = await supabase.from("whatsapp_pauses")
         .select("paused_until").eq("owner_id", uid).eq("phone_number", chatId).limit(1).maybeSingle();
 
       if (existingPause && (new Date(existingPause.paused_until).getTime() - Date.now() > 24 * 60 * 60 * 1000)) {
@@ -223,6 +241,14 @@ export async function POST(request: Request) {
       const autoPause = new Date(Date.now() + PAUSE_HUMAN_MINUTES * 60 * 1000).toISOString();
       await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", chatId);
       await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: chatId, paused_until: autoPause });
+
+      // ── LIMPIAR RECARGAS PENDIENTES: el humano ya atendió a este cliente ──
+      await supabase.from("whatsapp_recargas")
+        .delete()
+        .eq("owner_id", uid)
+        .eq("phone_number", chatId)
+        .eq("status", "pending");
+
       return NextResponse.json({ success: true, action: "auto_paused" });
     }
 
@@ -312,10 +338,11 @@ export async function POST(request: Request) {
     const { send } = makeWASender(waBaseUrl, providerConfig.idInstance, providerConfig.apiTokenInstance, sender);
     const adminEmail = (user.emailAddresses?.[0]?.emailAddress || "") as string;
 
-    // SCAMMER CHECK INSTANTÁNEO (Básico: si el mensaje parece pedir recarga o ya está catalogado)
+    // SCAMMER CHECK INSTANTÁNEO — cubre todos los formatos posibles del número
     const cleanPhone = sender.replace("@c.us", "");
+    const last10 = cleanPhone.slice(-10);
     const { data: scammerData } = await supabase.from("scammers").select("id")
-      .or(`phone_number.eq.${cleanPhone},phone_number.eq.0${cleanPhone.slice(-10)},phone_number.eq.593${cleanPhone.slice(-10)}`).limit(1);
+      .or(`phone_number.eq.${cleanPhone},phone_number.eq.0${last10},phone_number.eq.593${last10},phone_number.eq.+593${last10},phone_number.eq.+${cleanPhone}`).limit(1);
 
     if (scammerData && scammerData.length > 0) {
       await send("Lo sentimos, por motivos de seguridad no podemos procesar su solicitud. Comuníquese directamente con un asesor humano.");
@@ -354,10 +381,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── HISTORIAL DE CONVERSACIÓN RAPIDO ──
+    // ── HISTORIAL DE CONVERSACIÓN RAPIDO (últimas 24h solamente) ──
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: rawHistory } = await supabase.from("whatsapp_chats")
       .select("role, content").eq("owner_id", uid).eq("phone_number", sender)
-      .order("created_at", { ascending: true }).limit(30);
+      .gte("created_at", twentyFourHoursAgo)
+      .order("created_at", { ascending: true }).limit(40);
 
     const history = rawHistory || [];
 
@@ -422,6 +451,7 @@ ACCIÓN CONDICIONADA: Los retiros requieren trabajo manual. Una vez recopilados 
 
 EMPATÍA FINAL: ${aiPersona || "Excelente trato financiero, amable, profesional."}
 KNOWLEDGE BASE: ${knowledgeBase || ""}
+${greetingMenu ? `MENÚ DE BIENVENIDA (Usa este menú SOLO en el PRIMER saludo del cliente, cuando no hay historial previo): ${greetingMenu}` : ""}
 CLIENTE: ${senderName}
 TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
 
@@ -489,14 +519,31 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
     // ── INTERCEPTOR DE SILENCIO CEREBRAL ──
     if (aiResponse.includes("[ESPERANDO_FRAGMENTO]")) {
       console.log(`[WEBHOOK] 🤫 IA detectó mensaje cortado, guardando silencio...`);
+      // Borrar el fragmento de la DB para no contaminar el historial
+      if (insertedChat?.id) {
+        await supabase.from("whatsapp_chats").delete().eq("id", insertedChat.id);
+      }
       return NextResponse.json({ success: true, ignored: true, reason: "Mensaje Fragmentado (AI)" });
     }
 
-    // ── DESPACHO CEREBRAL ──
-    await send(aiResponse);
+    // ── SANITIZAR: eliminar instrucciones internas que la IA pueda filtrar ──
+    aiResponse = aiResponse
+      .replace(/\[ESPERANDO_FRAGMENTO\]/gi, "")
+      .replace(/¡ACCIÓN COMPLETADA![^.]*\./gi, "")
+      .replace(/\[INSTRUCCIÓN[^\]]*\]/gi, "")
+      .replace(/\[TOOL[^\]]*\]/gi, "")
+      .trim();
+    if (!aiResponse) aiResponse = "¿En qué más te puedo ayudar?";
 
-    // Guardar lo que la IA respondió en la DB
-    await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: aiResponse });
+    // ── DESPACHO CEREBRAL ──
+    const sent = await send(aiResponse);
+
+    // Solo guardar en DB si el mensaje se envió correctamente
+    if (sent) {
+      await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: aiResponse });
+    } else {
+      console.warn(`[WEBHOOK] ⚠️ Mensaje NO enviado a ${sender}, no se guarda en historial.`);
+    }
 
     return NextResponse.json({ success: true });
 
