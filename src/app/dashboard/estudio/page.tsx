@@ -134,45 +134,32 @@ export default function EstudioIAPage() {
 
     recognition.onstart = () => {
       setIsListening(true);
-      originalPromptRef.current = prompt;
-      activeSessionFinalRef.current = "";
-      (recognition as any)._lastProcessedIndex = -1; // Hack para guardar el índice sin crear otro ref
+      originalPromptRef.current = prompt; // Guardar el texto existente antes de dictar
       resetSilenceTimer();
     };
 
     recognition.onresult = (event: any) => {
       resetSilenceTimer();
 
+      let sessionFinal = '';
       let sessionInterim = '';
-      const currentLen = event.results.length;
-      let lastIndex = (recognition as any)._lastProcessedIndex ?? -1;
-
-      // Si el navegador limpia el array (común en Android), reseteamos el tracker
-      if (currentLen <= lastIndex) {
-        lastIndex = -1;
-      }
-
-      for (let i = 0; i < currentLen; ++i) {
+      
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          if (i > lastIndex) {
-            activeSessionFinalRef.current += event.results[i][0].transcript + ' ';
-            lastIndex = i;
-          }
+          sessionFinal += event.results[i][0].transcript + ' ';
         } else {
           sessionInterim += event.results[i][0].transcript;
         }
       }
-      
-      (recognition as any)._lastProcessedIndex = lastIndex;
 
-      const sessionText = (activeSessionFinalRef.current + sessionInterim).trim();
+      const sessionText = (sessionFinal + sessionInterim).trim();
 
       if (sessionText) {
         setPrompt(() => {
           const base = originalPromptRef.current ? originalPromptRef.current.trim() + ' ' : '';
           return (base + sessionText).replace(/\s+/g, ' ');
         });
-
+        
         setTimeout(() => {
           const textarea = document.getElementById("prompt-input");
           if (textarea) {
