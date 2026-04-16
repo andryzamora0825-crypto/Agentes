@@ -27,7 +27,9 @@ export default function EstudioIAPage() {
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [useAgencyIdentity, setUseAgencyIdentity] = useState(true);
   const [useAgencyCharacter, setUseAgencyCharacter] = useState(false);
-  const [imageFormat, setImageFormat] = useState('square');
+  const [imageFormat, setImageFormat] = useState("landscape");
+  // Ref para almacenar el dictado por partes
+  const activeSessionFinalRef = useRef("");
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -133,24 +135,24 @@ export default function EstudioIAPage() {
     recognition.onstart = () => {
       setIsListening(true);
       originalPromptRef.current = prompt; // Guardar el texto existente antes de dictar
+      activeSessionFinalRef.current = ""; // Resetear sesión actual
       resetSilenceTimer();
     };
 
     recognition.onresult = (event: any) => {
       resetSilenceTimer();
 
-      let sessionFinal = '';
       let sessionInterim = '';
       
-      for (let i = 0; i < event.results.length; ++i) {
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          sessionFinal += event.results[i][0].transcript + ' ';
+          activeSessionFinalRef.current += event.results[i][0].transcript + ' ';
         } else {
           sessionInterim += event.results[i][0].transcript;
         }
       }
 
-      const sessionText = (sessionFinal + sessionInterim).trim();
+      const sessionText = (activeSessionFinalRef.current + sessionInterim).trim();
 
       if (sessionText) {
         setPrompt(() => {
