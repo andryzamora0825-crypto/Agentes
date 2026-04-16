@@ -6,7 +6,13 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     url: 'https://yanweb.builders/',
-    cleartext: true
+    cleartext: true,
+    allowNavigation: [
+      'accounts.google.com',
+      '*.clerk.accounts.dev',
+      'clerk.yanweb.builders',
+      '*.yanweb.builders'
+    ]
   }
 };
 
