@@ -134,8 +134,9 @@ export default function EstudioIAPage() {
 
     recognition.onstart = () => {
       setIsListening(true);
-      originalPromptRef.current = prompt; // Guardar el texto existente antes de dictar
-      activeSessionFinalRef.current = ""; // Resetear sesión actual
+      originalPromptRef.current = prompt;
+      activeSessionFinalRef.current = "";
+      (recognition as any)._lastProcessedIndex = -1; // Hack para guardar el índice sin crear otro ref
       resetSilenceTimer();
     };
 
@@ -143,14 +144,26 @@ export default function EstudioIAPage() {
       resetSilenceTimer();
 
       let sessionInterim = '';
-      
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      const currentLen = event.results.length;
+      let lastIndex = (recognition as any)._lastProcessedIndex ?? -1;
+
+      // Si el navegador limpia el array (común en Android), reseteamos el tracker
+      if (currentLen <= lastIndex) {
+        lastIndex = -1;
+      }
+
+      for (let i = 0; i < currentLen; ++i) {
         if (event.results[i].isFinal) {
-          activeSessionFinalRef.current += event.results[i][0].transcript + ' ';
+          if (i > lastIndex) {
+            activeSessionFinalRef.current += event.results[i][0].transcript + ' ';
+            lastIndex = i;
+          }
         } else {
           sessionInterim += event.results[i][0].transcript;
         }
       }
+      
+      (recognition as any)._lastProcessedIndex = lastIndex;
 
       const sessionText = (activeSessionFinalRef.current + sessionInterim).trim();
 
@@ -159,7 +172,7 @@ export default function EstudioIAPage() {
           const base = originalPromptRef.current ? originalPromptRef.current.trim() + ' ' : '';
           return (base + sessionText).replace(/\s+/g, ' ');
         });
-        
+
         setTimeout(() => {
           const textarea = document.getElementById("prompt-input");
           if (textarea) {
