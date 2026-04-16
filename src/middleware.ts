@@ -2,9 +2,9 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // Rutas que NO requieren autenticación de Clerk
 const isPublicRoute = createRouteMatcher([
-  '/',
+  '/', // ← ¡ESTO HACE QUE LA PANTALLA NEGRA NO PIDA LOGIN!
   '/api/whatsapp/webhook(.*)',  // Green-API necesita acceder sin autenticación
-  '/sign-in(.*)',
+  '/sign-in(.*)', // ← ¡PÁGINA CUSTOM TAMBIÉN ES PÚBLICA!
   '/sign-up(.*)',
 ]);
 
