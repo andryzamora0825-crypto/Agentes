@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { DollarSign, Clock, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, ShieldAlert, MessageSquare, Filter, Loader2, Lock, ShoppingBag, ExternalLink, ArrowLeft } from "lucide-react";
+import { DollarSign, Clock, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, ShieldAlert, MessageSquare, Filter, Loader2, Lock, ShoppingBag } from "lucide-react";
 import VipGate from "@/components/VipGate";
 import EcuabetHeader from "@/components/EcuabetHeader";
 

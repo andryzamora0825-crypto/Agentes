@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import VipGate from "@/components/VipGate";
 import {
   FileText, UploadCloud, Copy, Check, Loader2, ImageIcon, X,
-  Hash, KeyRound, Zap, Clipboard, ArrowLeft, RefreshCw
+  Hash, KeyRound, Zap, Clipboard
 } from "lucide-react";
 
 interface ExtractedData { nota: string | null; clave: string | null; }
