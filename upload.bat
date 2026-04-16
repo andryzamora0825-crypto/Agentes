@@ -6,7 +6,7 @@ echo.
 
 git add .
 git commit -m "Migracion a OpenAI y mejoras generales"
-git push origin main
+git push origin main -f
 
 echo.
 echo ========================================================
