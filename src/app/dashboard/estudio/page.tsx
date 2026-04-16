@@ -121,8 +121,8 @@ export default function EstudioIAPage() {
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.lang = 'es-ES';
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.interimResults = false;
     
     const resetSilenceTimer = () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -139,25 +139,19 @@ export default function EstudioIAPage() {
     };
 
     recognition.onresult = (event: any) => {
-      resetSilenceTimer();
-
-      let sessionFinal = '';
-      let sessionInterim = '';
-      
+      // Como interimResults es false, el navegador esperará a que termine de hablar
+      // y entregará el resultado final todo de golpe.
+      let finalStr = '';
       for (let i = 0; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          sessionFinal += event.results[i][0].transcript + ' ';
-        } else {
-          sessionInterim += event.results[i][0].transcript;
-        }
+        finalStr += event.results[i][0].transcript;
       }
-
-      const sessionText = (sessionFinal + sessionInterim).trim();
+      
+      const sessionText = finalStr.trim();
 
       if (sessionText) {
         setPrompt(() => {
           const base = originalPromptRef.current ? originalPromptRef.current.trim() + ' ' : '';
-          return (base + sessionText).replace(/\s+/g, ' ');
+          return (base + " " + sessionText).replace(/\s+/g, ' ');
         });
         
         setTimeout(() => {
