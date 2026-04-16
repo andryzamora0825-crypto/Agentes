@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.agentes.zamtools',
   appName: 'ZamTools',
   webDir: 'public',
-  bundledWebRuntime: false,
   server: {
     url: 'https://yanweb.builders/',
     cleartext: true
