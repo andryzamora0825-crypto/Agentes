@@ -8,7 +8,7 @@ export function NavbarAuth() {
   const { isSignedIn } = useAuth();
   if (isSignedIn) return <UserButton />;
   return (
-    <SignInButton mode="modal">
+    <SignInButton mode="redirect" forceRedirectUrl="/dashboard">
       <button className="bg-[#FFDE00] text-black px-4 py-2 rounded-lg font-semibold text-xs hover:brightness-110 transition-all">
         Iniciar Sesión
       </button>
@@ -27,7 +27,7 @@ export function HeroCTA() {
     );
   }
   return (
-    <SignInButton mode="modal">
+    <SignInButton mode="redirect" forceRedirectUrl="/dashboard">
       <button className={cls}>
         Empezar Ahora <ArrowRight className="w-4 h-4" />
       </button>
