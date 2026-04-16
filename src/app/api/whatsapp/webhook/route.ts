@@ -462,10 +462,14 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt }];
 
-    // Inyectar el historial (excluyendo el último porque el LLM lo verá como el "prompt")
-    for (const msg of history) {
+    // Inyectar historial EXCLUYENDO el último mensaje (ya se insertó en línea 358
+    // y la IA lo vería duplicado si lo incluimos aquí)
+    const historyWithoutLast = history.slice(0, -1);
+    for (const msg of historyWithoutLast) {
       messages.push({ role: msg.role === "model" ? "assistant" : "user", content: msg.content });
     }
+    // Agregar el mensaje actual como el último mensaje del usuario
+    messages.push({ role: "user", content: messageText });
 
     let aiResponse = "";
     try {
@@ -486,7 +490,19 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
 
           for (const toolCall of choice.message.tool_calls || []) {
             if (toolCall.type !== 'function') continue;
-            let args = {}; try { args = JSON.parse(toolCall.function.arguments); } catch { }
+            let args: Record<string, any> = {};
+            try { args = JSON.parse(toolCall.function.arguments); } catch {
+              console.warn(`[WEBHOOK] ⚠️ Args malformados para ${toolCall.function.name}: ${toolCall.function.arguments}`);
+              messages.push({ role: "tool", tool_call_id: toolCall.id, content: "Error: argumentos inválidos, no se ejecutó la herramienta." });
+              continue;
+            }
+
+            // Validar que registrar_recarga tenga datos reales
+            if (toolCall.function.name === "registrar_recarga" && (!args.monto || !args.banco)) {
+              console.warn(`[WEBHOOK] ⚠️ registrar_recarga con datos incompletos: monto=${args.monto}, banco=${args.banco}`);
+              messages.push({ role: "tool", tool_call_id: toolCall.id, content: "Error: falta el monto o el banco. Pregúntale al cliente." });
+              continue;
+            }
 
             console.log(`[WEBHOOK] 🔧 Ejecutando Tool: ${toolCall.function.name}`, args);
             const toolResult = await executeTool(toolCall.function.name, args, {
@@ -502,6 +518,18 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
         } else {
           break; // Fin del proceso LLM
         }
+      }
+
+      // Si después de 3 rondas la IA sigue pidiendo tools sin dar texto, forzar respuesta final
+      if (completion.choices[0]?.finish_reason === "tool_calls") {
+        messages.push(completion.choices[0].message);
+        // Responder los tool_calls pendientes con error para que la IA genere texto
+        for (const tc of completion.choices[0].message.tool_calls || []) {
+          messages.push({ role: "tool", tool_call_id: tc.id, content: "Límite de acciones alcanzado. Responde al cliente con lo que tienes." });
+        }
+        completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini", messages, max_tokens: 300, temperature: 0.35,
+        });
       }
 
       if (completion.choices[0]?.finish_reason === "content_filter") {
