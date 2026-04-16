@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import VipGate from "@/components/VipGate";
+import EcuabetHeader from "@/components/EcuabetHeader";
 import {
   FileText, UploadCloud, Copy, Check, Loader2, ImageIcon, X,
   Hash, KeyRound, Zap, Clipboard
