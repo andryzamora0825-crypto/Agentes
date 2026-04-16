@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2 } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
@@ -13,7 +13,9 @@ export default function AdminPanelPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [planFilter, setPlanFilter] = useState("ALL");
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   // Estados de Campaña de Estados Nano Banana
   const [promptsText, setPromptsText] = useState("");
@@ -399,10 +401,11 @@ export default function AdminPanelPage() {
   };
 
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(search.toLowerCase()) || 
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
+    const matchesPlan = planFilter === "ALL" ? true : u.plan === planFilter;
+    return matchesSearch && matchesPlan;
+  });
 
   if (!isAdmin) return null;
 
@@ -412,70 +415,68 @@ export default function AdminPanelPage() {
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-8">
       {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121212] border border-white/5 p-8 rounded-3xl text-white shadow-2xl relative overflow-hidden">
-         <div className="absolute top-0 right-0 w-64 h-64 bg-[#FFDE00]/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2"></div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#141414] border border-white/[0.06] p-6 sm:p-8 rounded-lg text-white">
          <div className="z-10 relative">
-           <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
-             <ShieldCheck className="w-8 h-8 text-[#FFDE00]" />
+           <h1 className="text-xl font-semibold tracking-tight flex items-center gap-3">
+             <ShieldCheck className="w-6 h-6 text-[#FFDE00]" />
              Panel de Administración
            </h1>
-           <p className="text-gray-400 mt-2 text-sm max-w-md">Supervisa y controla los balances económicos y rangos de los agentes en tiempo real.</p>
+           <p className="text-white/30 mt-1 text-sm max-w-md">Supervisa y controla los balances económicos y rangos de los agentes en tiempo real.</p>
            
            <button 
              onClick={() => router.push('/dashboard/admin/codigos')}
-             className="mt-6 bg-[#FFDE00] text-black font-bold px-6 py-3 rounded-xl hover:bg-white hover:-translate-y-1 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,222,0,0.3)] w-max"
+             className="mt-6 bg-[#FFDE00] text-black font-semibold px-4 py-2 rounded-lg hover:brightness-110 transition-all flex items-center gap-2 text-sm max-w-max"
            >
-             <Ticket className="w-5 h-5" />
+             <Ticket className="w-4 h-4" />
              Generar Códigos Promo
            </button>
          </div>
 
          {/* Stats Rápidas */}
          <div className="flex items-center gap-4 z-10 relative">
-            <div className="bg-white/10 border border-white/5 p-4 rounded-2xl text-center min-w-[120px]">
-               <div className="text-3xl font-black">{totalAgents}</div>
-               <div className="text-xs text-gray-400 uppercase tracking-widest font-bold">Agentes</div>
+            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[120px]">
+               <div className="text-2xl font-bold">{totalAgents}</div>
+               <div className="text-[10px] text-white/30 uppercase tracking-widest font-medium mt-1">Agentes</div>
             </div>
-            <div className="bg-white/10 border border-white/5 p-4 rounded-2xl text-center min-w-[120px]">
-               <div className="text-3xl font-black text-[#FFDE00]">{totalVips}</div>
-               <div className="text-xs text-gray-400 uppercase tracking-widest font-bold">VIPs</div>
+            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[120px]">
+               <div className="text-2xl font-bold text-[#FFDE00]">{totalVips}</div>
+               <div className="text-[10px] text-[#FFDE00]/30 uppercase tracking-widest font-medium mt-1">VIPs</div>
             </div>
          </div>
       </div>
 
       {/* Campaña de Estados Masiva */}
-      <div className="bg-[#121212] border border-white/5 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden">
-         <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+      <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg relative overflow-hidden mt-6">
          <div className="flex items-start gap-4 z-10 relative">
-            <div className="bg-purple-500/20 p-3 rounded-2xl hidden sm:block">
-              <Zap className="w-8 h-8 text-purple-400" />
+            <div className="bg-purple-500/10 p-2 rounded-lg hidden sm:block">
+              <Zap className="w-5 h-5 text-purple-400" />
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-                <span className="sm:hidden"><Zap className="w-6 h-6 text-purple-400" /></span>
+              <h2 className="text-lg font-semibold text-white/90 mb-1 flex items-center gap-2">
+                <span className="sm:hidden"><Zap className="w-4 h-4 text-purple-400" /></span>
                 Desplegar Estados Nano Banana (Campañas IA)
               </h2>
-              <p className="text-gray-400 text-sm mb-6 max-w-2xl">
-                Ingresa uno o múltiples *prompts* base. Nano Banana se encargará de adaptar el prompt usando la Identidad de Agencia de cada usuario activo, generará la imagen y la publicará en los estados de sus WhatsApp (Sin cobrarles créditos).
+              <p className="text-white/30 text-sm mb-6 max-w-2xl">
+                Ingresa uno o múltiples *prompts* base. Nano Banana se encargará de adaptar el prompt usando la Identidad de Agencia de cada usuario activo.
               </p>
 
               <div className="space-y-4">
                 <textarea 
                   value={promptsText}
                   onChange={e => setPromptsText(e.target.value)}
-                  placeholder="Escribe tus prompts aquí (uno por línea)...&#10;Ej: Un cachorro dorado saltando billetes.&#10;Ej: Una mansión futurista con carros voladores."
-                  className="w-full bg-[#0A0A0A] text-white border border-white/10 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-y min-h-[120px] text-sm"
+                  placeholder="Escribe tus prompts aquí (uno por línea)..."
+                  className="w-full bg-[#0A0A0A] text-white/90 border border-white/[0.08] rounded-lg p-3 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-y min-h-[120px] text-sm"
                   disabled={deployingStatus}
                 />
                 
                 <button 
                   onClick={deployStatusCampaign}
                   disabled={deployingStatus || !promptsText.trim()}
-                  className="bg-purple-600 hover:bg-purple-500 text-white font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50"
+                  className="bg-purple-500 hover:bg-purple-600 text-white font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 text-sm"
                   title="Esto NO consumirá créditos de los usuarios"
                 >
-                  {deployingStatus ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                  {deployingStatus ? "Procesando Campaña..." : "Iniciar Campaña y Distribuir"}
+                  {deployingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {deployingStatus ? "Procesando Campaña..." : "Iniciar Campaña"}
                 </button>
               </div>
 
@@ -518,29 +519,28 @@ export default function AdminPanelPage() {
       </div>
 
       {/* Campaña de Difusión Global Meta (Redes Sociales) */}
-      <div className="bg-[#121212] border border-white/5 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden mt-8">
-         <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+      <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg relative overflow-hidden mt-6">
          <div className="flex items-start gap-4 z-10 relative">
-            <div className="bg-fuchsia-500/20 p-3 rounded-2xl hidden sm:block">
-              <Share2 className="w-8 h-8 text-fuchsia-400" />
+            <div className="bg-fuchsia-500/10 p-2 rounded-lg hidden sm:block">
+              <Share2 className="w-5 h-5 text-fuchsia-400" />
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-                <span className="sm:hidden"><Share2 className="w-6 h-6 text-fuchsia-400" /></span>
+              <h2 className="text-lg font-semibold text-white/90 mb-1 flex items-center gap-2">
+                <span className="sm:hidden"><Share2 className="w-4 h-4 text-fuchsia-400" /></span>
                 Centro de Difusión Global (Meta)
               </h2>
-              <p className="text-gray-400 text-sm mb-6 max-w-2xl">
-                Alimenta este módulo con un caso base y nuestro sistema distribuirá publicaciones independientes en Facebook e Instagram para cada uno de los clientes seleccionados, aplicando su propio <b>Tono de Voz</b> e identidad gráfica.
+              <p className="text-white/30 text-sm mb-6 max-w-2xl">
+                Alimenta este módulo con un caso base y el sistema distribuirá gráficas y textos a cada uno de los clientes en FB/IG.
               </p>
 
               <div className="space-y-4 max-w-3xl">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Tema Central / Prompt (Requerido)</label>
+                  <label className="text-[10px] font-medium text-white/50 uppercase tracking-wider mb-2 block">Tema Central / Prompt (Requerido)</label>
                   <textarea 
                     value={broadcastTopic}
                     onChange={e => setBroadcastTopic(e.target.value)}
-                    placeholder="Ej: Hoy es el día del agua. Genera un post sobre la importancia de la calidad del agua..."
-                    className="w-full bg-[#0A0A0A] text-white border border-white/10 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50 resize-y min-h-[100px] text-sm custom-scrollbar"
+                    placeholder="Ej: Hoy es el día..."
+                    className="w-full bg-[#0A0A0A] text-white/90 border border-white/[0.08] rounded-lg p-3 focus:outline-none focus:ring-1 focus:ring-fuchsia-500/50 resize-y min-h-[100px] text-sm"
                     disabled={broadcastDeploying}
                   />
                 </div>
@@ -598,7 +598,7 @@ export default function AdminPanelPage() {
                         placeholder="Buscar por nombre o correo en est listado..."
                         value={broadcastSearch}
                         onChange={(e) => setBroadcastSearch(e.target.value)}
-                        className="w-full bg-[#0A0A0A] text-white py-2 pl-9 pr-4 rounded-xl border border-white/10 focus:outline-none focus:border-fuchsia-500 text-xs"
+                        className="w-full bg-[#0A0A0A] text-white/90 py-2 pl-9 pr-4 rounded-lg border border-white/[0.08] focus:outline-none focus:border-white/20 text-xs"
                         disabled={broadcastDeploying}
                       />
                     </div>
@@ -632,14 +632,14 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                <button 
-                  onClick={deployBroadcast}
-                  disabled={broadcastDeploying || !broadcastTopic.trim() || broadcastSelectedUsers.length === 0}
-                  className="mt-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 w-full sm:w-auto justify-center"
-                >
-                  {broadcastDeploying ? <Loader2 className="w-5 h-5 animate-spin" /> : <Share2 className="w-5 h-5" />}
-                  {broadcastDeploying ? "Transmitiendo al Mundo..." : `Difundir a ${broadcastSelectedUsers.length} Agentes`}
-                </button>
+                  <button 
+                    onClick={deployBroadcast}
+                    disabled={broadcastDeploying || !broadcastTopic.trim() || broadcastSelectedUsers.length === 0}
+                    className="mt-4 bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-semibold px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 w-full sm:w-auto text-sm"
+                  >
+                    {broadcastDeploying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                    {broadcastDeploying ? "Transmitiendo al Mundo..." : `Difundir a ${broadcastSelectedUsers.length} Agentes`}
+                  </button>
               </div>
 
               {/* Logs de Despliegue Broadcast */}
@@ -680,153 +680,209 @@ export default function AdminPanelPage() {
          </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          Directorio de Oficiales
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 pt-4 border-t border-white/[0.06]">
+        <h2 className="text-lg font-semibold text-white/90 whitespace-nowrap">
+          Directorio
         </h2>
         
-        <div className="relative w-full sm:w-80">
-          <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input 
-            type="text" 
-            placeholder="Buscar por nombre o correo..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-[#121212] border border-white/5 text-white rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FFDE00] shadow-sm text-sm font-medium placeholder-gray-600 transition-shadow"
-          />
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full xl:w-auto">
+          {/* Selector de Plan */}
+          <div className="flex bg-[#141414] border border-white/[0.06] p-1 rounded-lg w-full sm:w-auto overflow-x-auto min-w-max">
+            {['ALL', 'VIP', 'FREE'].map((plan) => (
+              <button
+                key={plan}
+                onClick={() => setPlanFilter(plan)}
+                className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  planFilter === plan 
+                    ? plan === 'VIP' ? 'bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.3)]' : 'bg-white/20 text-white'
+                    : 'text-white/40 hover:text-white/80'
+                }`}
+              >
+                {plan === 'ALL' ? 'TODOS' : plan}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-64 shrink-0">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input 
+              type="text" 
+              placeholder="Buscar oficial..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-[#141414] border border-white/[0.06] text-white/90 rounded-lg focus:outline-none focus:border-white/20 text-sm placeholder-white/20"
+            />
+          </div>
         </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-[#FFDE00]" /></div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredUsers.length === 0 ? (
-            <div className="col-span-full text-center py-16 bg-[#121212] border border-white/5 rounded-3xl text-gray-500 font-medium text-lg shadow-xl">
+        <div className="w-full space-y-3 pb-20">
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-16 bg-[#141414] border border-white/[0.06] rounded-lg text-white/40 font-medium text-sm">
               No coinciden agentes con tu búsqueda.
             </div>
-          ) : (
-            filteredUsers.map(u => (
-              <div key={u.id} className="bg-[#121212] border border-white/5 rounded-3xl p-6 shadow-xl hover:shadow-[0_0_20px_rgba(255,222,0,0.1)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between h-auto group cursor-default">
-                
-                {/* Sección 1: Identidad y Rango */}
-                <div className="flex justify-between items-start mb-6">
-                  <div className="flex items-center gap-3">
-                    <img src={u.avatar || "https://ui-avatars.com/api/?name=U"} alt="A" className="w-12 h-12 rounded-full border-2 border-white/10" />
-                    <div>
-                      <div className="font-bold text-white truncate max-w-[150px] group-hover:text-[#FFDE00] transition-colors">{u.name}</div>
-                      <div className="text-xs text-gray-500 truncate max-w-[150px]">{u.email}</div>
-                      {u.plan === 'VIP' && u.vipExpiresAt && (
-                        <div className="text-[10px] text-[#FFDE00] mt-1 font-mono bg-[#FFDE00]/10 inline-block px-1.5 py-0.5 rounded border border-[#FFDE00]/20 mr-2">
-                          {Math.max(0, Math.ceil((u.vipExpiresAt - Date.now()) / (1000 * 60 * 60 * 24)))} Días Left
-                        </div>
+          )}
+          
+          {filteredUsers.map(u => (
+            <div key={u.id} className="w-full relative bg-[#141414] border border-white/[0.06] rounded-xl overflow-hidden transition-all hover:border-white/20">
+              
+              {/* Cabecera (Clickable) */}
+              <button 
+                onClick={() => setExpandedUserId(expandedUserId === u.id ? null : u.id)}
+                className="w-full p-4 flex items-center justify-between text-left focus:outline-none"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 shrink-0 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center">
+                    <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.name || 'U'}&background=random`} alt="A" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="min-w-0 pr-4">
+                    <div className="font-bold text-white text-base truncate flex items-center gap-2">
+                      {u.name}
+                      {u.plan === 'VIP' && (
+                        <span className="shrink-0 text-[9px] font-black tracking-widest bg-[#FFDE00]/10 text-[#FFDE00] px-2 py-0.5 rounded border border-[#FFDE00]/20">VIP</span>
                       )}
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="text-[10px] text-purple-400 font-bold inline-block">
-                          🖼️ {u.generationCount || 0} imágenes generadas
-                        </div>
-                        {(u.generationCount || 0) > 0 && (
-                          <button
-                            onClick={() => openGallery(u)}
-                            className="bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white px-2 py-0.5 rounded text-[9px] uppercase tracking-widest font-black transition-colors"
-                          >
-                            Ver Obras
-                          </button>
-                        )}
+                      {u.plan === 'FREE' && (
+                        <span className="shrink-0 text-[9px] font-bold bg-white/[0.06] text-white/40 px-2 py-0.5 rounded">FREE</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-white/40 truncate mt-1">{u.email}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 shrink-0 pointer-events-none">
+                  {/* Estadísticas Visibles en Colapsado */}
+                  {expandedUserId !== u.id && u.plan === 'VIP' && u.vipExpiresAt && (
+                    <div className="hidden sm:flex items-center bg-[#FFDE00]/5 px-2 py-1 rounded text-[10px] text-[#FFDE00]/70 font-mono border border-[#FFDE00]/10">
+                      {Math.max(0, Math.ceil((u.vipExpiresAt - Date.now()) / (1000 * 60 * 60 * 24)))}D Left
+                    </div>
+                  )}
+                  {expandedUserId !== u.id && (u.generationCount || 0) > 0 && (
+                    <div className="hidden sm:block text-[11px] font-bold text-purple-400">
+                      🎨 {u.generationCount}
+                    </div>
+                  )}
+                  
+                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/50 group-hover:text-white transition-colors">
+                    {expandedUserId === u.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
+                </div>
+              </button>
+
+              {/* Contenido Expandible */}
+              {expandedUserId === u.id && (
+                <div className="p-5 border-t border-white/[0.06] bg-[#0A0A0A] space-y-6">
+                  
+                  {/* Fila Múltiple: Info Extra y Opciones */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    {/* Generaciones */}
+                    <div className="flex items-center gap-3">
+                      <div className="text-[11px] text-white/40 font-medium bg-white/[0.04] px-3 py-1.5 rounded-md">
+                        🖼️ {u.generationCount || 0} obras generadas
                       </div>
+                      {(u.generationCount || 0) > 0 && (
+                        <button
+                          onClick={() => openGallery(u)}
+                          className="bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors border border-purple-500/20"
+                        >
+                          Ver Obras
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Cambiar Rol */}
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] text-white/40 uppercase tracking-widest font-medium">Gestionar Plan:</span>
+                       <button 
+                         onClick={() => togglePlan(u.id, u.plan)}
+                         disabled={processingId === u.id}
+                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[120px] ${u.plan === 'VIP' ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00]/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'}`}
+                       >
+                         {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : (u.plan === 'VIP' ? 'REVOCAR A FREE' : 'ASCENDER A VIP')}
+                       </button>
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => togglePlan(u.id, u.plan)}
-                    disabled={processingId === u.id}
-                    title="Clic para cambiar de rol"
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[60px] ${u.plan === 'VIP' ? 'bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.5)] hover:bg-[#FFC107]' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white'}`}
-                  >
-                    {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : u.plan}
-                  </button>
-                </div>
-
-                <div className="w-full bg-white/5 h-px mb-6"></div>
-
-                {/* Sección 2: Economía */}
-                <div>
-                  <div className="text-[11px] text-gray-500 uppercase font-black tracking-widest mb-2">Billetera de Créditos</div>
-                  <div className="flex items-end justify-between gap-4">
-                    
-                    {/* Visualizador de Saldo */}
-                    <div className="flex items-center gap-2">
-                       <Coins className="w-8 h-8 text-[#FFDE00] drop-shadow-[0_0_5px_rgba(255,222,0,0.5)]" />
-                       <div className="flex flex-col">
+                  {/* Economía de Créditos */}
+                  <div className="bg-[#141414] border border-white/[0.06] rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-2">Billetera de Créditos</div>
+                      <div className="flex items-center gap-3">
+                         <Coins className="w-6 h-6 text-[#FFDE00]" />
                          {u.credits === undefined ? (
-                           <span className="text-sm font-medium text-gray-600 italic">Sin Activar</span>
+                           <span className="text-sm font-semibold text-white/30 italic drop-shadow-md">Aún sin Billetera</span>
                          ) : (
-                           <span className="text-2xl font-black text-white leading-none text-shadow-sm">{u.credits.toLocaleString()}</span>
+                           <span className="text-2xl font-black text-white tracking-tight">{u.credits.toLocaleString()}</span>
                          )}
-                       </div>
+                      </div>
                     </div>
 
-                    {/* Botones de Inyección In-Line */}
-                    <div className="flex items-center gap-1.5 shrink-0 bg-black/50 p-1.5 rounded-xl border border-white/5">
+                    <div className="flex items-center gap-2 bg-[#0A0A0A] p-2 rounded-xl border border-white/[0.06]">
                        <button 
                          onClick={() => modifyCredits(u.id, u.credits, -1000)}
                          disabled={processingId === u.id || (u.credits !== undefined && u.credits <= 0)}
-                         className="w-8 h-8 rounded-lg bg-white/5 text-gray-400 shadow-sm border border-white/5 flex items-center justify-center hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 transition-all disabled:opacity-50"
+                         className="w-10 h-10 rounded-lg bg-white/[0.04] text-white/50 flex items-center justify-center hover:bg-red-500/20 hover:text-red-400 transition-colors disabled:opacity-50"
                          title="Restar 1,000"
                        >
-                         <Minus className="w-4 h-4" />
+                         <Minus className="w-5 h-5" />
                        </button>
                        <button 
                          onClick={() => modifyCredits(u.id, u.credits, 1000)}
                          disabled={processingId === u.id}
-                         className="w-8 h-8 rounded-lg bg-white/5 text-gray-400 shadow-sm border border-white/5 flex items-center justify-center hover:bg-green-500/20 hover:text-green-400 hover:border-green-500/50 transition-all disabled:opacity-50"
+                         className="w-10 h-10 rounded-lg bg-white/[0.04] text-white/50 flex items-center justify-center hover:bg-emerald-500/20 hover:text-emerald-400 transition-colors disabled:opacity-50"
                          title="Añadir 1,000"
                        >
-                         <Plus className="w-4 h-4" />
+                         <Plus className="w-5 h-5" />
                        </button>
-                       <div className="w-px h-6 bg-white/10 mx-1"></div>
+                       <div className="w-px h-6 bg-white/[0.06] mx-2"></div>
                        <button 
                          onClick={() => modifyCredits(u.id, u.credits, 10000)}
                          disabled={processingId === u.id}
-                         className="px-2 h-8 rounded-lg text-[11px] font-black bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.3)] hover:bg-[#FFC107] hover:shadow-[0_0_15px_rgba(255,222,0,0.5)] transition-all disabled:opacity-50 flex items-center justify-center hover:scale-105"
+                         className="px-4 h-10 rounded-lg text-[11px] font-black bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00] hover:text-black transition-all disabled:opacity-50"
                          title="Inyectar Paquete Master"
                        >
-                         +10K
+                         MASTER +10K
+                       </button>
+                    </div>
+                  </div>
+
+                  {/* Módulos Extra (WhatsApp & Social) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* WhatsApp Bot */}
+                    <div className="flex justify-between items-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-[#0A0A0A] border border-[#25D366]/20 p-5 rounded-xl shadow-inner relative overflow-hidden">
+                       <div className="absolute top-0 right-0 w-32 h-32 bg-[#25D366]/10 blur-3xl -mr-10 -mt-10 rounded-full blur-2xl"></div>
+                       <div className="z-10 text-[12px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2">
+                          <MessageSquare className="w-5 h-5 text-[#25D366]" /> MÓDULO WHATSAPP
+                       </div>
+                       <button
+                         onClick={() => setEditingWa(u)}
+                         className={`z-10 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${u.whatsappSettings?.isUnlocked ? 'bg-[#25D366] text-black shadow-[0_0_15px_rgba(37,211,102,0.4)]' : 'bg-white/5 text-gray-400 hover:text-white border border-white/10 hover:border-white/20'}`}
+                       >
+                         {u.whatsappSettings?.isUnlocked ? '⚙️ GESTIONAR' : 'VENDER ACCESO'}
                        </button>
                     </div>
 
+                    {/* Social Media */}
+                    <div className="flex justify-between items-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-[#0A0A0A] border border-blue-500/20 p-5 rounded-xl shadow-inner relative overflow-hidden">
+                       <div className="absolute bottom-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl -mr-10 -mb-10 rounded-full blur-2xl"></div>
+                       <div className="z-10 text-[12px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2">
+                          <Share2 className="w-5 h-5 text-blue-400" /> SOCIAL MEDIA
+                       </div>
+                       <button
+                         onClick={() => setEditingSocial(u)}
+                         className={`z-10 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${u.socialMediaSettings?.isUnlocked ? 'bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-white/5 text-gray-400 hover:text-white border border-white/10 hover:border-white/20'}`}
+                       >
+                         {u.socialMediaSettings?.isUnlocked ? '⚙️ GESTIONAR' : 'VENDER ACCESO'}
+                       </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Sección 3: Opciones del Admin (WhatsApp) */}
-                <div className="mt-4 flex justify-between items-center border-t border-white/5 pt-4">
-                   <div className="text-[11px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                      <MessageSquare className="w-3.5 h-3.5" /> Módulo WhatsApp (IA)
-                   </div>
-                   <button
-                     onClick={() => setEditingWa(u)}
-                     className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${u.whatsappSettings?.isUnlocked ? 'bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 hover:bg-[#25D366]/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
-                   >
-                     {u.whatsappSettings?.isUnlocked ? 'ACTIVO (Gestionar)' : 'VENDER / ACTIVAR'}
-                   </button>
                 </div>
-
-                {/* Sección 4: Social Media */}
-                <div className="mt-2 flex justify-between items-center border-t border-white/5 pt-4">
-                   <div className="text-[11px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                      <Share2 className="w-3.5 h-3.5" /> Social Media
-                   </div>
-                   <button
-                     onClick={() => setEditingSocial(u)}
-                     className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${u.socialMediaSettings?.isUnlocked ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30' : 'bg-white/5 text-gray-400 hover:text-white'}`}
-                   >
-                     {u.socialMediaSettings?.isUnlocked ? 'ACTIVO (Gestionar)' : 'VENDER / ACTIVAR'}
-                   </button>
-                </div>
-
-              </div>
-            ))
-          )}
+              )}
+            </div>
+          ))}
         </div>
       )}
 

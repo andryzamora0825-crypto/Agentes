@@ -88,7 +88,7 @@ export default function FeedPage() {
   // Bloqueo para FREE
   if (planLoading) return (
     <div className="flex items-center justify-center h-[60vh]">
-      <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00] drop-shadow-[0_0_10px_rgba(255,222,0,0.4)]" />
+      <Loader2 className="w-8 h-8 animate-spin text-[#FFDE00]" />
     </div>
   );
 
@@ -97,16 +97,10 @@ export default function FeedPage() {
   return (
     <div className="p-4 sm:p-8 max-w-3xl mx-auto space-y-8">
       {/* Encabezado */}
-      <div className="relative">
-        <div className="absolute top-0 left-0 w-32 h-32 bg-[#FFDE00]/20 rounded-full blur-[60px] -z-10"></div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 drop-shadow-md">
-          <div className="bg-[#FFDE00] p-2 rounded-xl shadow-[0_0_15px_rgba(255,222,0,0.4)]">
-            <Newspaper className="w-8 h-8 text-black" />
-          </div>
-          Novedades
-        </h1>
-        <p className="text-gray-400 mt-2">Mantente al día con las últimas noticias y recursos gráficos.</p>
-      </div>
+        <div>
+          <h1 className="text-lg font-semibold text-white/90 tracking-tight">Novedades</h1>
+          <p className="text-sm text-white/30 mt-1">Mantente al día con las últimas noticias.</p>
+        </div>
 
       {/* Caja de Creación de Post (Solo Administrador) */}
       {isAdmin && <CreatePostBox onPostCreated={loadPosts} avatarUrl={user?.imageUrl} />}
@@ -114,10 +108,10 @@ export default function FeedPage() {
       {/* Muro de Publicaciones */}
       {loadingPosts ? (
         <div className="flex justify-center items-center py-20">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00] drop-shadow-[0_0_10px_rgba(255,222,0,0.5)]" />
+          <Loader2 className="w-8 h-8 animate-spin text-[#FFDE00]" />
         </div>
       ) : posts.length === 0 ? (
-        <div className="text-center py-20 bg-[#121212] rounded-3xl border border-white/5 shadow-xl">
+        <div className="text-center py-16 bg-[#141414] rounded-lg border border-white/[0.06]">
           <Newspaper className="w-16 h-16 text-gray-700 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-500 tracking-tight">Aún no hay publicaciones</h2>
         </div>
@@ -188,7 +182,7 @@ function CreatePostBox({ onPostCreated, avatarUrl }: { onPostCreated: () => void
   };
 
   return (
-    <div className="bg-[#121212] rounded-3xl shadow-2xl border border-white/5 p-6 hover:shadow-[0_0_20px_rgba(255,222,0,0.05)] transition-shadow">
+    <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5">
       {errorMsg && (
         <div className="mb-4 p-3 bg-red-500/10 text-red-400 rounded-xl text-sm font-semibold border border-red-500/20">
           ⚠️ {errorMsg}
@@ -200,7 +194,7 @@ function CreatePostBox({ onPostCreated, avatarUrl }: { onPostCreated: () => void
           placeholder="¿Qué quieres comunicar a los agentes?"
           value={description}
           onChange={e => setDescription(e.target.value)}
-          className="w-full bg-[#0A0A0A] text-white rounded-2xl p-4 resize-none border border-white/10 focus:ring-2 focus:ring-[#FFDE00] focus:border-transparent outline-none min-h-[100px] placeholder-gray-600 shadow-inner"
+          className="w-full bg-[#0A0A0A] text-white/90 rounded-lg p-4 resize-none border border-white/[0.08] focus:ring-1 focus:ring-[#FFDE00]/30 outline-none min-h-[100px] placeholder-white/15 text-sm"
         />
       </div>
       
@@ -234,7 +228,7 @@ function CreatePostBox({ onPostCreated, avatarUrl }: { onPostCreated: () => void
         <button 
           disabled={loading || (!description.trim() && selectedImages.length === 0)}
           onClick={handlePost}
-          className="bg-[#FFDE00] text-black px-8 py-2.5 rounded-full font-black flex items-center gap-2 hover:bg-[#FFC107] hover:shadow-[0_0_15px_rgba(255,222,0,0.4)] hover:scale-105 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
+          className="bg-[#FFDE00] text-black px-5 py-2 rounded-lg font-semibold flex items-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 text-sm"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : "Publicar"}
         </button>
@@ -410,7 +404,7 @@ function PostCard({ post, userAvatar, onInteract, isAdmin, currentUserEmail }: {
   };
 
   return (
-    <div className={`bg-[#121212] rounded-3xl shadow-xl border border-white/5 overflow-hidden ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div className={`bg-[#141414] rounded-lg border border-white/[0.06] overflow-hidden hover:border-white/[0.1] transition-colors ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
       
       {/* Post Header */}
       <div className="p-6 pb-4 flex items-center justify-between">
@@ -419,7 +413,7 @@ function PostCard({ post, userAvatar, onInteract, isAdmin, currentUserEmail }: {
           <div>
             <h3 className="font-bold text-white text-base flex justify-center items-center gap-2">
               {post.author_name} 
-              <span className="bg-[#FFDE00] text-black text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(255,222,0,0.3)]">Oficial</span>
+              <span className="bg-[#FFDE00] text-black text-[9px] font-bold px-1.5 py-0.5 rounded">Oficial</span>
             </h3>
             <p className="text-sm text-gray-500 capitalize">
               {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: es })}
@@ -501,7 +495,7 @@ function PostCard({ post, userAvatar, onInteract, isAdmin, currentUserEmail }: {
       {/* Post Metrics Header */}
       <div className="px-6 py-3 flex items-center justify-between text-sm text-gray-500 border-b border-white/5">
         <div className="flex items-center gap-1.5">
-          <div className="bg-[#FFDE00]/20 w-5 h-5 rounded-full flex items-center justify-center border border-[#FFDE00]/50 shadow-[0_0_10px_rgba(255,222,0,0.2)]">
+          <div className="bg-[#FFDE00]/15 w-5 h-5 rounded-full flex items-center justify-center border border-[#FFDE00]/25">
             <Heart className="w-3 h-3 text-[#FFDE00] fill-[#FFDE00]" />
           </div>
           <span className="text-gray-400 font-bold">{localLikesCount}</span>

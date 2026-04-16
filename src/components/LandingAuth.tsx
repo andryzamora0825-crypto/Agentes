@@ -9,7 +9,7 @@ export function NavbarAuth() {
   if (isSignedIn) return <UserButton />;
   return (
     <SignInButton mode="modal">
-      <button className="bg-[#FFDE00] text-black px-5 py-2 rounded-xl font-black text-sm hover:bg-[#FFC107] hover:shadow-[0_0_15px_rgba(255,222,0,0.4)] transition-all">
+      <button className="bg-[#FFDE00] text-black px-4 py-2 rounded-lg font-semibold text-xs hover:brightness-110 transition-all">
         Iniciar Sesión
       </button>
     </SignInButton>
@@ -18,19 +18,17 @@ export function NavbarAuth() {
 
 export function HeroCTA() {
   const { isSignedIn } = useAuth();
+  const cls = "bg-[#FFDE00] text-black font-semibold px-6 py-3 rounded-lg hover:brightness-110 transition-all flex items-center gap-2 text-sm";
   if (isSignedIn) {
     return (
-      <Link
-        href="/dashboard"
-        className="bg-[#FFDE00] text-black font-black px-8 py-3.5 rounded-2xl shadow-[0_0_25px_rgba(255,222,0,0.3)] hover:bg-[#FFC107] hover:shadow-[0_0_40px_rgba(255,222,0,0.5)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 text-sm uppercase tracking-widest"
-      >
+      <Link href="/dashboard" className={cls}>
         Ir al Panel <ArrowRight className="w-4 h-4" />
       </Link>
     );
   }
   return (
     <SignInButton mode="modal">
-      <button className="bg-[#FFDE00] text-black font-black px-8 py-3.5 rounded-2xl shadow-[0_0_25px_rgba(255,222,0,0.3)] hover:bg-[#FFC107] hover:shadow-[0_0_40px_rgba(255,222,0,0.5)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 text-sm uppercase tracking-widest">
+      <button className={cls}>
         Empezar Ahora <ArrowRight className="w-4 h-4" />
       </button>
     </SignInButton>

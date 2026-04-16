@@ -1,82 +1,52 @@
 @import "tailwindcss";
-/* trigger rescan */@import "tailwindcss";
 
 @theme inline {
-  --color-ecuabet-blue: #0A0A0A; /* Now represents Dark Mode Base */
-  --color-ecuabet-yellow: #FFDE00;
-  --color-ecuabet-bg: #000000; /* Pure Black Background */
-  --color-surface: #121212; /* Cards background */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 :root {
-  --background: #000000;
-  --foreground: #FFFFFF;
+  --background: #0A0A0A;
+  --foreground: #E5E5E5;
+  --accent: #FFDE00;
+  --surface: #141414;
+  --border: rgba(255, 255, 255, 0.08);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar personalizado para Dark Mode */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 222, 0, 0.5);
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
-/* Corrección de drag-to-scroll para iframes anidados (Bug de transform: scale en Blink/Chromium) */
-.ecuabet-frame {
-  transform-origin: top left;
-  transition: transform 0.3s;
-  width: 200%;
-  height: 200%;
-  transform: scale(0.5);
-}
+::selection { background: rgba(255,222,0,0.2); color: #fff; }
+*:focus-visible { outline: 1.5px solid rgba(255,222,0,0.5); outline-offset: 2px; }
 
-@media (min-width: 640px) {
-  .ecuabet-frame {
-    width: 150%;
-    height: 150%;
-    transform: scale(0.66);
-  }
-}
+/* Minimal animations */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse-subtle { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-@media (min-width: 1024px) {
-  .ecuabet-frame {
-    width: 170%;
-    height: 170%;
-    transform: scale(0.588);
-  }
-}
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-slide-up { animation: slideUp 0.35s ease-out; }
+.animate-pulse-subtle { animation: pulse-subtle 2s ease-in-out infinite; }
 
+/* Ecuabet iframe */
+.ecuabet-frame { transform-origin: top left; transition: transform 0.3s; width: 200%; height: 200%; transform: scale(0.5); }
+@media (min-width: 640px) { .ecuabet-frame { width: 150%; height: 150%; transform: scale(0.66); } }
+@media (min-width: 1024px) { .ecuabet-frame { width: 170%; height: 170%; transform: scale(0.588); } }
 @supports (zoom: 1) {
-  .ecuabet-frame {
-    transform: none !important;
-    zoom: 0.5;
-  }
-  @media (min-width: 640px) {
-    .ecuabet-frame {
-      zoom: 0.66;
-    }
-  }
-  @media (min-width: 1024px) {
-    .ecuabet-frame {
-      zoom: 0.588;
-    }
-  }
+  .ecuabet-frame { transform: none !important; zoom: 0.5; }
+  @media (min-width: 640px) { .ecuabet-frame { zoom: 0.66; } }
+  @media (min-width: 1024px) { .ecuabet-frame { zoom: 0.588; } }
 }

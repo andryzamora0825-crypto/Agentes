@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, History, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, Film, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
@@ -32,9 +31,11 @@ export default function EstudioIAPage() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
 
-  // Calcular costo dinámico
   const baseCost = refImages.length > 0 ? 150 : 100;
   const characterCost = useAgencyCharacter ? 50 : 0;
   const totalCost = baseCost + characterCost;
@@ -43,9 +44,7 @@ export default function EstudioIAPage() {
     try {
       const res = await fetch("/api/ai/history");
       const data = await res.json();
-      if (data.success) {
-        setImages(data.images);
-      }
+      if (data.success) setImages(data.images);
     } catch (e) {
       console.error(e);
     } finally {
@@ -53,17 +52,12 @@ export default function EstudioIAPage() {
     }
   };
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
+  useEffect(() => { loadHistory(); }, []);
 
-  // Leer estado por defecto si el usuario lo guardó en la Configuración
   useEffect(() => {
     if (isLoaded && user && user.publicMetadata?.aiSettings) {
       const settings = user.publicMetadata.aiSettings as any;
-      if (settings.aiEnabled !== undefined) {
-        setUseAgencyIdentity(settings.aiEnabled);
-      }
+      if (settings.aiEnabled !== undefined) setUseAgencyIdentity(settings.aiEnabled);
     }
   }, [user, isLoaded]);
 
@@ -79,7 +73,6 @@ export default function EstudioIAPage() {
     setRefImages(prev => prev.filter((_, idx) => idx !== i));
   };
 
-  // Paste image handler
   const handlePaste = useCallback((e: ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -87,9 +80,7 @@ export default function EstudioIAPage() {
       if (item.type.startsWith('image/')) {
         e.preventDefault();
         const file = item.getAsFile();
-        if (file) {
-          setRefImages(prev => [...prev, file].slice(0, 3));
-        }
+        if (file) setRefImages(prev => [...prev, file].slice(0, 3));
         break;
       }
     }
@@ -100,13 +91,57 @@ export default function EstudioIAPage() {
     return () => document.removeEventListener('paste', handlePaste);
   }, [handlePaste]);
 
-  // Tiempo transcurrido durante la generación (para feedback visual)
   const [elapsedSec, setElapsedSec] = useState(0);
   useEffect(() => {
     if (!generating) { setElapsedSec(0); return; }
     const interval = setInterval(() => setElapsedSec(s => s + 1), 1000);
     return () => clearInterval(interval);
   }, [generating]);
+
+  const toggleVoiceMode = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Tu navegador no soporta grabar voz (usa Chrome, Edge o Safari).");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'es-ES';
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setPrompt(prev => prev ? prev + ' ' + transcript : transcript);
+      
+      // Auto-resize the textarea after placing text
+      setTimeout(() => {
+        const textarea = document.getElementById("prompt-input");
+        if (textarea) {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+        }
+      }, 50);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+      setIsListening(false);
+    }
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +151,6 @@ export default function EstudioIAPage() {
     setErrorMsg(null);
     setLastModel(null);
 
-    // Timeout del lado del cliente: 100s — no esperamos 5 minutos nunca más
     const abortController = new AbortController();
     const clientTimeout = setTimeout(() => abortController.abort(), 100_000);
 
@@ -141,16 +175,14 @@ export default function EstudioIAPage() {
         loadHistory();
       } else {
         if (res.status === 402) {
-          setErrorMsg(
-            `No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`
-          );
+          setErrorMsg(`No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`);
         } else {
-          setErrorMsg(data.error || "Nano Banana no respondió. Intenta de nuevo.");
+          setErrorMsg(data.error || "Error en la generación. Intenta de nuevo.");
         }
       }
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        setErrorMsg("La generación tardó demasiado (>100s) y fue cancelada. Intenta con un prompt más corto o sin imágenes de referencia.");
+        setErrorMsg("La generación tardó demasiado (>100s). Intenta con un prompt más corto.");
       } else {
         setErrorMsg("Error interno conectando con el servidor.");
       }
@@ -160,7 +192,6 @@ export default function EstudioIAPage() {
     }
   };
 
-  // Descarga forzada sorteando CORS (Optimizado para Safari)
   const forceDownload = async (url: string, filename: string) => {
     try {
       const response = await fetch(url);
@@ -174,8 +205,7 @@ export default function EstudioIAPage() {
       a.click();
       a.remove();
       setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
-    } catch (err) {
-      // Fallback nativo
+    } catch {
       const a = document.createElement("a");
       a.href = url;
       a.target = "_blank";
@@ -211,8 +241,6 @@ export default function EstudioIAPage() {
 
   const handleRetry = (img: any) => {
     setPrompt(img.prompt);
-    
-    // Buscar el textarea y hacer scroll/focus hacia él
     setTimeout(() => {
       const textarea = document.getElementById("prompt-input");
       if (textarea) {
@@ -224,116 +252,100 @@ export default function EstudioIAPage() {
 
   return (
     <VipGate>
-      <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-10">
+      <div className="p-5 sm:p-8 max-w-6xl mx-auto space-y-6 animate-fade-in">
 
-        {/* Encabezado Principal */}
-        <div className="relative">
-          <div className="absolute top-0 left-0 w-32 h-32 bg-[#FFDE00]/20 rounded-full blur-[60px] -z-10"></div>
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 drop-shadow-md">
-                <div className="bg-[#FFDE00] p-2 rounded-xl shadow-[0_0_15px_rgba(255,222,0,0.4)]">
-                  <Sparkles className="w-8 h-8 text-black" />
-                </div>
-                Estudio IA
-              </h1>
-              <p className="text-gray-400 mt-2 text-lg">Escribe tu idea creativa y la IA la pintará en segundos — ahora con <span className="text-[#FFDE00] font-black">Nano Banana 🍌</span>.</p>
-            </div>
-            {/* Tab Navigation */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#FFDE00]/10 border border-[#FFDE00]/30 text-[#FFDE00] shadow-[0_0_10px_rgba(255,222,0,0.1)]">
-                <Sparkles className="w-4 h-4" />
-                Imágenes
-              </div>
-            </div>
-          </div>
+        {/* Header */}
+        <div>
+          <h1 className="text-lg font-semibold text-white/90 tracking-tight">Estudio IA</h1>
+          <p className="text-sm text-white/30 mt-1">Escribe tu idea y la IA la pintará en segundos.</p>
         </div>
 
-        {/* Panel de Generación */}
-        <div className="bg-[#121212] rounded-3xl border border-white/5 p-5 sm:p-8 shadow-2xl">
-          {/* Indicador de Modelo Activo */}
+        {/* Generation Panel */}
+        <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6">
+
+          {/* Model indicator + cost */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border transition-all ${refImages.length > 0
-                ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
-                : 'bg-[#FFDE00]/10 border-[#FFDE00]/20 text-[#FFDE00]'
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${refImages.length > 0
+                ? 'bg-purple-500/10 text-purple-300'
+                : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/70'
               }`}>
-              <span>🍌</span>
-              {refImages.length > 0 ? 'Nano Banana Pro — Con Referencia' : 'Nano Banana 2 — Texto a Imagen'}
+              <Sparkles className="w-3 h-3" />
+              {refImages.length > 0 ? 'Nano Pro' : 'Nano Banana'}
             </div>
-            <div className={`ml-auto text-xs font-black px-3 py-1.5 rounded-full border transition-all ${totalCost > 100
-                ? 'bg-purple-500/10 border-purple-500/20 text-purple-300'
-                : 'bg-white/5 border-white/10 text-gray-400'
+            <div className={`ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all ${totalCost > 100
+                ? 'bg-purple-500/10 border-purple-500/15 text-purple-300'
+                : 'bg-white/[0.04] border-white/[0.06] text-zinc-500'
               }`}>
-              Costo: {totalCost} créditos
-              {useAgencyCharacter && <span className="ml-1 text-[10px] opacity-70">(+50 personaje)</span>}
+              {totalCost} créditos
+              {useAgencyCharacter && <span className="ml-1 text-[10px] opacity-70">(+50)</span>}
             </div>
           </div>
 
           {errorMsg && (
-            <div className="mb-6 bg-red-500/10 text-red-400 p-4 rounded-xl border border-red-500/20 font-semibold text-sm">
-              ⚠️ {errorMsg}
+            <div className="mb-5 bg-red-500/10 text-red-400 p-3.5 rounded-lg border border-red-500/15 text-sm font-medium">
+              {errorMsg}
             </div>
           )}
 
           {lastModel && (
-            <div className="mb-6 bg-green-500/10 text-green-400 p-3 rounded-xl border border-green-500/20 font-bold text-sm flex items-center gap-2">
-              <Zap className="w-4 h-4 shrink-0" /> ¡Imagen generada con {lastModel}!
+            <div className="mb-5 bg-emerald-500/10 text-emerald-400 p-3 rounded-lg border border-emerald-500/15 text-sm font-medium flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 shrink-0" /> Imagen generada con {lastModel}
             </div>
           )}
 
-          <form onSubmit={handleGenerate} className="space-y-6">
+          <form onSubmit={handleGenerate} className="space-y-5">
 
-            {/* Opciones Avanzadas (Switches) agrupadas */}
-            <div className="bg-[#0b0b0b] border border-white/5 rounded-2xl overflow-hidden shadow-inner divide-y divide-white/5">
-              {/* Switch de Identidad de Agencia */}
+            {/* Switches */}
+            <div className="bg-[#0A0A0A] border border-white/[0.06] rounded-lg overflow-hidden divide-y divide-white/[0.06]">
+              {/* Agency Identity */}
               <div 
-                className="flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-white/[0.02] transition-colors" 
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/[0.02] transition-colors" 
                 onClick={() => setUseAgencyIdentity(!useAgencyIdentity)}
               >
-                <div className="flex items-center gap-4">
-                  <div className={`p-2.5 rounded-xl transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]/10 text-[#FFDE00]' : 'bg-white/5 text-gray-500'}`}>
-                    <Zap className="w-5 h-5" />
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]/10 text-[#FFDE00]' : 'bg-white/[0.04] text-zinc-600'}`}>
+                    <Zap className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className={`font-extrabold text-sm sm:text-base tracking-tight ${useAgencyIdentity ? 'text-white' : 'text-gray-400'}`}>Identidad de Agencia</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Inyecta tus estilos y logos visuales.</p>
+                    <p className={`font-semibold text-sm ${useAgencyIdentity ? 'text-white' : 'text-zinc-500'}`}>Identidad de Agencia</p>
+                    <p className="text-xs text-zinc-600 mt-0.5">Incluye tus estilos y logos.</p>
                   </div>
                 </div>
-                <div className={`w-11 h-6 rounded-full relative transition-colors shadow-inner ${useAgencyIdentity ? 'bg-[#FFDE00]' : 'bg-[#1a1a1a] border border-white/10'}`}>
-                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${useAgencyIdentity ? 'translate-x-5 shadow-[0_0_5px_rgba(0,0,0,0.5)]' : 'translate-x-0'}`}></div>
+                <div className={`w-10 h-5.5 rounded-full relative transition-colors ${useAgencyIdentity ? 'bg-[#FFDE00]' : 'bg-zinc-800 border border-white/[0.1]'}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 bg-white rounded-full transition-transform shadow-sm ${useAgencyIdentity ? 'translate-x-[18px]' : 'translate-x-0'}`}></div>
                 </div>
               </div>
 
-              {/* Switch de Personaje de Agencia */}
+              {/* Character */}
               <div 
-                className="flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-white/[0.02] transition-colors" 
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/[0.02] transition-colors" 
                 onClick={() => setUseAgencyCharacter(!useAgencyCharacter)}
               >
-                <div className="flex items-center gap-4">
-                  <div className={`p-2.5 rounded-xl transition-colors ${useAgencyCharacter ? 'bg-purple-500/10 text-purple-400' : 'bg-white/5 text-gray-500'}`}>
-                    <UserCircle className="w-5 h-5" />
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg transition-colors ${useAgencyCharacter ? 'bg-purple-500/10 text-purple-400' : 'bg-white/[0.04] text-zinc-600'}`}>
+                    <UserCircle className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className={`font-extrabold text-sm sm:text-base tracking-tight ${useAgencyCharacter ? 'text-white' : 'text-gray-400'}`}>Personaje Representante</p>
-                      {useAgencyCharacter && <span className="bg-purple-500/10 text-purple-400 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-purple-500/20">+50 cr</span>}
+                      <p className={`font-semibold text-sm ${useAgencyCharacter ? 'text-white' : 'text-zinc-500'}`}>Personaje Representante</p>
+                      {useAgencyCharacter && <span className="bg-purple-500/10 text-purple-400 text-[9px] font-semibold px-1.5 py-0.5 rounded border border-purple-500/15">+50</span>}
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">Incluye a tu representante en la imagen.</p>
+                    <p className="text-xs text-zinc-600 mt-0.5">Incluye a tu representante.</p>
                   </div>
                 </div>
-                <div className={`w-11 h-6 rounded-full relative transition-colors shadow-inner ${useAgencyCharacter ? 'bg-purple-500' : 'bg-[#1a1a1a] border border-white/10'}`}>
-                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${useAgencyCharacter ? 'translate-x-5 shadow-[0_0_5px_rgba(0,0,0,0.5)]' : 'translate-x-0'}`}></div>
+                <div className={`w-10 h-5.5 rounded-full relative transition-colors ${useAgencyCharacter ? 'bg-purple-500' : 'bg-zinc-800 border border-white/[0.1]'}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 bg-white rounded-full transition-transform shadow-sm ${useAgencyCharacter ? 'translate-x-[18px]' : 'translate-x-0'}`}></div>
                 </div>
               </div>
             </div>
 
-            {/* Selector de Formato de Imagen */}
+            {/* Format Selector */}
             <div>
-              <div className="flex items-center gap-2 mb-2 px-1">
-                <Monitor className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Dimensiones</span>
+              <div className="flex items-center gap-2 mb-2">
+                <Monitor className="w-3.5 h-3.5 text-zinc-600" />
+                <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-wider">Dimensiones</span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {FORMAT_OPTIONS.map((fmt) => {
                   const selected = imageFormat === fmt.id;
                   const IconEl = fmt.icon === 'monitor' ? Monitor : fmt.icon === 'phone' ? Smartphone : fmt.icon === 'rect-h' ? RectangleHorizontal : fmt.icon === 'rect-v' ? RectangleVertical : Square;
@@ -342,114 +354,28 @@ export default function EstudioIAPage() {
                       key={fmt.id}
                       type="button"
                       onClick={() => setImageFormat(fmt.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${selected
-                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00] shadow-[0_0_10px_rgba(255,222,0,0.1)]'
-                          : 'bg-[#111111] border-white/5 text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all text-xs ${selected
+                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/25 text-[#FFDE00]'
+                          : 'bg-white/[0.02] border-white/[0.06] text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-400'
                         }`}
                     >
-                      <IconEl className={`w-3.5 h-3.5 ${selected ? 'text-[#FFDE00]' : 'text-gray-500'}`} />
-                      <span className={`text-[10px] font-bold uppercase tracking-wide leading-none ${selected ? 'text-[#FFDE00]' : 'text-gray-400'}`}>{fmt.label}</span>
-                      <span className={`text-[9px] font-mono ${selected ? 'text-[#FFDE00]/60' : 'text-gray-600'}`}>{fmt.ratio}</span>
+                      <IconEl className="w-3 h-3" />
+                      <span className="font-medium">{fmt.label}</span>
+                      <span className="text-[9px] font-[family-name:var(--font-mono)] opacity-60">{fmt.ratio}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Prompt Textarea */}
-            <div className="relative group">
-              <textarea
-                id="prompt-input"
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                placeholder=""
-                className="w-full bg-[#050505] text-white border border-white/10 rounded-[1.5rem] p-5 pr-36 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/50 focus:border-[#FFDE00]/50 resize-none h-36 transition-all text-lg sm:text-xl font-medium shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] placeholder-gray-700"
-              />
-              {!prompt && (
-                <div className="absolute top-5 left-5 pointer-events-none flex flex-col text-gray-600 italic">
-                  <span>Describe tu obra visual aquí...</span>
-                </div>
-              )}
-              <button
-                type="submit"
-                disabled={generating || !prompt.trim()}
-                className={`absolute bottom-4 right-4 font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-300 disabled:opacity-30 active:scale-95 ${generating ? 'bg-white/10 text-gray-400' : 'bg-[#FFDE00] text-black hover:bg-[#FFC107] shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)]'}`}
-              >
-                {generating ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5 fill-black" />
-                    Crear
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Zona de Imágenes de Referencia (Opcional) */}
-            <div>
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <ImageIcon className="w-4 h-4 text-gray-500" />
-                <span className="text-xs text-gray-500 font-black uppercase tracking-widest">Imágenes de referencia (opcional, máx. 3)</span>
-                {refImages.length < 3 && (
-                  <div className="ml-auto flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const clipboardItems = await navigator.clipboard.read();
-                          for (const item of clipboardItems) {
-                            const imageType = item.types.find(t => t.startsWith('image/'));
-                            if (imageType) {
-                              const blob = await item.getType(imageType);
-                              const file = new File([blob], `pasted_${Date.now()}.png`, { type: imageType });
-                              setRefImages(prev => [...prev, file].slice(0, 3));
-                              break;
-                            }
-                          }
-                        } catch {
-                          // Fallback: el usuario puede usar Ctrl+V
-                        }
-                      }}
-                      className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-purple-400 transition-colors px-3 py-1.5 bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/30 rounded-lg"
-                    >
-                      <Clipboard className="w-3.5 h-3.5" /> Pegar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => refInputRef.current?.click()}
-                      className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-[#FFDE00] transition-colors px-3 py-1.5 bg-white/5 hover:bg-[#FFDE00]/10 border border-white/10 hover:border-[#FFDE00]/30 rounded-lg"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Subir
-                    </button>
-                  </div>
-                )}
-                <input
-                  ref={refInputRef}
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  multiple
-                  onChange={handleRefImageChange}
-                />
-              </div>
-
-              {refImages.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => refInputRef.current?.click()}
-                  className="w-full border-2 border-dashed border-white/10 hover:border-[#FFDE00]/30 rounded-xl p-5 text-center transition-all group hover:bg-[#FFDE00]/5"
-                >
-                  <ImageIcon className="w-7 h-7 text-gray-600 group-hover:text-[#FFDE00] mx-auto mb-2 transition-colors" />
-                  <p className="text-xs text-gray-600 group-hover:text-gray-400 font-semibold transition-colors">
-                    Sube o pega (Ctrl+V) una imagen para que Nano Banana Pro la use como referencia
-                  </p>
-                  <p className="text-[10px] text-gray-700 mt-1 uppercase tracking-widest">JPG · PNG · WEBP · O PEGA DESDE EL PORTAPAPELES</p>
-                </button>
-              ) : (
-                <div className="flex flex-wrap gap-3">
+            {/* Consolidated Input Area (Estilo Chat) */}
+            <div className="relative bg-[#0A0A0A] border border-white/[0.08] rounded-[28px] focus-within:border-[#FFDE00]/30 transition-colors shadow-inner flex flex-col">
+              
+              {/* Preview de Imágenes Referencia */}
+              {refImages.length > 0 && (
+                <div className="flex flex-wrap gap-2.5 p-3 px-5 pb-0">
                   {refImages.map((file, i) => (
-                    <div key={i} className="relative w-24 h-24 rounded-xl overflow-hidden border border-white/10 group/img">
+                    <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/[0.08] group/img">
                       <img
                         src={URL.createObjectURL(file)}
                         alt="Ref"
@@ -458,44 +384,126 @@ export default function EstudioIAPage() {
                       <button
                         type="button"
                         onClick={() => removeRefImage(i)}
-                        className="absolute top-1 right-1 bg-black/70 hover:bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-black/70 hover:bg-red-500 text-white rounded-full p-1 opacity-0 group-hover/img:opacity-100 transition-opacity"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-3 h-3" />
                       </button>
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[9px] font-bold text-center text-gray-300 py-0.5 uppercase tracking-wider">
-                        Ref {i + 1}
-                      </div>
                     </div>
                   ))}
-                  {refImages.length < 3 && (
+                </div>
+              )}
+
+              <div className="flex items-end gap-2 p-2 relative">
+                {/* Attach Menu Wrapper */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowAttachMenu(!showAttachMenu)}
+                    className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/80 transition-colors ml-1 mt-1"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+
+                  {/* Dropup Menu */}
+                  {showAttachMenu && (
+                    <div className="absolute bottom-full left-0 mb-3 bg-[#1A1A1A] border border-white/[0.08] rounded-2xl shadow-xl w-48 overflow-hidden z-20 animate-in fade-in slide-in-from-bottom-4 duration-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAttachMenu(false);
+                          refInputRef.current?.click();
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/5 transition-colors"
+                      >
+                        <Paperclip className="w-4 h-4 text-zinc-400" />
+                        Agregar fotos
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Textarea */}
+                <textarea
+                  id="prompt-input"
+                  value={prompt}
+                  onChange={e => {
+                    setPrompt(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+                  }}
+                  onFocus={() => setShowAttachMenu(false)}
+                  placeholder="Pregunta lo que quieras"
+                  className="w-full bg-transparent text-white/90 focus:outline-none resize-none py-3 min-h-[44px] max-h-[150px] text-[15px] placeholder-zinc-500 custom-scrollbar"
+                  style={{ height: '44px' }}
+                />
+
+                {/* Actions (Mic & Submit) */}
+                <div className="flex items-center gap-1 shrink-0 p-1">
+                  {isListening ? (
                     <button
                       type="button"
-                      onClick={() => refInputRef.current?.click()}
-                      className="w-24 h-24 rounded-xl border-2 border-dashed border-white/10 hover:border-[#FFDE00]/40 flex flex-col items-center justify-center gap-1 text-gray-600 hover:text-[#FFDE00] transition-colors"
+                      onClick={toggleVoiceMode}
+                      className="h-10 px-4 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors flex items-center gap-2 text-sm font-medium animate-pulse"
                     >
-                      <Plus className="w-6 h-6" />
-                      <span className="text-[10px] font-bold">Añadir</span>
+                      <Mic className="w-4 h-4" />
+                      Escuchando
+                    </button>
+                  ) : !prompt.trim() ? (
+                    <button
+                      type="button"
+                      onClick={toggleVoiceMode}
+                      className="h-10 px-4 rounded-full bg-white/5 text-white/80 hover:bg-white/10 transition-colors flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Mic className="w-4 h-4" />
+                      Voz
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={generating}
+                      className="h-10 w-10 sm:w-auto sm:px-5 rounded-full bg-[#FFDE00] text-black hover:brightness-110 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                    >
+                      {generating ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                       ) : (
+                         <>
+                           <Sparkles className="w-4 h-4" />
+                           <span className="hidden sm:inline font-bold">Generar</span>
+                         </>
+                       )}
                     </button>
                   )}
                 </div>
-              )}
+
+                <input
+                  ref={refInputRef}
+                  type="file"
+                  hidden
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    handleRefImageChange(e);
+                    setShowAttachMenu(false);
+                  }}
+                />
+              </div>
             </div>
 
-            {/* Loader Detallado UI */}
+            {/* Loading State */}
             {generating && (
-              <div className="flex items-center justify-center p-8 border border-white/10 rounded-2xl bg-black/50 overflow-hidden relative">
-                <div className="absolute inset-0 bg-[#FFDE00]/10 animate-pulse"></div>
+              <div className="flex items-center justify-center p-8 border border-white/[0.06] rounded-xl bg-[#09090b] overflow-hidden relative">
+                <div className="absolute inset-0 bg-[#FFDE00]/[0.03] animate-pulse"></div>
                 <div className="flex flex-col items-center text-center space-y-3 z-10">
-                  <Loader2 className="w-12 h-12 animate-spin text-[#FFDE00] drop-shadow-[0_0_10px_rgba(255,222,0,0.8)]" />
-                  <h3 className="font-bold text-white text-xl drop-shadow-md">Nano Banana 🍌 pintando tu idea...</h3>
-                  <p className="text-sm text-gray-400 max-w-md">
+                  <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00]" />
+                  <h3 className="font-semibold text-white text-lg">Generando tu imagen...</h3>
+                  <p className="text-sm text-zinc-500 max-w-md">
                     {refImages.length > 0
-                      ? 'Nano Banana Pro está analizando tus imágenes de referencia y generando. Puede tomar 20–40 segundos.'
-                      : 'Nano Banana 2 está renderizando los píxeles. Esto suele tomar de 10 a 20 segundos.'}
+                      ? 'Analizando referencias y generando. 20–40 segundos.'
+                      : 'Renderizando. 10–20 segundos.'}
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="w-2 h-2 rounded-full bg-[#FFDE00] animate-pulse"></div>
-                    <span className="text-xs font-mono font-bold text-[#FFDE00]/80">{elapsedSec}s transcurridos</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#FFDE00] animate-pulse-subtle"></div>
+                    <span className="text-xs font-[family-name:var(--font-mono)] text-zinc-600">{elapsedSec}s</span>
                   </div>
                 </div>
               </div>
@@ -503,76 +511,75 @@ export default function EstudioIAPage() {
           </form>
         </div>
 
-        {/* Título Base de Datos (Row) */}
-        <div className="flex items-center gap-3 pt-6 border-t border-white/10">
-          <History className="w-6 h-6 text-[#FFDE00]" />
-          <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-white tracking-tight">Registro de Imágenes Creadas</h2>
+        {/* History Section */}
+        <div className="pt-6 border-t border-white/[0.06]">
+          <div>
+            <h2 className="text-base font-semibold text-white/80">Historial</h2>
             {!loadingHistory && (
-              <span className="text-sm font-bold text-gray-400 mt-0.5">
-                Has documentado un total de <span className="text-[#FFDE00]">{images.length}</span> obras maestras.
+              <span className="text-sm text-zinc-500 mt-0.5">
+                {images.length} {images.length === 1 ? 'imagen' : 'imágenes'} generadas
               </span>
             )}
           </div>
         </div>
 
-        {/* Grid de Galería de Historial */}
+        {/* Image Gallery */}
         {loadingHistory ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-[#FFDE00]" /></div>
+          <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-[#FFDE00]" /></div>
         ) : images?.length === 0 ? (
-          <div className="bg-[#121212] border border-white/5 rounded-3xl p-16 flex flex-col items-center justify-center text-center shadow-xl">
-            <ImageIcon className="w-16 h-16 text-gray-600 mb-4" />
-            <h3 className="text-xl font-bold text-gray-500 tracking-tight">Aún no has generado ninguna carta visual.</h3>
-            <p className="text-gray-600 mt-2 text-sm">Las imágenes que generes aparecerán aquí con su respectivo código fuente.</p>
+          <div className="bg-[#141414] border border-white/[0.06] rounded-lg p-12 flex flex-col items-center justify-center text-center">
+            <ImageIcon className="w-12 h-12 text-zinc-700 mb-3" />
+            <h3 className="text-base font-semibold text-zinc-500">Sin imágenes aún</h3>
+            <p className="text-zinc-600 mt-1 text-sm">Las imágenes que generes aparecerán aquí.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {images.map((img) => (
-              <div key={img.id} className="bg-[#121212] rounded-3xl overflow-hidden shadow-2xl border border-white/5 group relative flex flex-col hover:border-[#FFDE00]/30 transition-colors">
+              <div key={img.id} className="bg-[#141414] rounded-lg overflow-hidden border border-white/[0.06] group relative flex flex-col hover:border-white/[0.12] transition-colors">
 
-                <div className="relative aspect-square w-full bg-black flex items-center justify-center">
-                  <img src={img.image_url} alt="IA Art" className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" />
+                <div className="relative aspect-square w-full bg-[#09090b] flex items-center justify-center">
+                  <img src={img.image_url} alt="IA Art" className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
                 </div>
 
-                <div className="p-5 bg-[#121212] flex-1 flex flex-col justify-between z-10 border-t border-white/5">
-                  <p className="text-sm font-medium text-gray-300 line-clamp-3 italic leading-relaxed">
+                <div className="p-4 flex-1 flex flex-col justify-between z-10 border-t border-white/[0.06]">
+                  <p className="text-xs font-medium text-zinc-400 line-clamp-2 leading-relaxed">
                     &quot;{img.prompt}&quot;
                   </p>
 
-                  {/* Botones de acción 2x2 (Diseño balanceado) */}
-                  <div className="grid grid-cols-2 gap-2 mt-4">
+                  {/* Action buttons 2x2 */}
+                  <div className="grid grid-cols-2 gap-1.5 mt-3">
                     <button 
-                      onClick={() => forceDownload(img.image_url, `ecuabet_ia_${img.id.slice(0,6)}.png`)} 
-                      className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 text-[#FFDE00] p-2 rounded-xl flex justify-center items-center gap-1.5 text-xs font-bold uppercase tracking-widest transition-colors border border-[#FFDE00]/20"
+                      onClick={() => forceDownload(img.image_url, `zamtools_ia_${img.id.slice(0,6)}.png`)} 
+                      className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/15 text-[#FFDE00] py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-[#FFDE00]/15"
                     >
-                      <Download className="w-4 h-4 shrink-0" /> Bajar
+                      <Download className="w-3.5 h-3.5 shrink-0" /> Bajar
                     </button>
                     <button 
                       onClick={() => handleRetry(img)} 
-                      className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 p-2 rounded-xl flex justify-center items-center gap-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors border border-purple-500/20"
+                      className="bg-purple-500/10 hover:bg-purple-500/15 text-purple-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-purple-500/15"
                     >
-                      <RefreshCw className="w-4 h-4 shrink-0" /> Repetir
+                      <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Repetir
                     </button>
                     <button 
                       onClick={() => setLightboxUrl(img.image_url)} 
-                      className="bg-white/5 hover:bg-white/10 text-white p-2 rounded-xl flex justify-center items-center gap-1.5 text-xs font-bold uppercase tracking-widest transition-colors border border-white/10"
+                      className="bg-white/[0.04] hover:bg-white/[0.06] text-zinc-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-white/[0.06]"
                     >
-                      <Eye className="w-4 h-4 shrink-0" /> Ver
+                      <Eye className="w-3.5 h-3.5 shrink-0" /> Ver
                     </button>
                     <button 
                       onClick={() => setDeleteConfirm(img.id)} 
-                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-xl flex justify-center items-center gap-1.5 text-xs font-bold uppercase tracking-widest border border-red-500/20 transition-colors"
+                      className="bg-red-500/10 hover:bg-red-500/15 text-red-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold border border-red-500/15 transition-colors"
                     >
-                      <Trash2 className="w-4 h-4 shrink-0" /> Borrar
+                      <Trash2 className="w-3.5 h-3.5 shrink-0" /> Borrar
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between mt-5 border-t border-white/10 pt-4">
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <img src={img.author_avatar_url || "https://ui-avatars.com/api/?name=Agente"} alt="Yo" className="w-7 h-7 rounded-full border border-white/10" />
-                      <span className="text-xs font-black text-white tracking-wide truncate max-w-[100px]">{img.author_name}</span>
+                      <img src={img.author_avatar_url || "https://ui-avatars.com/api/?name=Agente"} alt="Yo" className="w-6 h-6 rounded-full border border-white/[0.08]" />
+                      <span className="text-[10px] font-medium text-zinc-400 truncate max-w-[80px]">{img.author_name}</span>
                     </div>
-                    <span className="text-[10px] text-[#FFDE00] shadow-[0_0_5px_rgba(255,222,0,0.1)] uppercase font-black tracking-widest bg-yellow-500/10 px-2 py-1 rounded">
+                    <span className="text-[10px] text-zinc-600 font-medium">
                       {formatDistanceToNow(new Date(img.created_at), { locale: es, addSuffix: true })}
                     </span>
                   </div>
@@ -585,55 +592,55 @@ export default function EstudioIAPage() {
 
       </div>
 
-      {/* MODAL: Lightbox (Ver Imagen Completa) */}
+      {/* Lightbox */}
       {lightboxUrl && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-fade-in"
           onClick={() => setLightboxUrl(null)}
         >
           <button
-            className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors z-50"
+            className="absolute top-5 right-5 bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-colors z-50"
             onClick={() => setLightboxUrl(null)}
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
           <img
             src={lightboxUrl}
             alt="Vista completa"
-            className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+            className="max-w-full max-h-[90vh] object-contain rounded-xl"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
       )}
 
-      {/* MODAL: Confirmación de Eliminación */}
+      {/* Delete Confirmation */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1A1A1A] border border-white/10 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#111113] border border-white/[0.08] rounded-xl p-6 max-w-sm w-full animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="bg-red-500/20 p-2.5 rounded-xl">
-                <Trash2 className="w-6 h-6 text-red-400" />
+              <div className="bg-red-500/15 p-2 rounded-lg">
+                <Trash2 className="w-5 h-5 text-red-400" />
               </div>
-              <h3 className="text-lg font-black text-white">¿Eliminar esta imagen?</h3>
+              <h3 className="text-base font-bold text-white">¿Eliminar esta imagen?</h3>
             </div>
-            <p className="text-gray-400 text-sm mb-6">
-              Esta acción es permanente. La imagen será eliminada del servidor y no se podrá recuperar.
+            <p className="text-zinc-500 text-sm mb-5">
+              Esta acción es permanente y no se puede deshacer.
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 onClick={() => setDeleteConfirm(null)}
                 disabled={deleting}
-                className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl font-bold text-sm border border-white/10 transition-colors"
+                className="flex-1 px-4 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] text-zinc-400 rounded-lg font-medium text-sm border border-white/[0.06] transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => deleteImage(deleteConfirm)}
                 disabled={deleting}
-                className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
               >
                 {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                {deleting ? "Eliminando..." : "Sí, Eliminar"}
+                {deleting ? "Eliminando..." : "Eliminar"}
               </button>
             </div>
           </div>

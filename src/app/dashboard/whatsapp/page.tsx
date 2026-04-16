@@ -209,21 +209,20 @@ export default function WhatsAppAgentPage() {
   // ══════════════════════════════════════════════════════
   if (!isUnlocked) {
     return (
-      <div className="min-h-[85vh] p-4 sm:p-8 text-white flex flex-col items-center justify-center animate-in zoom-in-95 duration-500 relative">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-[#25D366]/20 rounded-full blur-[120px] pointer-events-none -z-10" />
-        <div className="max-w-xl w-full bg-[#0A0A0A] border border-white/10 rounded-3xl p-8 sm:p-12 text-center shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-6 opacity-10">
+      <div className="min-h-[85vh] p-4 sm:p-8 flex flex-col items-center justify-center">
+        <div className="max-w-xl w-full bg-[#141414] border border-white/[0.06] rounded-lg p-8 sm:p-12 text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-6 opacity-[0.03]">
             <MessageSquare className="w-40 h-40" />
           </div>
-          <div className="w-20 h-20 bg-gradient-to-br from-[#25D366] to-[#128C7E] rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(37,211,102,0.4)] relative">
-            <Lock className="w-8 h-8 text-white absolute -bottom-2 -right-2 drop-shadow-lg" />
-            <MessageSquare className="w-10 h-10 text-white" />
+          <div className="w-16 h-16 bg-[#25D366] rounded-xl mx-auto flex items-center justify-center mb-6 relative">
+            <Lock className="w-6 h-6 text-black absolute -bottom-2 -right-2" />
+            <MessageSquare className="w-8 h-8 text-black" />
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black mb-4 tracking-tight">Agente IA de WhatsApp</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold mb-2 tracking-tight text-white/90">Agente IA de WhatsApp</h1>
           <p className="text-gray-400 text-lg mb-8 leading-relaxed">
             Automatiza la atención al cliente 24/7 con IA entrenada por ti.
           </p>
-          <div className="bg-[#111111] border border-white/5 rounded-2xl p-6 text-left mb-8 space-y-3">
+          <div className="bg-[#0A0A0A] border border-white/[0.06] rounded-lg p-6 text-left mb-8 space-y-3">
             {[
               "Responde recargas, retiros y consultas automáticamente",
               "Detecta comprobantes y los registra en tu panel",
@@ -237,13 +236,13 @@ export default function WhatsAppAgentPage() {
               </div>
             ))}
           </div>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#FFDE00]/10 border border-[#FFDE00]/20 p-5 rounded-2xl">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#FFDE00]/10 border border-[#FFDE00]/20 p-5 rounded-lg">
             <div className="text-left">
-              <p className="text-xs text-[#FFDE00] font-bold uppercase tracking-widest">Inversión Mensual</p>
-              <p className="text-3xl font-black text-white">$25 <span className="text-sm font-normal text-gray-400">USD/mes</span></p>
+              <p className="text-[10px] text-[#FFDE00] font-medium uppercase tracking-widest">Inversión Mensual</p>
+              <p className="text-2xl font-bold text-white">$25 <span className="text-sm font-normal text-white/40">USD/mes</span></p>
             </div>
-            <Link href="/dashboard/chat" className="w-full sm:w-auto bg-[#FFDE00] hover:bg-[#FFC107] text-black px-6 py-3 rounded-xl font-black transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2">
-              Adquirir ahora <ArrowRight className="w-5 h-5" />
+            <Link href="/dashboard/chat" className="w-full sm:w-auto bg-[#FFDE00] hover:brightness-110 text-black px-6 py-2.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm">
+              Adquirir ahora <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
@@ -255,43 +254,41 @@ export default function WhatsAppAgentPage() {
   // PANTALLA DESBLOQUEADA - CONFIG COMPLETA
   // ══════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen p-4 sm:p-8 text-white max-w-4xl mx-auto space-y-5 animate-in fade-in duration-500 pb-32 relative">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#128C7E]/10 rounded-full blur-[120px] pointer-events-none -z-10" />
-
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-5 pb-32">
       {/* Header + Toggle */}
-      <div className="bg-[#0A0A0A] p-6 rounded-3xl border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+      <div className="bg-[#141414] p-5 sm:p-6 rounded-lg border border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="bg-gradient-to-br from-[#25D366] to-[#128C7E] w-14 h-14 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(37,211,102,0.3)]">
-            <MessageSquare className="w-7 h-7 text-white" />
+          <div className="bg-[#25D366]/10 w-12 h-12 rounded-lg flex items-center justify-center">
+            <MessageSquare className="w-6 h-6 text-[#25D366]" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white/90 flex items-center gap-2">
               WhatsApp AI v3
-              <span className="text-xs bg-[#25D366]/20 text-[#25D366] px-2 py-0.5 rounded-full uppercase border border-[#25D366]/30">
+              <span className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-2 py-0.5 rounded border border-[#25D366]/20 uppercase">
                 Function Calling
               </span>
             </h1>
-            <p className="text-gray-400 text-sm mt-1">Configura tu agente inteligente con herramientas reales.</p>
+            <p className="text-white/30 text-sm mt-0.5">Configura tu agente inteligente con herramientas reales.</p>
           </div>
         </div>
 
         {/* Controles: Toggle On/Off y Reset */}
         <div className="flex flex-col sm:items-end items-center gap-2 m-auto sm:m-0">
-          <label className="flex items-center cursor-pointer gap-3 bg-white/5 px-4 py-2 rounded-xl hover:bg-white/10 transition-colors border border-white/5 w-full justify-between sm:w-auto sm:justify-start">
-            <span className={`text-sm font-bold ${isActive ? 'text-[#25D366]' : 'text-gray-500'}`}>
-              {isActive ? "BOT ACTIVO" : "BOT APAGADO"}
-            </span>
+          <label className="flex items-center cursor-pointer gap-3 bg-white/[0.04] p-1.5 pr-4 rounded-lg hover:bg-white/[0.08] transition-colors border border-white/[0.06] w-full justify-between sm:w-auto sm:justify-start">
             <div className="relative">
               <input type="checkbox" className="sr-only" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
-              <div className={`block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-[#25D366]' : 'bg-gray-700'}`} />
-              <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`} />
+              <div className={`block w-10 h-6 rounded-md transition-colors ${isActive ? 'bg-[#25D366]' : 'bg-gray-700'}`} />
+              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded shadow transition-transform ${isActive ? 'translate-x-4' : ''}`} />
             </div>
+            <span className={`text-xs font-semibold uppercase tracking-wider ${isActive ? 'text-[#25D366]' : 'text-gray-500'}`}>
+              {isActive ? "BOT ACTIVO" : "BOT APAGADO"}
+            </span>
           </label>
           <button
             type="button"
             onClick={handleReset}
             disabled={resetting}
-            className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-red-500/20 hover:border-red-500/50 border border-transparent px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 w-full justify-center sm:w-auto"
+            className="flex items-center gap-2 text-xs font-semibold text-white/50 hover:text-white bg-white/[0.04] hover:bg-red-500/10 border border-transparent px-3 py-2 rounded-lg transition-colors disabled:opacity-50 w-full justify-center sm:w-auto"
           >
             {resetting ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
             Resetear Historial y Pausas
@@ -478,13 +475,13 @@ export default function WhatsAppAgentPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full flex items-center justify-center gap-2 bg-[#FFDE00] hover:bg-[#FFC107] text-black py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-[0_0_20px_rgba(255,222,0,0.3)]"
+          className="w-full flex items-center justify-center gap-2 bg-[#FFDE00] hover:brightness-110 text-black py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 mt-6"
         >
           {loading
-            ? <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            : <Save className="w-6 h-6" />
+            ? <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            : <Save className="w-5 h-5" />
           }
-          {saved ? "✅ ¡ENTRENAMIENTO GUARDADO!" : "GUARDAR Y APLICAR ENTRENAMIENTO"}
+          {saved ? "Guardado con éxito" : "Guardar Configuración"}
         </button>
       </form>
     </div>

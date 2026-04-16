@@ -129,25 +129,25 @@ export default function ChatPage() {
     <>
       {/* Contenedor principal */}
       <div className="p-2 sm:p-4 h-[calc(100svh-4.5rem)] sm:h-[calc(100vh-5rem)]">
-        <div className="bg-[#0A0A0A] rounded-2xl sm:rounded-3xl border border-white/5 shadow-[0_0_40px_rgba(0,0,0,0.6)] overflow-hidden h-full flex">
+        <div className="bg-[#0F0F0F] rounded-lg border border-white/[0.06] overflow-hidden h-full flex">
 
           {/* ── SIDEBAR CONTACTOS (Admin) ── */}
           {isAdmin && (
             <div className={`
               ${mobileView === "chat" ? "hidden" : "flex"} 
               sm:flex
-              w-full sm:w-72 md:w-80 shrink-0 border-r border-white/5 bg-[#111111] flex-col
+              w-full sm:w-72 md:w-80 shrink-0 border-r border-white/[0.06] bg-[#141414] flex-col
             `}>
               {/* Header sidebar */}
-              <div className="p-4 border-b border-white/5 flex items-center gap-3 shrink-0">
-                <div className="bg-[#FFDE00] p-1.5 rounded-lg shadow-[0_0_10px_rgba(255,222,0,0.3)]">
+              <div className="p-4 border-b border-white/[0.06] flex items-center gap-3 shrink-0">
+                <div className="bg-[#FFDE00] p-1.5 rounded-md">
                   <MessageSquare className="w-4 h-4 text-black" />
                 </div>
-                <span className="font-black text-white tracking-tight">Chats Activos</span>
+                <span className="font-medium text-white/80 text-sm tracking-tight">Chats</span>
                 
                 <div className="ml-auto flex items-center gap-3">
                   {contacts.length > 0 && (
-                    <span className="bg-[#FFDE00] text-black text-xs font-black px-2 py-0.5 rounded-full">
+                    <span className="bg-[#FFDE00] text-black text-xs font-bold px-2 py-0.5 rounded-full">
                       {contacts.length}
                     </span>
                   )}
@@ -170,16 +170,16 @@ export default function ChatPage() {
                     <button
                       key={c.email}
                       onClick={() => handleSelectContact(c.email)}
-                      className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all ${
+                      className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${
                         selectedContact === c.email
-                          ? "bg-[#FFDE00]/10 border border-[#FFDE00]/20"
-                          : "hover:bg-white/5 border border-transparent"
+                          ? "bg-[#FFDE00]/[0.06] border border-[#FFDE00]/15"
+                          : "hover:bg-white/[0.03] border border-transparent"
                       }`}
                     >
                       <img
                         src={c.avatar || `https://ui-avatars.com/api/?name=${c.name}&background=1a1a1a&color=FFDE00`}
                         alt="A"
-                        className="w-10 h-10 rounded-full border border-white/10 shrink-0"
+                        className="w-10 h-10 rounded-full border border-white/[0.08] shrink-0"
                       />
                       <div className="overflow-hidden flex-1 min-w-0">
                         <div className={`font-bold text-sm truncate ${selectedContact === c.email ? "text-[#FFDE00]" : "text-gray-300"}`}>
@@ -201,7 +201,7 @@ export default function ChatPage() {
           <div className={`
             ${isAdmin && mobileView === "list" ? "hidden" : "flex"}
             sm:flex
-            flex-1 flex-col bg-[#0D0D0D] relative overflow-hidden min-w-0
+            flex-1 flex-col bg-[#0A0A0A] relative overflow-hidden min-w-0
           `}>
             {/* Fondo sutil */}
             <div className="absolute inset-0 opacity-[0.03]" style={{
@@ -210,7 +210,7 @@ export default function ChatPage() {
             }} />
 
             {/* Header chat */}
-            <div className="p-3 sm:p-4 bg-[#111111] border-b border-white/5 flex items-center gap-3 z-10 shrink-0">
+            <div className="p-3 sm:p-4 bg-[#141414] border-b border-white/[0.06] flex items-center gap-3 z-10 shrink-0">
               {/* Botón volver en móvil para admin */}
               {isAdmin && (
                 <button
@@ -222,17 +222,17 @@ export default function ChatPage() {
               )}
 
               {!isAdmin && (
-                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-[#FFDE00] rounded-full flex items-center justify-center font-black text-black shadow-[0_0_15px_rgba(255,222,0,0.3)] shrink-0 text-sm">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-[#FFDE00] rounded-lg flex items-center justify-center font-semibold text-black shrink-0 text-sm">
                   Z
                 </div>
               )}
 
               <div className="flex-1 min-w-0">
-                <h2 className="font-black text-white tracking-tight text-sm sm:text-base truncate">
+                <h2 className="font-semibold text-white tracking-tight text-sm sm:text-base truncate">
                   {isAdmin ? (selectedContact || "Selecciona un Agente") : "Soporte Zamtools"}
                 </h2>
                 {!isAdmin && (
-                  <p className="text-[10px] sm:text-xs text-[#FFDE00] font-bold tracking-widest uppercase flex items-center gap-1.5">
+                  <p className="text-[10px] sm:text-xs text-[#FFDE00] font-medium tracking-wider flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 bg-[#FFDE00] rounded-full animate-pulse inline-block" />
                     En línea
                   </p>
@@ -240,7 +240,7 @@ export default function ChatPage() {
               </div>
               
               {/* Close Chat typical X */}
-              <Link href="/dashboard" className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-gray-400 hover:text-white transition-all shrink-0 ml-auto">
+              <Link href="/dashboard" className="p-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] rounded-lg text-zinc-400 hover:text-white transition-all shrink-0 ml-auto">
                 <X className="w-5 h-5" />
               </Link>
             </div>
@@ -256,10 +256,10 @@ export default function ChatPage() {
                 </div>
               ) : loading ? (
                 <div className="flex justify-center py-10">
-                  <Loader2 className="w-8 h-8 text-[#FFDE00] animate-spin drop-shadow-[0_0_8px_rgba(255,222,0,0.5)]" />
+                  <Loader2 className="w-8 h-8 text-[#FFDE00] animate-spin" />
                 </div>
               ) : messages.length === 0 ? (
-                <div className="text-center py-10 bg-white/[0.02] border border-white/5 rounded-2xl my-4 text-sm text-gray-600 font-medium">
+                <div className="text-center py-10 bg-white/[0.02] border border-white/[0.06] rounded-xl my-4 text-sm text-zinc-600 font-medium">
                   ¡La conversación está vacía! Escribe tu mensaje abajo.
                 </div>
               ) : (
@@ -267,10 +267,10 @@ export default function ChatPage() {
                   const isMine = msg.sender_email === user?.primaryEmailAddress?.emailAddress;
                   return (
                     <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[80%] sm:max-w-[65%] p-3 sm:p-3.5 rounded-2xl shadow-lg ${
+                      <div className={`max-w-[80%] sm:max-w-[65%] p-3 sm:p-3.5 rounded-lg ${
                         isMine
-                          ? "bg-[#FFDE00] text-black rounded-tr-sm shadow-[0_0_15px_rgba(255,222,0,0.15)]"
-                          : "bg-[#1A1A1A] border border-white/8 text-gray-200 rounded-tl-sm"
+                          ? "bg-[#FFDE00] text-black rounded-tr-sm"
+                          : "bg-[#141414] border border-white/[0.06] text-white/70 rounded-tl-sm"
                       }`}>
                         {msg.content.startsWith("data:image/") || msg.content.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i) ? (
                           <div className="relative group rounded-xl overflow-hidden shadow-sm border border-black/10 inline-block">
@@ -301,7 +301,7 @@ export default function ChatPage() {
 
             {/* Input mensaje */}
             {selectedContact && (
-              <div className="p-3 sm:p-4 bg-[#111111] border-t border-white/5 z-10 shrink-0">
+              <div className="p-3 sm:p-4 bg-[#141414] border-t border-white/[0.06] z-10 shrink-0">
                 <form onSubmit={handleSend} className="flex gap-2">
                   <input 
                     type="file" 
@@ -314,7 +314,7 @@ export default function ChatPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending}
-                    className="text-gray-400 p-2.5 sm:p-3 rounded-xl bg-white/5 hover:bg-white/10 hover:text-white transition-all shrink-0"
+                    className="text-zinc-400 p-2.5 sm:p-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] hover:text-white transition-all shrink-0"
                     title="Adjuntar imagen"
                   >
                     <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -324,12 +324,12 @@ export default function ChatPage() {
                     placeholder="Escribe tu mensaje..."
                     value={inputMsg}
                     onChange={e => setInputMsg(e.target.value)}
-                    className="flex-1 bg-[#0A0A0A] text-white placeholder-gray-600 border border-white/10 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus:outline-none focus:ring-1 focus:ring-[#FFDE00] focus:border-[#FFDE00] transition-all text-sm min-w-0"
+                    className="flex-1 bg-[#0A0A0A] text-white/90 placeholder-white/15 border border-white/[0.08] rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/30 transition-colors text-sm min-w-0"
                   />
                   <button
                     type="submit"
                     disabled={sending || !inputMsg.trim()}
-                    className="bg-[#FFDE00] text-black p-2.5 sm:p-3 rounded-xl hover:bg-[#FFC107] hover:shadow-[0_0_15px_rgba(255,222,0,0.4)] disabled:opacity-50 transition-all shrink-0 hover:scale-105 active:scale-95"
+                    className="bg-[#FFDE00] text-black p-2.5 sm:p-3 rounded-lg hover:brightness-110 disabled:opacity-50 transition-all shrink-0 active:scale-[0.97]"
                   >
                     {sending ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
                   </button>

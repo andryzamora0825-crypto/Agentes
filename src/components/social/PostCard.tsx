@@ -83,7 +83,7 @@ export default function PostCard({
 
   return (
     <>
-      <div className="bg-[#121212] rounded-2xl overflow-hidden border border-white/5 group relative flex flex-col hover:border-[#FFDE00]/20 transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#FFDE00]/5">
+      <div className="bg-[#141414] rounded-lg overflow-hidden border border-white/[0.06] group relative flex flex-col hover:border-white/[0.1] transition-colors">
         {/* Image Preview */}
         <div className="relative aspect-square w-full bg-black/50 flex items-center justify-center overflow-hidden">
           {post.image_url ? (

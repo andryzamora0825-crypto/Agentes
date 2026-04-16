@@ -39,10 +39,10 @@ export default function PostFilters({ activeFilter, onFilterChange, counts }: Po
           <button
             key={f.value}
             onClick={() => onFilterChange(f.value)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all duration-300 ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-colors ${
               isActive
-                ? "bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00] shadow-[0_0_12px_rgba(255,222,0,0.15)]"
-                : "bg-[#111111] border-white/5 text-gray-500 hover:bg-white/5 hover:text-gray-300 hover:border-white/10"
+                ? "bg-[#FFDE00]/10 border border-[#FFDE00]/20 text-[#FFDE00]"
+                : "bg-transparent border border-transparent text-white/40 hover:bg-white/[0.04] hover:text-white/80"
             }`}
           >
             <Icon className="w-3.5 h-3.5" />

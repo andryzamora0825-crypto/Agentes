@@ -133,10 +133,9 @@ export default function RecargasPage() {
           <div className="max-w-md w-full text-center space-y-6 relative">
             <div className="absolute inset-0 bg-[#25D366]/5 rounded-full blur-[120px] -z-10 scale-150 pointer-events-none" />
             
-            <div className="relative mx-auto w-28 h-28">
-              <div className="absolute inset-0 bg-[#25D366]/20 rounded-full blur-2xl animate-pulse" />
-              <div className="relative w-28 h-28 bg-[#111111] border-2 border-[#25D366]/30 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(37,211,102,0.15)]">
-                <Lock className="w-12 h-12 text-[#25D366]" />
+            <div className="relative mx-auto w-24 h-24">
+              <div className="relative w-24 h-24 bg-[#141414] border border-[#25D366]/20 rounded-lg flex items-center justify-center">
+                <Lock className="w-10 h-10 text-[#25D366]" />
               </div>
             </div>
 
@@ -154,9 +153,9 @@ export default function RecargasPage() {
 
             <button
               onClick={() => router.push("/dashboard/tienda")}
-              className="flex items-center justify-center gap-2 bg-[#25D366] text-white font-black px-8 py-3.5 rounded-2xl hover:bg-[#1DA851] hover:shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:scale-105 active:scale-95 transition-all uppercase tracking-widest text-sm mx-auto"
+              className="flex items-center justify-center gap-2 bg-[#25D366] text-black font-semibold px-6 py-3 rounded-lg hover:brightness-110 transition-colors uppercase tracking-widest text-xs mx-auto"
             >
-              <ShoppingBag className="w-5 h-5" />
+              <ShoppingBag className="w-4 h-4" />
               Contratar Bot en la Tienda
             </button>
           </div>
@@ -182,17 +181,17 @@ export default function RecargasPage() {
         {/* Columna Izquierda: Lista de Recargas */}
         <div className="space-y-6">
           {/* Header */}
-          <div className="bg-[#0A0A0A] rounded-3xl border border-white/5 p-6 shadow-xl">
+          <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 w-14 h-14 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.3)]">
-                  <DollarSign className="w-7 h-7 text-white" />
+              <div className="flex items-center gap-3">
+                <div className="bg-emerald-500/10 w-12 h-12 rounded-lg flex items-center justify-center border border-emerald-500/20">
+                  <DollarSign className="w-6 h-6 text-emerald-500" />
                 </div>
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  <h1 className="text-xl sm:text-2xl font-semibold text-white/90 tracking-tight">
                     Recargas Pendientes
                   </h1>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <p className="text-white/40 text-sm mt-0.5">
                     Solicitudes de recarga detectadas automáticamente por el bot.
                   </p>
                 </div>
@@ -200,10 +199,11 @@ export default function RecargasPage() {
 
               <button 
                 onClick={fetchRecargas}
-                className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all"
+                className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-white/60 hover:text-white/90 p-2.5 rounded-lg flex items-center gap-2 transition-colors"
+                title="Actualizar"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Actualizar
+                <span className="text-sm font-semibold sm:hidden">Actualizar</span>
               </button>
             </div>
 
@@ -218,13 +218,13 @@ export default function RecargasPage() {
                 <button
                   key={f.key}
                   onClick={() => setFilter(f.key)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap border ${
                     filter === f.key
-                      ? f.color === "yellow" ? "bg-[#FFDE00]/20 text-[#FFDE00] border border-[#FFDE00]/30"
-                      : f.color === "green" ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                      : f.color === "red" ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                      : "bg-white/10 text-white border border-white/20"
-                      : "bg-white/5 text-gray-500 border border-transparent hover:bg-white/10 hover:text-gray-300"
+                      ? f.color === "yellow" ? "bg-[#FFDE00]/10 text-[#FFDE00] border-[#FFDE00]/20"
+                      : f.color === "green" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : f.color === "red" ? "bg-red-500/10 text-red-400 border-red-500/20"
+                      : "bg-white/[0.08] text-white/90 border-white/[0.15]"
+                      : "bg-transparent text-white/40 border-transparent hover:bg-white/[0.04] hover:text-white/80"
                   }`}
                 >
                   <f.icon className="w-4 h-4" />
@@ -240,24 +240,24 @@ export default function RecargasPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FFDE00]" />
             </div>
           ) : recargas.length === 0 ? (
-            <div className="bg-[#0A0A0A] border border-white/5 rounded-3xl p-12 text-center">
-              <DollarSign className="w-16 h-16 text-gray-700 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-gray-500">Sin recargas {filter === "pending" ? "pendientes" : ""}</h3>
-              <p className="text-gray-600 mt-2">Cuando un cliente solicite una recarga por WhatsApp, aparecerá aquí automáticamente.</p>
+            <div className="bg-[#141414] border border-white/[0.06] rounded-lg p-10 text-center">
+              <DollarSign className="w-12 h-12 text-white/20 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-white/40">Sin recargas {filter === "pending" ? "pendientes" : ""}</h3>
+              <p className="text-white/20 mt-1 text-xs">Cuando un cliente solicite una recarga por WhatsApp, aparecerá aquí automáticamente.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {recargas.map(r => (
-                <div key={r.id} className="bg-[#0A0A0A] border border-white/5 rounded-2xl overflow-hidden shadow-lg hover:border-white/10 transition-all">
+                <div key={r.id} className="bg-[#141414] border border-white/[0.06] rounded-lg overflow-hidden hover:border-white/[0.1] transition-colors">
                   <div className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     {/* Info del cliente */}
                     <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
                         r.is_scammer 
-                          ? "bg-red-500/20 border border-red-500/30" 
-                          : r.status === "completed" ? "bg-green-500/20 border border-green-500/30"
-                          : r.status === "rejected" ? "bg-red-500/20 border border-red-500/30"
-                          : "bg-[#FFDE00]/20 border border-[#FFDE00]/30"
+                          ? "bg-red-500/10 border border-red-500/20" 
+                          : r.status === "completed" ? "bg-emerald-500/10 border border-emerald-500/20"
+                          : r.status === "rejected" ? "bg-red-500/10 border border-red-500/20"
+                          : "bg-[#FFDE00]/10 border border-[#FFDE00]/20"
                       }`}>
                         {r.is_scammer ? (
                           <ShieldAlert className="w-6 h-6 text-red-400" />
@@ -299,41 +299,41 @@ export default function RecargasPage() {
                     </div>
 
                     {/* Monto + Acciones */}
-                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                      <div className={`text-2xl font-black px-4 py-1 rounded-xl ${
-                        r.is_scammer ? "text-red-400 bg-red-500/10" : "text-[#FFDE00] bg-[#FFDE00]/10"
+                    <div className="flex items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t border-white/[0.06] sm:border-0">
+                      <div className={`text-lg font-bold px-3 py-1 rounded-lg ${
+                        r.is_scammer ? "text-red-400 bg-red-500/10 border border-red-500/20" : "text-[#FFDE00] bg-[#FFDE00]/10 border border-[#FFDE00]/20"
                       }`}>
                         ${r.amount?.toFixed(2) || "?"}
                       </div>
 
                       {r.status === "pending" && !r.is_scammer && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5 border-l border-white/[0.06] pl-3 ml-1">
                           <button
                             onClick={() => setConfirmModal(r)}
                             disabled={updatingId === r.id}
-                            className="bg-green-500/20 hover:bg-green-500/30 text-green-400 p-2.5 rounded-xl transition-all border border-green-500/20 disabled:opacity-50 flex items-center gap-1.5"
+                            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 p-2 rounded-lg transition-colors border border-emerald-500/20 disabled:opacity-50 flex items-center gap-1.5"
                             title="Confirmar recarga realizada"
                           >
-                            <CheckCircle2 className="w-5 h-5" />
-                            <span className="text-xs font-bold hidden sm:inline">Confirmar</span>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span className="text-[10px] font-semibold hidden sm:inline uppercase tracking-widest">Confirmar</span>
                           </button>
                           <button
                             onClick={() => updateStatus(r.id, "rejected")}
                             disabled={updatingId === r.id}
-                            className="bg-red-500/20 hover:bg-red-500/30 text-red-400 p-2.5 rounded-xl transition-all border border-red-500/20 disabled:opacity-50"
+                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-lg transition-colors border border-red-500/20 disabled:opacity-50"
                             title="Rechazar"
                           >
-                            <XCircle className="w-5 h-5" />
+                            <XCircle className="w-4 h-4" />
                           </button>
                         </div>
                       )}
 
                       <button
                         onClick={() => togglePreview(r)}
-                        className="bg-white/5 hover:bg-white/10 text-gray-400 p-2.5 rounded-xl transition-all border border-white/5"
+                        className="bg-white/[0.04] hover:bg-white/[0.08] text-white/40 hover:text-white/80 p-2 rounded-lg transition-colors border border-white/[0.06]"
                         title="Ver conversación"
                       >
-                        {expandedId === r.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        {expandedId === r.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
@@ -374,13 +374,13 @@ export default function RecargasPage() {
         </div>
 
         {/* Columna Derecha: Iframe Caja Ecuabet */}
-        <div className="bg-[#121212] border border-white/10 rounded-3xl overflow-hidden shadow-2xl h-[450px] sm:h-[700px] flex flex-col relative group sticky top-4">
-          <div className="px-5 py-4 bg-black/80 border-b border-white/10 flex items-center justify-between backdrop-blur-md z-20">
+        <div className="bg-[#141414] border border-white/[0.06] rounded-lg overflow-hidden h-[450px] sm:h-[700px] flex flex-col relative group sticky top-4">
+          <div className="px-4 py-3 bg-[#0A0A0A] border-b border-white/[0.06] flex items-center justify-between z-20">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-white font-black text-sm tracking-widest uppercase truncate max-w-[140px] sm:max-w-none">Sistema Caja Ecuabet</span>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+              <span className="text-white/80 font-bold text-xs tracking-widest uppercase truncate max-w-[140px] sm:max-w-none">Sistema Caja Ecuabet</span>
             </div>
-            <a href="https://caja.ecuabet.com/#!/top/recargarCredito" target="_blank" rel="noreferrer" className="text-[10px] sm:text-xs font-bold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FFDE00]/30 shadow-[0_0_10px_rgba(255,222,0,0.1)] flex items-center gap-1.5 truncate max-w-[130px] sm:max-w-none">
+            <a href="https://caja.ecuabet.com/#!/top/recargarCredito" target="_blank" rel="noreferrer" className="text-[10px] sm:text-[10px] font-semibold text-[#FFDE00] bg-[#FFDE00]/10 hover:bg-[#FFDE00]/20 px-2 py-1 rounded-md transition-colors border border-[#FFDE00]/30 flex items-center gap-1.5 truncate max-w-[130px] sm:max-w-none uppercase tracking-wider">
               <ExternalLink className="w-3 h-3 shrink-0" /> Abrir Externamente
             </a>
           </div>
@@ -407,45 +407,45 @@ export default function RecargasPage() {
     {/* Modal de Confirmación de Recarga */}
     {confirmModal && (
       <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-        <div className="bg-[#1A1A1A] border border-white/10 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-[#141414] border border-white/[0.06] rounded-lg p-6 sm:p-8 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="bg-green-500/20 p-2.5 rounded-xl">
-              <CheckCircle2 className="w-6 h-6 text-green-400" />
+            <div className="bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             </div>
-            <h3 className="text-lg font-black text-white">¿Confirmar recarga realizada?</h3>
+            <h3 className="text-sm font-semibold text-white/90 uppercase tracking-widest">¿Confirmar recarga?</h3>
           </div>
-          <div className="bg-black/40 border border-white/5 rounded-xl p-4 mb-4">
+          <div className="bg-[#0A0A0A] border border-white/[0.06] rounded-lg p-4 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500 font-bold uppercase">Cliente</span>
-              <span className="text-sm font-bold text-white">{confirmModal.client_name || "Cliente"}</span>
+              <span className="text-[10px] text-white/40 font-medium uppercase tracking-widest">Cliente</span>
+              <span className="text-sm font-semibold text-white/90">{confirmModal.client_name || "Cliente"}</span>
             </div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500 font-bold uppercase">Teléfono</span>
-              <span className="text-sm font-mono text-gray-300">{confirmModal.phone_number?.replace("@c.us", "")}</span>
+              <span className="text-[10px] text-white/40 font-medium uppercase tracking-widest">Teléfono</span>
+              <span className="text-xs font-mono text-white/60">{confirmModal.phone_number?.replace("@c.us", "")}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 font-bold uppercase">Monto</span>
-              <span className="text-xl font-black text-[#FFDE00]">${confirmModal.amount?.toFixed(2) || "?"}</span>
+              <span className="text-[10px] text-white/40 font-medium uppercase tracking-widest">Monto</span>
+              <span className="text-lg font-bold text-[#FFDE00]">${confirmModal.amount?.toFixed(2) || "?"}</span>
             </div>
           </div>
-          <p className="text-gray-400 text-sm mb-6">
-            Al confirmar, esta recarga será marcada como <span className="text-green-400 font-bold">completada</span> y se removerá de la lista de pendientes.
+          <p className="text-white/40 text-[10px] mb-6 uppercase tracking-wider">
+            Al confirmar, pasará a estado completada en la plataforma.
           </p>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <button
               onClick={() => setConfirmModal(null)}
               disabled={updatingId === confirmModal.id}
-              className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl font-bold text-sm border border-white/10 transition-colors"
+              className="flex-1 px-3 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-white/60 rounded-lg font-medium text-xs border border-white/[0.06] transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={() => updateStatus(confirmModal.id, "completed")}
               disabled={updatingId === confirmModal.id}
-              className="flex-1 px-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              className="flex-1 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 uppercase tracking-wider"
             >
-              {updatingId === confirmModal.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {updatingId === confirmModal.id ? "Procesando..." : "Sí, Confirmar"}
+              {updatingId === confirmModal.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+              {updatingId === confirmModal.id ? "Procesando..." : "Confirmar"}
             </button>
           </div>
         </div>

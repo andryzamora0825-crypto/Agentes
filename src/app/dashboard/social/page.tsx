@@ -221,57 +221,56 @@ export default function SocialDashboardPage() {
     <VipGate>
       <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-8">
         {/* ═══ Header ═══ */}
-        <div className="relative">
-          <div className="absolute top-0 left-0 w-40 h-40 bg-[#FFDE00]/15 rounded-full blur-[80px] -z-10" />
+        <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 drop-shadow-md">
-                <div className="bg-[#FFDE00] p-2 rounded-xl shadow-[0_0_15px_rgba(255,222,0,0.4)]">
-                  <Share2 className="w-8 h-8 text-black" />
-                </div>
-                Social Media
-              </h1>
-              <p className="text-gray-400 mt-2 text-base flex items-center gap-2">
-                Genera, aprueba y publica contenido automáticamente con{" "}
-                <span className="text-[#FFDE00] font-black flex items-center gap-1"><Bot className="w-4 h-4" /> Nano Banana</span>
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="bg-white/[0.06] p-2 rounded-lg">
+                <Share2 className="w-5 h-5 text-white/90" />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold tracking-tight text-white/90 flex items-center gap-2">
+                  Social Media
+                </h1>
+                <p className="text-white/40 mt-0.5 text-sm flex items-center gap-1.5">
+                  Genera, aprueba y publica contenido automáticamente con{" "}
+                  <span className="text-white/60 font-medium flex items-center gap-1"><Bot className="w-3.5 h-3.5" /> Nano Banana</span>
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-2">
               {/* Configuración — visible para TODOS (agentes necesitan enlazar sus páginas) */}
               <button
                 onClick={() => { setShowSettings(!showSettings); setShowGenerator(false); }}
-                className={`p-3 rounded-xl border transition-all ${
+                className={`p-2.5 rounded-lg border transition-all ${
                   showSettings
                     ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                    : "bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/10"
+                    : "bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white/90 border-white/[0.06]"
                 }`}
                 title="Configuración de Redes"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-4 h-4" />
               </button>
 
               {/* Botones de gestión: Recargar y Generar */}
-                <>
                   <button
                     onClick={() => fetchPosts()}
-                    className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white p-3 rounded-xl border border-white/10 transition-all"
+                    className="bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white/90 p-2.5 rounded-lg border border-white/[0.06] transition-all"
                     title="Recargar"
                   >
-                    <RefreshCw className="w-5 h-5" />
+                    <RefreshCw className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => { setShowGenerator(!showGenerator); setShowSettings(false); }}
-                    className={`font-black px-6 py-3 rounded-xl flex items-center gap-2 transition-all active:scale-95 ${
+                    className={`font-semibold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm ${
                       showGenerator
-                        ? "bg-white/10 text-gray-300 border border-white/10"
-                        : "bg-[#FFDE00] text-black hover:bg-[#FFC107] shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)]"
+                        ? "bg-white/[0.08] text-white/80 border border-white/[0.06]"
+                        : "bg-[#FFDE00] text-black hover:brightness-110"
                     }`}
                   >
-                    <Sparkles className={`w-5 h-5 ${showGenerator ? "" : "fill-black"}`} />
-                    {showGenerator ? "Cerrar" : "Generar Post"}
+                    <Sparkles className="w-4 h-4" />
+                    {showGenerator ? "Cancelar" : "Generar Post"}
                   </button>
-                </>
             </div>
           </div>
         </div>
@@ -296,14 +295,12 @@ export default function SocialDashboardPage() {
 
         {/* ═══ Generator Panel ═══ */}
         {showGenerator && (
-          <div className="bg-[#121212] rounded-3xl border border-white/5 p-5 sm:p-8 shadow-2xl relative overflow-hidden">
-            {/* Glow */}
-            <div className="absolute top-0 right-0 w-48 h-48 bg-[#FFDE00]/5 rounded-full blur-[80px] pointer-events-none" />
+          <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6 mb-6">
 
             {/* Model indicator */}
-            <div className="flex items-center gap-2 mb-5">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border bg-[#FFDE00]/10 border-[#FFDE00]/20 text-[#FFDE00]">
-                <Bot className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-2 mb-6">
+              <div className="flex items-center gap-2 px-3 py-1 rounded-[4px] text-[10px] font-medium uppercase tracking-widest bg-[#FFDE00]/10 border border-[#FFDE00]/20 text-[#FFDE00]">
+                <Bot className="w-3 h-3" />
                 Nano Banana 2 — Texto + Imagen
               </div>
             </div>
@@ -318,36 +315,36 @@ export default function SocialDashboardPage() {
             <form onSubmit={handleGenerate} className="space-y-6">
               {/* Topic Input */}
               <div>
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">
+                <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-1.5 block">
                   Tema / Idea del post
                 </label>
                 <textarea
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="Ej: Promoción especial de fin de semana para nuevos clientes..."
-                  className="w-full bg-[#050505] text-white border border-white/10 rounded-2xl p-5 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/50 focus:border-[#FFDE00]/50 resize-none h-28 transition-all text-base font-medium shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] placeholder-gray-700"
+                  className="w-full bg-[#0A0A0A] text-white/90 border border-white/[0.08] rounded-lg px-3 py-2.5 focus:outline-none focus:border-white/20 resize-none h-24 transition-colors text-sm placeholder-white/20"
                 />
               </div>
 
               {/* Brand Voice */}
               <div>
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">
+                <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-1.5 block">
                   Tono de voz
                 </label>
                 <input
                   type="text"
                   value={brandVoice}
                   onChange={(e) => setBrandVoice(e.target.value)}
-                  className="w-full bg-[#050505] text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/50 text-sm"
+                  className="w-full bg-[#0A0A0A] text-white/90 border border-white/[0.08] rounded-lg px-3 py-2.5 focus:outline-none focus:border-white/20 transition-colors text-sm placeholder-white/20"
                   placeholder="profesional y cercano"
                 />
               </div>
 
               {/* Format + Platform Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Image Format */}
                 <div>
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">
+                  <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-1.5 block">
                     Formato de imagen
                   </label>
                   <div className="flex flex-wrap gap-2">
@@ -359,15 +356,15 @@ export default function SocialDashboardPage() {
                           key={fmt.id}
                           type="button"
                           onClick={() => setImageFormat(fmt.id)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all text-xs font-bold ${
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all text-xs font-medium ${
                             selected
-                              ? "bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00]"
-                              : "bg-[#111111] border-white/5 text-gray-500 hover:bg-white/5"
+                              ? "bg-white/[0.08] border-white/[0.15] text-white"
+                              : "bg-transparent border-white/[0.06] text-white/40 hover:bg-white/[0.04]"
                           }`}
                         >
                           <Icon className="w-3.5 h-3.5" />
                           {fmt.label}
-                          <span className="text-[9px] font-mono opacity-60">{fmt.ratio}</span>
+                          <span className="text-[9px] font-mono opacity-60 ml-1">{fmt.ratio}</span>
                         </button>
                       );
                     })}
@@ -376,7 +373,7 @@ export default function SocialDashboardPage() {
 
                 {/* Platform */}
                 <div>
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">
+                  <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-1.5 block">
                     Plataforma
                   </label>
                   <div className="flex gap-2">
@@ -388,10 +385,10 @@ export default function SocialDashboardPage() {
                           key={opt.value}
                           type="button"
                           onClick={() => setPlatform(opt.value)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border transition-all text-xs font-bold ${
+                          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border transition-all text-xs font-medium ${
                             active
-                              ? "bg-[#FFDE00]/10 border-[#FFDE00]/40 text-[#FFDE00]"
-                              : "bg-[#111111] border-white/5 text-gray-500 hover:bg-white/5"
+                              ? "bg-white/[0.08] border-white/[0.15] text-white"
+                              : "bg-transparent border-white/[0.06] text-white/40 hover:bg-white/[0.04]"
                           }`}
                         >
                           <Icon className="w-3.5 h-3.5" />
@@ -404,15 +401,15 @@ export default function SocialDashboardPage() {
               </div>
 
               {/* Schedule */}
-              <div>
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">
+              <div className="pt-2 border-t border-white/[0.06]">
+                <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-1.5 block">
                   Programar publicación (opcional)
                 </label>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
-                  className="w-full sm:w-auto bg-[#050505] text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/50 text-sm [color-scheme:dark]"
+                  className="bg-[#0A0A0A] text-white/90 border border-white/[0.08] rounded-lg px-3 py-2.5 focus:outline-none focus:border-white/20 transition-colors text-sm [color-scheme:dark]"
                 />
               </div>
 
@@ -420,16 +417,16 @@ export default function SocialDashboardPage() {
               <button
                 type="submit"
                 disabled={generating || !topic.trim()}
-                className="w-full bg-[#FFDE00] text-black font-black px-8 py-4 rounded-xl flex items-center justify-center gap-3 hover:bg-[#FFC107] transition-all shadow-[0_0_20px_rgba(255,222,0,0.3)] hover:shadow-[0_0_30px_rgba(255,222,0,0.5)] disabled:opacity-30 active:scale-[0.98] text-base"
+                className="w-full bg-[#FFDE00] text-black font-semibold px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 hover:brightness-110 transition-colors disabled:opacity-50 text-sm mt-4"
               >
                 {generating ? (
                   <>
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    Nano Banana generando...
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generando...
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-6 h-6 fill-black" />
+                    <Sparkles className="w-4 h-4" />
                     Generar Caption + Imagen
                   </>
                 )}
@@ -437,14 +434,12 @@ export default function SocialDashboardPage() {
 
               {/* Generating animation */}
               {generating && (
-                <div className="flex items-center justify-center p-6 border border-white/10 rounded-2xl bg-black/50 overflow-hidden relative">
-                  <div className="absolute inset-0 bg-[#FFDE00]/10 animate-pulse" />
-                  <div className="flex flex-col items-center text-center space-y-3 z-10">
-                    <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00] drop-shadow-[0_0_10px_rgba(255,222,0,0.8)]" />
-                    <h3 className="font-bold text-white text-lg">Generando contenido con IA...</h3>
-                    <p className="text-sm text-gray-400 max-w-md">
-                      Nano Banana está creando tu imagen. Esto puede tomar
-                      15-30 segundos dependiendo de la disponibilidad del servidor.
+                <div className="flex items-center justify-center p-6 border border-white/[0.06] rounded-lg bg-[#0A0A0A] mt-4">
+                  <div className="flex flex-col items-center text-center space-y-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#FFDE00]" />
+                    <h3 className="font-semibold text-white/90 text-sm">Generando contenido con IA...</h3>
+                    <p className="text-xs text-white/40 max-w-sm">
+                      Esto puede tomar unos 15-30 segundos.
                     </p>
                   </div>
                 </div>
