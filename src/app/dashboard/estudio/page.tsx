@@ -1,20 +1,32 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
 import VipGate from "@/components/VipGate";
 
 const FORMAT_OPTIONS = [
+  { id: 'auto', label: 'Auto', ratio: '', desc: 'IA decide', icon: 'sparkles' },
   { id: 'square', label: 'Cuadrado', ratio: '1:1', desc: 'Instagram Post', icon: 'square' },
   { id: 'vertical', label: 'Vertical', ratio: '9:16', desc: 'Reels / Stories', icon: 'phone' },
   { id: 'horizontal', label: 'Horizontal', ratio: '16:9', desc: 'YouTube / PC', icon: 'monitor' },
   { id: 'portrait', label: 'Retrato', ratio: '4:5', desc: 'Instagram Retrato', icon: 'rect-v' },
   { id: 'landscape', label: 'Paisaje', ratio: '3:2', desc: 'Publicidad / Web', icon: 'rect-h' },
-  { id: 'whatsapp', label: 'WhatsApp', ratio: '1:1', desc: 'Estado / Perfil', icon: 'square' },
 ];
+
+function FormatIcon({ icon, className = "w-3.5 h-3.5" }: { icon: string; className?: string }) {
+  switch (icon) {
+    case 'square': return <Square className={className} />;
+    case 'phone': return <Smartphone className={className} />;
+    case 'monitor': return <Monitor className={className} />;
+    case 'rect-v': return <RectangleVertical className={className} />;
+    case 'rect-h': return <RectangleHorizontal className={className} />;
+    case 'sparkles': return <Sparkles className={className} />;
+    default: return <Square className={className} />;
+  }
+}
 
 export default function EstudioIAPage() {
   const { user, isLoaded } = useUser();
@@ -33,15 +45,31 @@ export default function EstudioIAPage() {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState('auto');
+  const [showFormatMenu, setShowFormatMenu] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const originalPromptRef = useRef("");
   const refInputRef = useRef<HTMLInputElement>(null);
+  const formatMenuRef = useRef<HTMLDivElement>(null);
 
   const baseCost = refImages.length > 0 ? 150 : 100;
   const characterCost = useAgencyCharacter ? 50 : 0;
   const totalCost = baseCost + characterCost;
+
+  const currentFormat = FORMAT_OPTIONS.find(f => f.id === selectedFormat) || FORMAT_OPTIONS[0];
+
+  // Close format menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (formatMenuRef.current && !formatMenuRef.current.contains(e.target as Node)) {
+        setShowFormatMenu(false);
+      }
+    };
+    if (showFormatMenu) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showFormatMenu]);
 
   const loadHistory = async () => {
     try {
@@ -189,7 +217,17 @@ export default function EstudioIAPage() {
 
     try {
       const fd = new FormData();
-      fd.append("prompt", prompt);
+
+      // Inject format into prompt if not auto
+      let finalPrompt = prompt;
+      if (selectedFormat !== 'auto') {
+        const fmt = FORMAT_OPTIONS.find(f => f.id === selectedFormat);
+        if (fmt && fmt.ratio) {
+          finalPrompt = `${prompt}\n\n[FORMATO OBLIGATORIO: Genera la imagen en proporción ${fmt.ratio} (${fmt.label} - ${fmt.desc}). Es CRÍTICO respetar esta proporción.]`;
+        }
+      }
+
+      fd.append("prompt", finalPrompt);
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
       fd.append("useAgencyCharacter", String(useAgencyCharacter));
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
@@ -202,7 +240,6 @@ export default function EstudioIAPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // Se deja intacto el prompt y las refImages (Opción 1)
         setLastModel(data.model || null);
         loadHistory();
       } else {
@@ -273,13 +310,33 @@ export default function EstudioIAPage() {
 
   const handleRetry = (img: any) => {
     setPrompt(img.prompt);
+    setRefImages([]);
+    setErrorMsg(null);
+    setLastModel(null);
+    
+    // Wait for state update, then scroll and resize
     setTimeout(() => {
-      const textarea = document.getElementById("prompt-input");
+      const textarea = document.getElementById("prompt-input") as HTMLTextAreaElement | null;
       if (textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
         textarea.scrollIntoView({ behavior: "smooth", block: "center" });
         textarea.focus();
+        // Place cursor at end
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       }
-    }, 100);
+    }, 150);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    });
   };
 
   return (
@@ -295,7 +352,7 @@ export default function EstudioIAPage() {
         {/* Generation Panel */}
         <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6 animate-slide-up">
 
-          {/* Model indicator + cost */}
+          {/* Model indicator + cost + format */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${refImages.length > 0
                 ? 'bg-purple-500/10 text-purple-300'
@@ -304,6 +361,48 @@ export default function EstudioIAPage() {
               <Sparkles className="w-3 h-3" />
               {refImages.length > 0 ? 'Nano Pro' : 'Nano Banana'}
             </div>
+
+            {/* Format Selector Dropdown */}
+            <div className="relative" ref={formatMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowFormatMenu(!showFormatMenu)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
+              >
+                <FormatIcon icon={currentFormat.icon} className="w-3 h-3" />
+                <span>{currentFormat.label}</span>
+                {currentFormat.ratio && <span className="text-zinc-600">{currentFormat.ratio}</span>}
+                <ChevronDown className={`w-3 h-3 transition-transform ${showFormatMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showFormatMenu && (
+                <div className="absolute top-full left-0 mt-1.5 bg-[#1A1A1A] border border-white/[0.08] rounded-lg shadow-xl w-52 overflow-hidden z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+                  {FORMAT_OPTIONS.map(fmt => (
+                    <button
+                      key={fmt.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFormat(fmt.id);
+                        setShowFormatMenu(false);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${
+                        selectedFormat === fmt.id
+                          ? 'bg-[#FFDE00]/[0.06] text-[#FFDE00]'
+                          : 'text-zinc-400 hover:bg-white/[0.04] hover:text-white'
+                      }`}
+                    >
+                      <FormatIcon icon={fmt.icon} className="w-4 h-4 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium">{fmt.label} {fmt.ratio && <span className="text-zinc-600 ml-1">{fmt.ratio}</span>}</div>
+                        <div className="text-[10px] text-zinc-600">{fmt.desc}</div>
+                      </div>
+                      {selectedFormat === fmt.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#FFDE00] shrink-0"></div>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className={`ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all ${totalCost > 100
                 ? 'bg-purple-500/10 border-purple-500/15 text-purple-300'
                 : 'bg-white/[0.04] border-white/[0.06] text-zinc-500'
@@ -383,17 +482,26 @@ export default function EstudioIAPage() {
                       <img
                         src={URL.createObjectURL(file)}
                         alt="Ref"
-                        className="w-full h-full object-cover group-hover/img:opacity-70 transition-opacity"
+                        className="w-full h-full object-cover"
                       />
                       <button
                         type="button"
                         onClick={() => removeRefImage(i)}
-                        className="absolute top-1 right-1 bg-black/70 hover:bg-red-500 text-white rounded-full p-1 opacity-0 group-hover/img:opacity-100 transition-opacity"
+                        className="absolute top-0.5 right-0.5 bg-black/80 hover:bg-red-500 text-white rounded-full p-1 transition-colors"
                       >
                         <X className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
+                  {refImages.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={() => refInputRef.current?.click()}
+                      className="w-16 h-16 rounded-lg border border-dashed border-white/[0.12] hover:border-white/[0.25] flex items-center justify-center text-zinc-600 hover:text-zinc-400 transition-colors"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -562,9 +670,18 @@ export default function EstudioIAPage() {
                 </div>
 
                 <div className="p-4 flex-1 flex flex-col z-10 border-t border-white/[0.06]">
-                  <p className="text-xs font-medium text-zinc-400 line-clamp-3 leading-relaxed">
-                    &quot;{img.prompt}&quot;
-                  </p>
+                  <div className="flex items-start gap-2">
+                    <p className="text-xs font-medium text-zinc-400 line-clamp-3 leading-relaxed flex-1">
+                      &quot;{img.prompt}&quot;
+                    </p>
+                    <button
+                      onClick={() => copyToClipboard(img.prompt)}
+                      className="shrink-0 p-1.5 rounded-md text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
+                      title="Copiar prompt"
+                    >
+                      <Clipboard className="w-3 h-3" />
+                    </button>
+                  </div>
 
                   <div className="mt-auto">
                     {/* Action buttons 2x2 */}
