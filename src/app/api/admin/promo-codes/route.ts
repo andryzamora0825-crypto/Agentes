@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
 
-    const { code, reward_type, reward_value, stock } = await request.json();
+    const { code, reward_type, reward_value, combo_credits, stock } = await request.json();
 
     if (!code || !reward_type || !reward_value) {
       return NextResponse.json({ error: "Faltan parámetros requeridos" }, { status: 400 });
@@ -47,9 +47,10 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("promo_codes")
       .insert({
-        code: code.toUpperCase().replace(/\s+/g, ''), // Asegurar mayúsculas sin espacios
+        code: code.toUpperCase().replace(/\s+/g, ''),
         reward_type,
         reward_value: Number(reward_value),
+        combo_credits: reward_type === 'combo' && combo_credits ? Number(combo_credits) : null,
         stock: stock ? Number(stock) : null,
         expires_at: expiresAt.toISOString(),
         used_count: 0

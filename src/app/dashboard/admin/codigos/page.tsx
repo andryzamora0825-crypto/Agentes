@@ -17,6 +17,7 @@ export default function AdminCodigosPage() {
   const [codeName, setCodeName] = useState("");
   const [rewardType, setRewardType] = useState("vip_days");
   const [rewardValue, setRewardValue] = useState("");
+  const [comboCredits, setComboCredits] = useState("");
   const [stock, setStock] = useState("");
 
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
@@ -61,6 +62,7 @@ export default function AdminCodigosPage() {
           code: codeName,
           reward_type: rewardType,
           reward_value: rewardValue,
+          combo_credits: rewardType === 'combo' ? comboCredits : null,
           stock: stock ? stock : null
         })
       });
@@ -70,6 +72,7 @@ export default function AdminCodigosPage() {
       if (data.success) {
         setCodeName("");
         setRewardValue("");
+        setComboCredits("");
         setStock("");
         loadCodes();
       } else {
@@ -144,23 +147,39 @@ export default function AdminCodigosPage() {
               >
                 <option value="vip_days">Días VIP</option>
                 <option value="credits">Créditos</option>
+                <option value="combo">VIP + Créditos</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                Valor del Premio ({rewardType === 'vip_days' ? 'Días' : 'Cantidad'})
+                {rewardType === 'combo' ? 'Días VIP' : rewardType === 'vip_days' ? 'Días' : 'Cantidad de Créditos'}
               </label>
               <input 
                 type="number" 
                 min="1"
-                placeholder={rewardType === 'vip_days' ? "Ej. 3" : "Ej. 1000"}
+                placeholder={rewardType === 'credits' ? "Ej. 1000" : "Ej. 3"}
                 value={rewardValue}
                 onChange={e => setRewardValue(e.target.value)}
                 className="w-full bg-[#111111] text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-[#FFDE00]"
                 required
               />
             </div>
+
+            {rewardType === 'combo' && (
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Créditos a Incluir</label>
+                <input 
+                  type="number" 
+                  min="1"
+                  placeholder="Ej. 500"
+                  value={comboCredits}
+                  onChange={e => setComboCredits(e.target.value)}
+                  className="w-full bg-[#111111] text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-[#FFDE00]"
+                  required
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Stock (Opcional)</label>
@@ -215,7 +234,12 @@ export default function AdminCodigosPage() {
                         )}
                       </div>
                       <p className="text-sm text-gray-400">
-                        Premio: <strong className="text-white">{code.reward_value} {code.reward_type === 'vip_days' ? 'Días VIP' : 'Créditos'}</strong>
+                        Premio: <strong className="text-white">
+                          {code.reward_type === 'combo'
+                            ? `${code.reward_value} Días VIP + ${code.combo_credits || 0} Créditos`
+                            : `${code.reward_value} ${code.reward_type === 'vip_days' ? 'Días VIP' : 'Créditos'}`
+                          }
+                        </strong>
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         Expira: {new Date(code.expires_at).toLocaleString()}

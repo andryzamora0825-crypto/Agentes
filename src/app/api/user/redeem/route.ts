@@ -79,6 +79,24 @@ export async function POST(request: Request) {
       updateToApply.vipExpiresAt = currentExpiresAt + msToAdd;
       successMessage = `¡Felicidades! Has activado ${promoCode.reward_value} días de Plan VIP.`;
     }
+    else if (promoCode.reward_type === "combo") {
+      // VIP days
+      const currentPlan = currentMetadata?.plan || 'FREE';
+      let currentExpiresAt = currentMetadata?.vipExpiresAt ? Number(currentMetadata.vipExpiresAt) : Date.now();
+      if (currentPlan === 'FREE' || currentExpiresAt < Date.now()) {
+        currentExpiresAt = Date.now();
+      }
+      const msToAdd = promoCode.reward_value * 24 * 60 * 60 * 1000;
+      updateToApply.plan = 'VIP';
+      updateToApply.vipExpiresAt = currentExpiresAt + msToAdd;
+
+      // Credits
+      const comboCredits = Number(promoCode.combo_credits) || 0;
+      const currentCredits = Number(currentMetadata?.credits) || 0;
+      updateToApply.credits = currentCredits + comboCredits;
+
+      successMessage = `¡Felicidades! Has activado ${promoCode.reward_value} días VIP + ${comboCredits} créditos.`;
+    }
 
     await client.users.updateUserMetadata(user.id, {
       publicMetadata: {
