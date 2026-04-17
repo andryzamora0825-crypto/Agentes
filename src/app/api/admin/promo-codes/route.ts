@@ -44,17 +44,23 @@ export async function POST(request: Request) {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
 
+    const insertPayload: any = {
+      code: code.toUpperCase().replace(/\s+/g, ''),
+      reward_type,
+      reward_value: Number(reward_value),
+      stock: stock ? Number(stock) : null,
+      expires_at: expiresAt.toISOString(),
+      used_count: 0
+    };
+
+    // Solo incluir combo_credits si es tipo combo y la columna existe
+    if (reward_type === 'combo' && combo_credits) {
+      insertPayload.combo_credits = Number(combo_credits);
+    }
+
     const { data, error } = await supabase
       .from("promo_codes")
-      .insert({
-        code: code.toUpperCase().replace(/\s+/g, ''),
-        reward_type,
-        reward_value: Number(reward_value),
-        combo_credits: reward_type === 'combo' && combo_credits ? Number(combo_credits) : null,
-        stock: stock ? Number(stock) : null,
-        expires_at: expiresAt.toISOString(),
-        used_count: 0
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
