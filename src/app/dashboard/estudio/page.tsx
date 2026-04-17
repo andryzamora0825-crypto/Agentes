@@ -352,7 +352,7 @@ export default function EstudioIAPage() {
         {/* Generation Panel */}
         <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6 animate-slide-up">
 
-          {/* Model indicator + cost + format */}
+          {/* Model indicator + cost */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${refImages.length > 0
                 ? 'bg-purple-500/10 text-purple-300'
@@ -360,47 +360,6 @@ export default function EstudioIAPage() {
               }`}>
               <Sparkles className="w-3 h-3" />
               {refImages.length > 0 ? 'Nano Pro' : 'Nano Banana'}
-            </div>
-
-            {/* Format Selector Dropdown */}
-            <div className="relative" ref={formatMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowFormatMenu(!showFormatMenu)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
-              >
-                <FormatIcon icon={currentFormat.icon} className="w-3 h-3" />
-                <span>{currentFormat.label}</span>
-                {currentFormat.ratio && <span className="text-zinc-600">{currentFormat.ratio}</span>}
-                <ChevronDown className={`w-3 h-3 transition-transform ${showFormatMenu ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showFormatMenu && (
-                <div className="absolute top-full left-0 mt-1.5 bg-[#1A1A1A] border border-white/[0.08] rounded-lg shadow-xl w-52 overflow-hidden z-30 animate-in fade-in slide-in-from-top-2 duration-150">
-                  {FORMAT_OPTIONS.map(fmt => (
-                    <button
-                      key={fmt.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedFormat(fmt.id);
-                        setShowFormatMenu(false);
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${
-                        selectedFormat === fmt.id
-                          ? 'bg-[#FFDE00]/[0.06] text-[#FFDE00]'
-                          : 'text-zinc-400 hover:bg-white/[0.04] hover:text-white'
-                      }`}
-                    >
-                      <FormatIcon icon={fmt.icon} className="w-4 h-4 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-xs font-medium">{fmt.label} {fmt.ratio && <span className="text-zinc-600 ml-1">{fmt.ratio}</span>}</div>
-                        <div className="text-[10px] text-zinc-600">{fmt.desc}</div>
-                      </div>
-                      {selectedFormat === fmt.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#FFDE00] shrink-0"></div>}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             <div className={`ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all ${totalCost > 100
@@ -549,8 +508,54 @@ export default function EstudioIAPage() {
                   style={{ height: '44px' }}
                 />
 
-                {/* Actions (Mic ONLY inside the pill) */}
+                {/* Actions: Format + Mic inside the pill */}
                 <div className="flex items-center gap-1 shrink-0 p-1">
+
+                  {/* Format Selector (compact, opens upward) */}
+                  <div className="relative" ref={formatMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowFormatMenu(!showFormatMenu)}
+                      className={`h-10 px-3 rounded-full flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                        selectedFormat !== 'auto'
+                          ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20'
+                          : 'bg-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/10'
+                      }`}
+                    >
+                      <FormatIcon icon={currentFormat.icon} className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">{currentFormat.label}</span>
+                      <ChevronDown className={`w-3 h-3 transition-transform ${showFormatMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showFormatMenu && (
+                      <div className="absolute bottom-full right-0 mb-2 bg-[#1A1A1A] border border-white/[0.08] rounded-xl shadow-xl w-52 overflow-hidden z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                        {FORMAT_OPTIONS.map(fmt => (
+                          <button
+                            key={fmt.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedFormat(fmt.id);
+                              setShowFormatMenu(false);
+                            }}
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${
+                              selectedFormat === fmt.id
+                                ? 'bg-[#FFDE00]/[0.06] text-[#FFDE00]'
+                                : 'text-zinc-400 hover:bg-white/[0.04] hover:text-white'
+                            }`}
+                          >
+                            <FormatIcon icon={fmt.icon} className="w-4 h-4 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium">{fmt.label} {fmt.ratio && <span className="text-zinc-600 ml-1">{fmt.ratio}</span>}</div>
+                              <div className="text-[10px] text-zinc-600">{fmt.desc}</div>
+                            </div>
+                            {selectedFormat === fmt.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#FFDE00] shrink-0"></div>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mic Button */}
                   {isTranscribing ? (
                     <button
                       type="button"
