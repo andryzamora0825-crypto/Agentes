@@ -6,6 +6,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/whatsapp/webhook(.*)',  // Green-API necesita acceder sin autenticación
   '/sign-in(.*)',
   '/sign-up(.*)',
+  '/sso-callback(.*)',          // Clerk OAuth redirect callbacks
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

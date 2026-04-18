@@ -54,9 +54,7 @@ export default function EstudioIAPage() {
   const refInputRef = useRef<HTMLInputElement>(null);
   const formatMenuRef = useRef<HTMLDivElement>(null);
 
-  const baseCost = refImages.length > 0 ? 150 : 100;
-  const characterCost = useAgencyCharacter ? 50 : 0;
-  const totalCost = baseCost + characterCost;
+  const totalCost = 150;
 
   const currentFormat = FORMAT_OPTIONS.find(f => f.id === selectedFormat) || FORMAT_OPTIONS[0];
 
@@ -362,12 +360,8 @@ export default function EstudioIAPage() {
               {refImages.length > 0 ? 'Nano Pro' : 'Nano Banana'}
             </div>
 
-            <div className={`ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all ${totalCost > 100
-                ? 'bg-purple-500/10 border-purple-500/15 text-purple-300'
-                : 'bg-white/[0.04] border-white/[0.06] text-zinc-500'
-              }`}>
-              {totalCost} créditos
-              {useAgencyCharacter && <span className="ml-1 text-[10px] opacity-70">(+50)</span>}
+            <div className="ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all bg-purple-500/10 border-purple-500/15 text-purple-300">
+              150 créditos
             </div>
           </div>
 
@@ -418,7 +412,6 @@ export default function EstudioIAPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className={`font-semibold text-sm ${useAgencyCharacter ? 'text-white' : 'text-zinc-500'}`}>Personaje Representante</p>
-                      {useAgencyCharacter && <span className="bg-purple-500/10 text-purple-400 text-[9px] font-semibold px-1.5 py-0.5 rounded border border-purple-500/15">+50</span>}
                     </div>
                     <p className="text-xs text-zinc-600 mt-0.5">Incluye a tu representante.</p>
                   </div>

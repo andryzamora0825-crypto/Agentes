@@ -127,11 +127,8 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
-    // Pro cuesta 150 créditos, Flash 100
     const hasRefImages = referenceImages.length > 0;
-    const baseCost = hasRefImages ? 150 : 100;
-    const characterExtra = useAgencyCharacter ? 50 : 0;
-    const cost = baseCost + characterExtra;
+    const cost = 150; // Costo fijo independientemente de los extras
 
     if (currentCredits < cost) {
       return NextResponse.json({

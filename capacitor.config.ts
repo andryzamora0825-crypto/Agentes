@@ -18,7 +18,8 @@ const config: CapacitorConfig = {
     ]
   },
   android: {
-    overrideUserAgent: "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+    // Se actualiza el User Agent a Chrome 129 para evitar Error 400/403 en OAuth de Google
+    overrideUserAgent: "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.6668.70 Mobile Safari/537.36"
   }
 };
 
