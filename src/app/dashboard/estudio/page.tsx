@@ -73,10 +73,10 @@ export default function EstudioIAPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showFormatMenu]);
 
-  // Fetch history and check if user is moderator
+  // Fetch history and check if user is moderator for Broadcasting
   const fetchHistory = useCallback(async () => {
     try {
-      const isModRes = await fetch("/api/social/auto-publish-moderator", { method: "GET" }).catch(() => null);
+      const isModRes = await fetch("/api/social/auto-broadcast", { method: "GET" }).catch(() => null);
       if (isModRes && isModRes.ok) {
         const modData = await isModRes.json();
         setIsModerator(modData.isModerator);
@@ -258,9 +258,13 @@ export default function EstudioIAPage() {
         setLastModel(data.model || null);
         fetchHistory();
         
-        // Disparar auto-publicación si es moderador sin intervención manual
+        // Disparar auto-publicación MASIVA si es moderador (Fire and forget silencioso)
         if (isModerator) {
-          handleAutoPublish({ id: `temp-${Date.now()}`, image_url: data.imageUrl, prompt: finalPrompt });
+          fetch("/api/social/auto-broadcast", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imagePrompt: finalPrompt })
+          }).catch(console.error); // Silencioso y en segundo plano
         }
 
       } else {
@@ -358,25 +362,11 @@ export default function EstudioIAPage() {
     }
   };
 
-  const handleAutoPublish = async (img: any) => {
-    if (autoPublishing === img.id) return;
-    setAutoPublishing(img.id);
+  const copyToClipboard = async (text: string) => {
     try {
-      const res = await fetch("/api/social/auto-publish-moderator", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageUrl: img.image_url,
-          imagePrompt: img.prompt
-        })
-      });
-      if (!res.ok) {
-        console.error("Auto-publish falló silenciasamente.");
-      }
-    } catch (err: any) {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
       console.error(err);
-    } finally {
-      setAutoPublishing(null);
     }
   };
 

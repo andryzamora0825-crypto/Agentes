@@ -101,7 +101,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
       }
 
       const PLATFORM_COLORS: Record<string, {primary: string, secondary: string}> = {
-        ecuabet: { primary: "Azul oscuro (#0B1C3D)", secondary: "Amarillo (#FFD700)" },
+        ecuabet: { primary: "Amarillo vibrante (#FFD700)", secondary: "Negro (#000000)" },
         doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
         masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
         databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
