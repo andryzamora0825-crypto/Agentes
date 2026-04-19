@@ -52,6 +52,7 @@ export async function POST(request: Request) {
       imageFormat = "square",
       brandVoice = "profesional y cercano",
       scheduled_at = null,
+      targetPlatforms = [],
     } = body;
 
     if (!topic?.trim()) {
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
 
     // Generate content with AI (Nano Banana)
     const { caption, imageUrl, imagePrompt, model } = await generateFullPost(
-      { topic, brandVoice, platform, imageFormat },
+      { topic, brandVoice, platform, imageFormat, targetPlatforms },
       userId,
       aiSettings
     );

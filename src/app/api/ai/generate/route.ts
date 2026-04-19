@@ -103,7 +103,16 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
       }
 
       if (targetPlatforms.length > 0) {
-        finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen específicamente enfocada en promocionar las siguientes marca(s): ${targetPlatforms.join(", ").toUpperCase()}. Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS, usa los adjuntos.`;
+        const formattedPlats = targetPlatforms.map(p => {
+          if(p==='masparley') return 'MasParley';
+          if(p==='doradobet') return 'DoradoBet';
+          if(p==='databet') return 'DataBet';
+          if(p==='ecuabet') return 'Ecuabet';
+          return p.toUpperCase();
+        });
+
+        finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen específicamente enfocada en promocionar las siguientes marca(s): ${formattedPlats.join(", ")}. 
+ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir los nombres exactamente como se indican (ej. MasParley con M y P mayúsculas). Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado en la imagen.`;
         
         targetPlatforms.forEach(plat => {
           if (OFFICIAL_PLATFORMS[plat]) {

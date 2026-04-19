@@ -631,6 +631,9 @@ export default function EstudioIAPage() {
                       </button>
                     )
                   })}
+                  <span className="text-[10px] text-yellow-500/80 mt-1.5 block px-1">
+                    ⚠️ Se recomienda seleccionar máximo 3 plataformas para obtener los mejores resultados visuales.
+                  </span>
                 </div>
               </div>
             )}

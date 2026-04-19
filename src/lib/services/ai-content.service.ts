@@ -96,7 +96,8 @@ export async function generateImage(
   imagePrompt: string,
   userId: string,
   imageFormat: string = "square",
-  aiSettings?: any
+  aiSettings?: any,
+  targetPlatforms: string[] = []
 ): Promise<{ imageUrl: string; model: string }> {
 
   // Format instructions (same as Estudio IA)
@@ -142,34 +143,84 @@ REGLAS PARA EL PERSONAJE:
   }
 
   // --- RECOPILAR IMÁGENES DE REFERENCIA (logos, brand, personaje) ---
-  const referenceImages: { base64: string; mimeType: string }[] = [];
+  const referenceImages: { base64: string; mimeType: string; label?: string }[] = [];
+  
+  const itemsToFetch: { url: string; label: string }[] = [];
+
   if (aiSettings) {
-    const urlsToFetch = [
-      aiSettings.agencyLogoUrl, 
-      aiSettings.inspLogoUrl, 
-      aiSettings.brandLogoUrl,
-      aiSettings.characterImageUrl
-    ].filter(Boolean);
+    if (aiSettings.agencyLogoUrl) itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
+    if (aiSettings.inspLogoUrl) itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual Referencial" });
+    // Legacy support via `brandLogoUrl` just in case
+    if (aiSettings.brandLogoUrl) itemsToFetch.push({ url: aiSettings.brandLogoUrl, label: "Logo Secundario/Antiguo" });
+  }
+
+  if (targetPlatforms.length > 0) {
+    const formattedPlats = targetPlatforms.map(p => {
+      if(p==='masparley') return 'MasParley';
+      if(p==='doradobet') return 'DoradoBet';
+      if(p==='databet') return 'DataBet';
+      if(p==='ecuabet') return 'Ecuabet';
+      return p.toUpperCase();
+    });
+
+    finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen específicamente enfocada en promocionar las siguientes marca(s): ${formattedPlats.join(", ")}. 
+ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir los nombres exactamente como se indican (ej. MasParley con M y P mayúsculas). Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado en la imagen.`;
     
-    for (const url of urlsToFetch) {
-      try {
-        const res = await fetchWithTimeout(url, 8000);
-        if (res.ok) {
-          const arrayBuffer = await res.arrayBuffer();
-          referenceImages.push({
-            base64: Buffer.from(arrayBuffer).toString("base64"),
-            mimeType: res.headers.get('content-type') || "image/png"
-          });
-        }
-      } catch (e) {
-        console.error("[SOCIAL] Error descargando imagen de referencia:", e);
+    const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
+    const OFFICIAL_PLATFORMS: Record<string, string> = {
+      ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
+      doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png`,
+      masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png`,
+      databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png`,
+    };
+
+    targetPlatforms.forEach(plat => {
+      if (OFFICIAL_PLATFORMS[plat]) {
+        itemsToFetch.push({ url: OFFICIAL_PLATFORMS[plat], label: `Logo OFICIAL de la casa de apuestas ${plat.toUpperCase()}` });
       }
+    });
+  }
+
+  // Fetch all images concurrently
+  const fetchPromises = itemsToFetch.map(async (item) => {
+    try {
+      const res = await fetchWithTimeout(item.url, 8000);
+      if (res.ok) {
+        const arrayBuffer = await res.arrayBuffer();
+        referenceImages.push({
+          base64: Buffer.from(arrayBuffer).toString("base64"),
+          mimeType: res.headers.get('content-type') || "image/png",
+          label: item.label
+        });
+      }
+    } catch (e) {
+      console.error(`[SOCIAL] Error descargando imagen de referencia ${item.label}:`, e);
+    }
+  });
+  await Promise.all(fetchPromises);
+
+  if (aiSettings && aiSettings.characterImageUrl) {
+    try {
+      const res = await fetchWithTimeout(aiSettings.characterImageUrl, 8000);
+      if (res.ok) {
+        const arrayBuffer = await res.arrayBuffer();
+        referenceImages.push({
+          base64: Buffer.from(arrayBuffer).toString("base64"),
+          mimeType: res.headers.get('content-type') || "image/png",
+          label: "Foto del Representante/Personaje de la Agencia"
+        });
+      }
+    } catch (e) {
+      console.error("[SOCIAL] Error descargando imagen del personaje:", e);
     }
   }
 
   // Construir el contenido final: texto + imágenes de referencia (idéntico a Estudio IA)
   const contentParts: any[] = [{ text: finalPrompt }];
   for (const refImg of referenceImages) {
+    if (refImg.label) {
+       contentParts.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${refImg.label}]\n` });
+    }
     contentParts.push({
       inlineData: { data: refImg.base64, mimeType: refImg.mimeType }
     });
@@ -262,7 +313,8 @@ export async function generateFullPost(
     imagePrompt,
     userId,
     params.imageFormat || "square",
-    aiSettings
+    aiSettings,
+    params.targetPlatforms || []
   );
 
   return { caption, imageUrl, imagePrompt, model };

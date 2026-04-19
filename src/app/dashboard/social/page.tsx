@@ -64,6 +64,10 @@ export default function SocialDashboardPage() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [genError, setGenError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
+  
+  // Extract active platforms from user metadata for multiplatform support
+  const availablePlatforms = ((user?.publicMetadata as any)?.aiSettings?.activePlatforms as string[]) || ["ecuabet"];
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
 
   // Fetch posts
   const fetchPosts = useCallback(async () => {
@@ -115,6 +119,7 @@ export default function SocialDashboardPage() {
           imageFormat,
           brandVoice,
           scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+          targetPlatforms: selectedPlatforms,
         }),
       });
 
@@ -400,8 +405,48 @@ export default function SocialDashboardPage() {
                 </div>
               </div>
 
+              {/* Selector Multiplataforma (Igual al Estudio) */}
+              {availablePlatforms.length > 0 && (
+                <div className="pt-4 border-t border-white/[0.06]">
+                  <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-2 block">
+                    Plataformas Objetivo
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {availablePlatforms.map(plat => {
+                      const isSelected = selectedPlatforms.includes(plat);
+                      let label = plat.charAt(0).toUpperCase() + plat.slice(1);
+                      if (plat === 'doradobet') label = 'DoradoBet';
+                      if (plat === 'masparley') label = 'MasParley';
+                      if (plat === 'databet') label = 'DataBet';
+                      
+                      return (
+                        <button
+                          key={plat}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPlatforms(prev => 
+                              prev.includes(plat) ? prev.filter(p => p !== plat) : [...prev, plat]
+                            );
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                            isSelected 
+                            ? 'bg-[#FFDE00]/10 border-[#FFDE00]/30 text-[#FFDE00]'
+                            : 'bg-[#0A0A0A] border-white/[0.08] text-white/40 hover:border-white/20 hover:text-white/80'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <span className="text-[10px] text-yellow-500/80 mt-1.5 block">
+                    ⚠️ Se recomienda seleccionar máximo 3 plataformas para obtener los mejores resultados visuales.
+                  </span>
+                </div>
+              )}
+
               {/* Schedule */}
-              <div className="pt-2 border-t border-white/[0.06]">
+              <div className="pt-4 border-t border-white/[0.06]">
                 <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest mb-1.5 block">
                   Programar publicación (opcional)
                 </label>
