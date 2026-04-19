@@ -722,9 +722,9 @@ export default function AdminPanelPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { id: "ecuabet", name: "Ecuabet", color: "text-[#FFDE00]" },
-            { id: "doradobet", name: "DoradoBet", color: "text-[#1ab35d]" },
+            { id: "doradobet", name: "DoradoBet", color: "text-[#F5A623]" },
             { id: "masparley", name: "MasParley", color: "text-[#e82f2f]" },
-            { id: "databet", name: "DataBet", color: "text-[#2e74f2]" },
+            { id: "databet", name: "DataBet", color: "text-[#1d4ed8]" },
             { id: "astrobet", name: "AstroBet", color: "text-[#4A8FE7]" },
           ].map((plat) => (
             <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-4 rounded-xl flex flex-col items-center text-center gap-3 group relative">

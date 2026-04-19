@@ -417,9 +417,9 @@ function AiSettingsForm() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { id: "ecuabet", name: "Ecuabet", color: "text-[#FFDE00]" },
-            { id: "doradobet", name: "DoradoBet", color: "text-[#1ab35d]" },
+            { id: "doradobet", name: "DoradoBet", color: "text-[#F5A623]" },
             { id: "masparley", name: "MasParley", color: "text-[#e82f2f]" },
-            { id: "databet", name: "DataBet", color: "text-[#2e74f2]" },
+            { id: "databet", name: "DataBet", color: "text-[#1d4ed8]" },
             { id: "astrobet", name: "AstroBet", color: "text-[#4A8FE7]" },
           ].map((plat) => {
             const isActive = form.activePlatforms.includes(plat.id);
