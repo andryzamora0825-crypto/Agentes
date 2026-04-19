@@ -89,6 +89,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png${cacheBuster}`,
         masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png${cacheBuster}`,
         databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png${cacheBuster}`,
+        astrobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_astrobet.png${cacheBuster}`,
       };
 
       const itemsToFetch: { url: string; label: string }[] = [];
@@ -105,7 +106,8 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
         masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
         databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
-        saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" }
+        saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" },
+        astrobet: { primary: "Verde Neón (#00C800)", secondary: "Azul Marino Oscuro (#0A1E3C)" }
       };
 
       if (targetPlatform) {
@@ -116,6 +118,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         else if(platKey==='databet') formattedPlat = 'DataBet';
         else if(platKey==='ecuabet') formattedPlat = 'Ecuabet';
         else if(platKey==='saborabet') formattedPlat = 'Saborabet';
+        else if(platKey==='astrobet') formattedPlat = 'AstroBet';
         else formattedPlat = platKey.toUpperCase();
 
         const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings.primaryColor || '#FFDE00';

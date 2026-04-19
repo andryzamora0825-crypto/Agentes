@@ -420,6 +420,7 @@ function AiSettingsForm() {
             { id: "doradobet", name: "DoradoBet", color: "text-[#1ab35d]", bg: "bg-[#1ab35d]/10", border: "border-[#1ab35d]/30" },
             { id: "masparley", name: "MasParley", color: "text-[#e82f2f]", bg: "bg-[#e82f2f]/10", border: "border-[#e82f2f]/30" },
             { id: "databet", name: "DataBet", color: "text-[#2e74f2]", bg: "bg-[#2e74f2]/10", border: "border-[#2e74f2]/30" },
+            { id: "astrobet", name: "AstroBet", color: "text-[#00C800]", bg: "bg-[#00C800]/10", border: "border-[#00C800]/30" },
           ].map((plat) => {
             const isActive = form.activePlatforms.includes(plat.id);
             return (
