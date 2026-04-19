@@ -49,6 +49,7 @@ export default function AdminPanelPage() {
 
   // Estado para subida de logos globales (Multiplataforma)
   const [uploadingPlatform, setUploadingPlatform] = useState<string | null>(null);
+  const [imageTokens, setImageTokens] = useState<Record<string, number>>({});
 
   // Sincronizar el formulario cuando abrimos el modal
   useEffect(() => {
@@ -177,6 +178,7 @@ export default function AdminPanelPage() {
         .upload(fileName, file, { cacheControl: '3600', upsert: true });
         
       if (error) throw error;
+      setImageTokens(prev => ({ ...prev, [platform]: Date.now() }));
       alert(`Logo global de ${platform.toUpperCase()} actualizado exitosamente en el sistema.`);
     } catch (err: any) {
       console.error(err);
@@ -724,15 +726,26 @@ export default function AdminPanelPage() {
             { id: "masparley", name: "MasParley", color: "text-[#e82f2f]" },
             { id: "databet", name: "DataBet", color: "text-[#2e74f2]" },
           ].map((plat) => (
-            <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-4 rounded-xl flex flex-col items-center text-center gap-3">
-              <span className={`font-bold ${plat.color} text-sm`}>{plat.name}</span>
-              <label className="cursor-pointer bg-white/5 hover:bg-white/10 transition-colors border border-white/10 rounded-lg px-4 py-2 flex flex-col items-center justify-center w-full min-h-[80px]">
+            <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-4 rounded-xl flex flex-col items-center text-center gap-3 group relative">
+              <span className={`font-bold ${plat.color} text-sm z-10`}>{plat.name}</span>
+              
+              <div className="relative w-full aspect-square bg-[#141414] border border-white/5 rounded-lg overflow-hidden flex items-center justify-center p-4">
+                <img 
+                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ai-generations/agency-assets/default_${plat.id}.png?t=${imageTokens[plat.id] || 1}`} 
+                  alt={plat.name}
+                  className="w-full h-full object-contain opacity-70 group-hover:opacity-100 transition-opacity"
+                  onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.1'; }}
+                  onLoad={(e) => { (e.target as HTMLImageElement).style.opacity = '1'; }}
+                />
+              </div>
+
+              <label className="cursor-pointer bg-white/5 hover:bg-white/10 transition-colors border border-white/10 rounded-lg px-4 py-2 flex flex-col items-center justify-center w-full min-h-[50px] z-10">
                 {uploadingPlatform === plat.id ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white/50" />
                 ) : (
                   <>
-                    <Upload className="w-5 h-5 text-white/40 mb-1" />
-                    <span className="text-[10px] text-white/40 font-medium">Subir PNG</span>
+                    <Upload className="w-4 h-4 text-white/40 mb-1" />
+                    <span className="text-[10px] text-white/40 font-medium">Reemplazar PNG</span>
                   </>
                 )}
                 <input 
