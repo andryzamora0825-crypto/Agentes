@@ -82,6 +82,6 @@ export interface GenerateContentParams {
   platform?: Platform;
   imageFormat?: string;
   useAgencyIdentity?: boolean;
-  targetPlatforms?: string[];
+  targetPlatform?: string;
   customTemplate?: string;
 }

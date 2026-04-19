@@ -48,7 +48,7 @@ export default function EstudioIAPage() {
   const [selectedFormat, setSelectedFormat] = useState('auto');
   const [showFormatMenu, setShowFormatMenu] = useState(false);
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -92,7 +92,7 @@ export default function EstudioIAPage() {
       if (settings.activePlatforms && Array.isArray(settings.activePlatforms)) {
         setAvailablePlatforms(settings.activePlatforms);
         // Por default elegimos la primera (que suele ser ecuabet)
-        setSelectedPlatforms(settings.activePlatforms.length > 0 ? [settings.activePlatforms[0]] : []);
+        setSelectedPlatform(settings.activePlatforms.length > 0 ? settings.activePlatforms[0] : "");
       }
     }
   }, [user, isLoaded]);
@@ -235,7 +235,7 @@ export default function EstudioIAPage() {
       fd.append("prompt", finalPrompt);
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
       fd.append("useAgencyCharacter", String(useAgencyCharacter));
-      fd.append("targetPlatforms", selectedPlatforms.join(","));
+      fd.append("targetPlatform", selectedPlatform);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
       const res = await fetch("/api/ai/generate", { 
@@ -606,7 +606,7 @@ export default function EstudioIAPage() {
                 <span className="text-xs font-medium text-white/50 uppercase tracking-widest pl-1">Plataformas Objetivo</span>
                 <div className="flex flex-wrap gap-2">
                   {availablePlatforms.map(plat => {
-                    const isSelected = selectedPlatforms.includes(plat);
+                    const isSelected = selectedPlatform === plat;
                     let label = plat.charAt(0).toUpperCase() + plat.slice(1);
                     if (plat === 'doradobet') label = 'DoradoBet';
                     if (plat === 'masparley') label = 'MasParley';
@@ -617,9 +617,7 @@ export default function EstudioIAPage() {
                         key={plat}
                         type="button"
                         onClick={() => {
-                          setSelectedPlatforms(prev => 
-                            prev.includes(plat) ? prev.filter(p => p !== plat) : [...prev, plat]
-                          );
+                          setSelectedPlatform(plat === selectedPlatform ? "" : plat);
                         }}
                         className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
                           isSelected 
@@ -631,9 +629,6 @@ export default function EstudioIAPage() {
                       </button>
                     )
                   })}
-                  <span className="text-[10px] text-yellow-500/80 mt-1.5 block px-1">
-                    ⚠️ Se recomienda seleccionar máximo 3 plataformas para obtener los mejores resultados visuales.
-                  </span>
                 </div>
               </div>
             )}

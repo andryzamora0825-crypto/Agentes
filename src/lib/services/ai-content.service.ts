@@ -97,7 +97,7 @@ export async function generateImage(
   userId: string,
   imageFormat: string = "square",
   aiSettings?: any,
-  targetPlatforms: string[] = []
+  targetPlatform: string = ""
 ): Promise<{ imageUrl: string; model: string }> {
 
   // Format instructions (same as Estudio IA)
@@ -129,7 +129,6 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
 3. VARÍA EL CONTEXTO: Usa ángulos creativos, fondos abstractos, vistas desde arriba, escenas en exteriores, acción dinámica, o tecnología moderna, dependiendo de la idea.
 4. INTEGRACIÓN DE MARCA SUTIL Y ELEGANTE: 
    - Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
-   - Aplica sutilmente Colores Primario (${aiSettings.primaryColor || '#FFDE00'}) y Secundario (${aiSettings.secondaryColor || '#000000'}) en la iluminación, fondos, o detalles, pero sin forzar a que toda la ropa sea amarilla/negra si no tiene sentido con la petición.
    - Si encaja naturalmente en la escena, incluye el teléfono: ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
 
@@ -154,33 +153,54 @@ REGLAS PARA EL PERSONAJE:
     if (aiSettings.brandLogoUrl) itemsToFetch.push({ url: aiSettings.brandLogoUrl, label: "Logo Secundario/Antiguo" });
   }
 
-  if (targetPlatforms.length > 0) {
-    const formattedPlats = targetPlatforms.map(p => {
-      if(p==='masparley') return 'MasParley';
-      if(p==='doradobet') return 'DoradoBet';
-      if(p==='databet') return 'DataBet';
-      if(p==='ecuabet') return 'Ecuabet';
-      return p.toUpperCase();
-    });
+  const PLATFORM_COLORS: Record<string, {primary: string, secondary: string}> = {
+    ecuabet: { primary: "Azul oscuro (#0B1C3D)", secondary: "Amarillo (#FFD700)" },
+    doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
+    masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
+    databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
+    saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" }
+  };
 
-    finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen específicamente enfocada en promocionar las siguientes marca(s): ${formattedPlats.join(", ")}. 
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir los nombres exactamente como se indican (ej. MasParley con M y P mayúsculas). Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado en la imagen.`;
+  const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
+  const cacheBuster = `?t=${Date.now()}`;
+  const OFFICIAL_PLATFORMS: Record<string, string> = {
+    ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png${cacheBuster}`,
+    doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png${cacheBuster}`,
+    masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png${cacheBuster}`,
+    databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png${cacheBuster}`,
+  };
+
+  if (targetPlatform) {
+    const platKey = targetPlatform.toLowerCase().trim();
+    let formattedPlat = platKey;
+    if(platKey==='masparley') formattedPlat = 'MasParley';
+    else if(platKey==='doradobet') formattedPlat = 'DoradoBet';
+    else if(platKey==='databet') formattedPlat = 'DataBet';
+    else if(platKey==='ecuabet') formattedPlat = 'Ecuabet';
+    else if(platKey==='saborabet') formattedPlat = 'Saborabet';
+    else formattedPlat = platKey.toUpperCase();
+
+    const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings?.primaryColor || '#FFDE00';
+    const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings?.secondaryColor || '#000000';
+
+    finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}. 
+ES OBLIGATORIO usar la siguiente paleta de colores para esta marca: 
+- Color Primario: ${pColor}
+- Color Secundario: ${sColor}
+Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
+ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
     
-    const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
-    const cacheBuster = `?t=${Date.now()}`;
-    const OFFICIAL_PLATFORMS: Record<string, string> = {
-      ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png${cacheBuster}`,
-      doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png${cacheBuster}`,
-      masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png${cacheBuster}`,
-      databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png${cacheBuster}`,
-    };
-
-    targetPlatforms.forEach(plat => {
-      if (OFFICIAL_PLATFORMS[plat]) {
-        itemsToFetch.push({ url: OFFICIAL_PLATFORMS[plat], label: `Logo OFICIAL de la casa de apuestas ${plat.toUpperCase()}` });
-      }
-    });
+    if (OFFICIAL_PLATFORMS[platKey]) {
+      itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
+    }
+  } else if (aiSettings) {
+    // Fallback to agency colors if no platform selected
+    finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
+- Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
+- Color Secundario: ${aiSettings.secondaryColor || '#000000'}
+Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
   }
+
 
   // Fetch all images concurrently
   const fetchPromises = itemsToFetch.map(async (item) => {
@@ -315,7 +335,7 @@ export async function generateFullPost(
     userId,
     params.imageFormat || "square",
     aiSettings,
-    params.targetPlatforms || []
+    params.targetPlatform || ""
   );
 
   return { caption, imageUrl, imagePrompt, model };

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     let prompt = "";
     let useAgencyIdentity = false;
     let useAgencyCharacter = false;
-    let targetPlatforms: string[] = [];
+    let targetPlatform = "";
     let referenceImages: { base64: string; mimeType: string; label?: string }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
@@ -43,8 +43,7 @@ export async function POST(request: Request) {
       useAgencyIdentity = formData.get("useAgencyIdentity") === "true";
       useAgencyCharacter = formData.get("useAgencyCharacter") === "true";
       
-      const tpStr = formData.get("targetPlatforms") as string;
-      if (tpStr) targetPlatforms = tpStr.split(",").filter(Boolean);
+      targetPlatform = (formData.get("targetPlatform") as string) || (formData.get("targetPlatforms") as string) || "";
 
       // Hasta 3 imágenes de referencia directas desde el formulario
       for (let i = 0; i < 3; i++) {
@@ -60,7 +59,7 @@ export async function POST(request: Request) {
       prompt = body.prompt;
       useAgencyIdentity = body.useAgencyIdentity === true;
       useAgencyCharacter = body.useAgencyCharacter === true;
-      if (body.targetPlatforms) targetPlatforms = body.targetPlatforms.split(",").filter(Boolean);
+      targetPlatform = body.targetPlatform || body.targetPlatforms || "";
     }
 
     if (!prompt?.trim()) {
@@ -78,8 +77,6 @@ export async function POST(request: Request) {
 [INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
 Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
 A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca:
-- Tono/Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
-- Colores representativos: Primario (${aiSettings.primaryColor || '#FFDE00'}), Secundario (${aiSettings.secondaryColor || '#000000'}). Refleja abundantemente estos colores en ropa, fondos, decoraciones o iluminación.
 - Contactos (añade creativamente a carteles/letreros si es orgánico): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.
 `;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
@@ -103,23 +100,43 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual Referencial" });
       }
 
-      if (targetPlatforms.length > 0) {
-        const formattedPlats = targetPlatforms.map(p => {
-          if(p==='masparley') return 'MasParley';
-          if(p==='doradobet') return 'DoradoBet';
-          if(p==='databet') return 'DataBet';
-          if(p==='ecuabet') return 'Ecuabet';
-          return p.toUpperCase();
-        });
+      const PLATFORM_COLORS: Record<string, {primary: string, secondary: string}> = {
+        ecuabet: { primary: "Azul oscuro (#0B1C3D)", secondary: "Amarillo (#FFD700)" },
+        doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
+        masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
+        databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
+        saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" }
+      };
 
-        finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen específicamente enfocada en promocionar las siguientes marca(s): ${formattedPlats.join(", ")}. 
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir los nombres exactamente como se indican (ej. MasParley con M y P mayúsculas). Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado en la imagen.`;
+      if (targetPlatform) {
+        const platKey = targetPlatform.toLowerCase().trim();
+        let formattedPlat = platKey;
+        if(platKey==='masparley') formattedPlat = 'MasParley';
+        else if(platKey==='doradobet') formattedPlat = 'DoradoBet';
+        else if(platKey==='databet') formattedPlat = 'DataBet';
+        else if(platKey==='ecuabet') formattedPlat = 'Ecuabet';
+        else if(platKey==='saborabet') formattedPlat = 'Saborabet';
+        else formattedPlat = platKey.toUpperCase();
+
+        const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings.primaryColor || '#FFDE00';
+        const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings.secondaryColor || '#000000';
+
+        finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}. 
+ES OBLIGATORIO usar la siguiente paleta de colores para esta marca: 
+- Color Primario: ${pColor}
+- Color Secundario: ${sColor}
+Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
+ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
         
-        targetPlatforms.forEach(plat => {
-          if (OFFICIAL_PLATFORMS[plat]) {
-            itemsToFetch.push({ url: OFFICIAL_PLATFORMS[plat], label: `Logo OFICIAL de la casa de apuestas ${plat.toUpperCase()}` });
-          }
-        });
+        if (OFFICIAL_PLATFORMS[platKey]) {
+          itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
+        }
+      } else {
+        // Fallback to agency colors if no platform selected
+        finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
+- Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
+- Color Secundario: ${aiSettings.secondaryColor || '#000000'}
+Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
       }
 
       const fetchPromises = itemsToFetch.map(async (item) => {

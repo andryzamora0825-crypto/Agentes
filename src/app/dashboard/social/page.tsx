@@ -67,7 +67,7 @@ export default function SocialDashboardPage() {
   
   // Extract active platforms from user metadata for multiplatform support
   const availablePlatforms = ((user?.publicMetadata as any)?.aiSettings?.activePlatforms as string[]) || ["ecuabet"];
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>("");
 
   // Fetch posts
   const fetchPosts = useCallback(async () => {
@@ -119,7 +119,7 @@ export default function SocialDashboardPage() {
           imageFormat,
           brandVoice,
           scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-          targetPlatforms: selectedPlatforms,
+          targetPlatform: selectedPlatform,
         }),
       });
 
@@ -413,7 +413,7 @@ export default function SocialDashboardPage() {
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {availablePlatforms.map(plat => {
-                      const isSelected = selectedPlatforms.includes(plat);
+                      const isSelected = selectedPlatform === plat;
                       let label = plat.charAt(0).toUpperCase() + plat.slice(1);
                       if (plat === 'doradobet') label = 'DoradoBet';
                       if (plat === 'masparley') label = 'MasParley';
@@ -424,9 +424,7 @@ export default function SocialDashboardPage() {
                           key={plat}
                           type="button"
                           onClick={() => {
-                            setSelectedPlatforms(prev => 
-                              prev.includes(plat) ? prev.filter(p => p !== plat) : [...prev, plat]
-                            );
+                            setSelectedPlatform(plat === selectedPlatform ? "" : plat);
                           }}
                           className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                             isSelected 
@@ -439,9 +437,6 @@ export default function SocialDashboardPage() {
                       )
                     })}
                   </div>
-                  <span className="text-[10px] text-yellow-500/80 mt-1.5 block">
-                    ⚠️ Se recomienda seleccionar máximo 3 plataformas para obtener los mejores resultados visuales.
-                  </span>
                 </div>
               )}
 
