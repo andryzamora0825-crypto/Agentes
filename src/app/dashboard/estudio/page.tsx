@@ -269,7 +269,7 @@ export default function EstudioIAPage() {
             const resultData = await response.json();
             if (response.ok) {
               console.log("🔥 [BROADCAST EXITOSO]", resultData);
-              alert(resultData.message || "Difusión masiva completada silenciasamente.");
+              // alert removida a petición
             } else {
               console.error("⚠️ [BROADCAST FALLÓ]", resultData);
               alert("Error en Broadcaster Masivo: " + (resultData.error || "Falla desconocida."));
