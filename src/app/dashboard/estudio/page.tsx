@@ -257,6 +257,12 @@ export default function EstudioIAPage() {
       if (res.ok) {
         setLastModel(data.model || null);
         fetchHistory();
+        
+        // Disparar auto-publicación si es moderador sin intervención manual
+        if (isModerator) {
+          handleAutoPublish({ id: `temp-${Date.now()}`, image_url: data.imageUrl, prompt: finalPrompt });
+        }
+
       } else {
         if (res.status === 402) {
           setErrorMsg(`No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`);
@@ -364,11 +370,11 @@ export default function EstudioIAPage() {
           imagePrompt: img.prompt
         })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      alert("✅ ¡Enviado a redes sociales exitosamente!");
+      if (!res.ok) {
+        console.error("Auto-publish falló silenciasamente.");
+      }
     } catch (err: any) {
-      alert("❌ " + err.message);
+      console.error(err);
     } finally {
       setAutoPublishing(null);
     }
@@ -781,18 +787,6 @@ export default function EstudioIAPage() {
                         <Trash2 className="w-3.5 h-3.5 shrink-0" /> Borrar
                       </button>
                     </div>
-
-                    {isModerator && (
-                      <button 
-                        onClick={() => handleAutoPublish(img)} 
-                        disabled={autoPublishing === img.id}
-                        className={`mt-1.5 w-full bg-blue-500/10 hover:bg-blue-500/15 text-blue-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-bold transition-colors border border-blue-500/15 ${autoPublishing === img.id ? 'opacity-50 cursor-wait' : ''}`}
-                      >
-                        {autoPublishing === img.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3.5 h-3.5 shrink-0 text-blue-400" />}
-                        {autoPublishing === img.id ? "Enviando..." : "⚡ Auto-Publicar"}
-                      </button>
-                    )}
-
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06]">
                       <div className="flex items-center gap-2">
                         <img src={img.author_avatar_url || "https://ui-avatars.com/api/?name=Agente"} alt="Yo" className="w-6 h-6 rounded-full border border-white/[0.08]" />
