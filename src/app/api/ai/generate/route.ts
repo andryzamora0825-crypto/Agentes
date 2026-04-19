@@ -144,11 +144,16 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           const res = await fetchWithTimeout(item.url, 8000);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
-            return { 
-              base64: Buffer.from(arrayBuffer).toString("base64"), 
-              mimeType: res.headers.get('content-type') || "image/png",
-              label: item.label
-            };
+            const mimeType = res.headers.get('content-type') || "image/png";
+            
+            // FILTRO CRITICO: Solo enviar a Gemini si realmente es una imagen (Evitar Error 500 Internal)
+            if (mimeType.includes("image")) {
+              return { 
+                base64: Buffer.from(arrayBuffer).toString("base64"), 
+                mimeType,
+                label: item.label
+              };
+            }
           }
         } catch (e) {
           console.warn(`⚠️ Timeout/error trayendo imagen ${item.label} (ignorando):`, (e as Error).message);

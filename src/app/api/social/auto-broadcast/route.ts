@@ -97,15 +97,23 @@ export async function POST(request: Request) {
         if (aiSettings.logoUrl) {
           try {
             const logoRes = await fetch(aiSettings.logoUrl);
+            if (!logoRes.ok) throw new Error("Error al descargar logo: HTTP " + logoRes.status);
             const arrayBuffer = await logoRes.arrayBuffer();
-            contents.push({
-              inlineData: {
-                mimeType: logoRes.headers.get('content-type') || "image/png",
-                data: Buffer.from(arrayBuffer).toString("base64"),
-              },
-            });
-            finalPrompt += `\n[INSTRUCCIÓN VITAL]: Incluye de manera hiperrealista o natural este logotipo dentro de la composición gráfica.`;
-          } catch(e) { console.warn("Error leyendo logo", e); }
+            const mimeType = logoRes.headers.get('content-type') || "image/png";
+            
+            // Verificación extra para evitar colapsar a Gemini con un logo que en realidad es HTML
+            if (mimeType.includes("image")) {
+              contents.push({
+                inlineData: {
+                  mimeType: mimeType,
+                  data: Buffer.from(arrayBuffer).toString("base64"),
+                },
+              });
+              finalPrompt += `\n[INSTRUCCIÓN VITAL]: Incluye de manera hiperrealista o natural este logotipo dentro de la composición gráfica.`;
+            }
+          } catch(e: any) { 
+            console.warn("Error leyendo logo de la agencia para broadcast", e.message); 
+          }
         }
 
         contents.unshift({ text: finalPrompt });
