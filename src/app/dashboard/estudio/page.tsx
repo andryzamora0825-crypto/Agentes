@@ -47,6 +47,8 @@ export default function EstudioIAPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState('auto');
   const [showFormatMenu, setShowFormatMenu] = useState(false);
+  const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -87,6 +89,11 @@ export default function EstudioIAPage() {
     if (isLoaded && user && user.publicMetadata?.aiSettings) {
       const settings = user.publicMetadata.aiSettings as any;
       if (settings.aiEnabled !== undefined) setUseAgencyIdentity(settings.aiEnabled);
+      if (settings.activePlatforms && Array.isArray(settings.activePlatforms)) {
+        setAvailablePlatforms(settings.activePlatforms);
+        // Por default elegimos la primera (que suele ser ecuabet)
+        setSelectedPlatforms(settings.activePlatforms.length > 0 ? [settings.activePlatforms[0]] : []);
+      }
     }
   }, [user, isLoaded]);
 
@@ -228,6 +235,7 @@ export default function EstudioIAPage() {
       fd.append("prompt", finalPrompt);
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
       fd.append("useAgencyCharacter", String(useAgencyCharacter));
+      fd.append("targetPlatforms", selectedPlatforms.join(","));
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
       const res = await fetch("/api/ai/generate", { 
@@ -591,6 +599,41 @@ export default function EstudioIAPage() {
                 />
               </div>
             </div>
+
+            {/* Selector de Plataforma Multiplataforma */}
+            {availablePlatforms.length > 0 && (
+              <div className="flex flex-col gap-2 mt-4 px-2">
+                <span className="text-xs font-medium text-white/50 uppercase tracking-widest pl-1">Plataformas Objetivo</span>
+                <div className="flex flex-wrap gap-2">
+                  {availablePlatforms.map(plat => {
+                    const isSelected = selectedPlatforms.includes(plat);
+                    let label = plat.charAt(0).toUpperCase() + plat.slice(1);
+                    if (plat === 'doradobet') label = 'DoradoBet';
+                    if (plat === 'masparley') label = 'MasParley';
+                    if (plat === 'databet') label = 'DataBet';
+                    
+                    return (
+                      <button
+                        key={plat}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPlatforms(prev => 
+                            prev.includes(plat) ? prev.filter(p => p !== plat) : [...prev, plat]
+                          );
+                        }}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+                          isSelected 
+                          ? 'bg-[#FFDE00]/10 border-[#FFDE00]/30 text-[#FFDE00]'
+                          : 'bg-[#0A0A0A] border-white/[0.08] text-white/40 hover:border-white/20 hover:text-white/80'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Generar Button (Debajo del pill) */}
             <div className="flex justify-end mt-3">

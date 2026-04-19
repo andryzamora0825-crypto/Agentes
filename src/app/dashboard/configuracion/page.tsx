@@ -234,8 +234,8 @@ function AiSettingsForm() {
     extraContact: "",
     agencyLogoUrl: "",
     inspLogoUrl: "",
-    brandLogoUrl: "",
     characterImageUrl: "",
+    activePlatforms: ["ecuabet"],
     aiEnabled: true,
   });
 
@@ -351,9 +351,8 @@ function AiSettingsForm() {
 
         {/* Image uploads */}
         {[
-          { key: 'agencyLogoUrl', label: 'Logo Principal', desc: 'Tu logo para que la IA lo use' },
+          { key: 'agencyLogoUrl', label: 'Logo de la Agencia', desc: 'Tu logo oficial de agencia' },
           { key: 'inspLogoUrl', label: 'Referencia Visual', desc: 'Imagen de estilo deseado' },
-          { key: 'brandLogoUrl', label: 'Logo Extra', desc: 'Marca adicional' },
           { key: 'characterImageUrl', label: 'Personaje', desc: 'Foto del representante de tu agencia' }
         ].map((item) => {
           const hasImage = (form[item.key as keyof typeof form] as string) !== "";
@@ -401,6 +400,55 @@ function AiSettingsForm() {
             </div>
           );
         })}
+      </div>
+
+      {/* Plataformas de Apuestas */}
+      <div className="mt-8 border-t border-white/[0.06] pt-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="bg-white/[0.06] p-2 rounded-lg">
+            <span className="text-xl leading-none">🎮</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white/90">Plataformas de Apuestas</h3>
+            <p className="text-white/40 text-sm mt-0.5">Selecciona las casas de apuestas con las que trabajas.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { id: "ecuabet", name: "Ecuabet", color: "text-[#FFDE00]", bg: "bg-[#FFDE00]/10", border: "border-[#FFDE00]/30" },
+            { id: "doradobet", name: "DoradoBet", color: "text-[#1ab35d]", bg: "bg-[#1ab35d]/10", border: "border-[#1ab35d]/30" },
+            { id: "masparley", name: "MasParley", color: "text-[#e82f2f]", bg: "bg-[#e82f2f]/10", border: "border-[#e82f2f]/30" },
+            { id: "databet", name: "DataBet", color: "text-[#2e74f2]", bg: "bg-[#2e74f2]/10", border: "border-[#2e74f2]/30" },
+          ].map((plat) => {
+            const isActive = form.activePlatforms.includes(plat.id);
+            return (
+              <div 
+                key={plat.id}
+                onClick={() => {
+                  setForm(prev => {
+                    const platforms = prev.activePlatforms || [];
+                    if (platforms.includes(plat.id)) {
+                      return { ...prev, activePlatforms: platforms.filter(p => p !== plat.id) };
+                    } else {
+                      return { ...prev, activePlatforms: [...platforms, plat.id] };
+                    }
+                  });
+                }}
+                className={`p-4 rounded-xl cursor-pointer flex items-center justify-between border transition-all ${
+                  isActive 
+                  ? `${plat.bg} ${plat.border}` 
+                  : 'bg-[#0A0A0A] border-white/[0.08] hover:border-white/20'
+                }`}
+              >
+                <span className={`font-semibold text-sm ${isActive ? plat.color : 'text-zinc-500'}`}>{plat.name}</span>
+                <div className={`w-8 h-4.5 rounded-full relative transition-colors ${isActive ? 'bg-current opacity-80 ' + plat.color : 'bg-zinc-800'}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full transition-transform shadow-sm ${isActive ? 'translate-x-[14px]' : 'translate-x-0'}`}></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="mt-6 flex justify-end">

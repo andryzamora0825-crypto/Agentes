@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function AdminPanelPage() {
   const { user } = useUser();
@@ -45,6 +46,9 @@ export default function AdminPanelPage() {
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
   const [loadingGallery, setLoadingGallery] = useState(false);
   const [lightboxAdminUrl, setLightboxAdminUrl] = useState<string | null>(null);
+
+  // Estado para subida de logos globales (Multiplataforma)
+  const [uploadingPlatform, setUploadingPlatform] = useState<string | null>(null);
 
   // Sincronizar el formulario cuando abrimos el modal
   useEffect(() => {
@@ -158,6 +162,29 @@ export default function AdminPanelPage() {
       router.push("/dashboard");
     }
   }, [user, isAdmin, router]);
+
+  const handleUploadGlobalLogo = async (e: any, platform: string) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!confirm(`¿Estás seguro de sobrescribir el logo oficial de ${platform.toUpperCase()} para todos los agentes?`)) return;
+
+    setUploadingPlatform(platform);
+    try {
+      const fileName = `agency-assets/default_${platform}.png`;
+      const { error } = await supabase.storage
+        .from('ai-generations')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true });
+        
+      if (error) throw error;
+      alert(`Logo global de ${platform.toUpperCase()} actualizado exitosamente en el sistema.`);
+    } catch (err: any) {
+      console.error(err);
+      alert("Error subiendo la imagen: " + err.message);
+    } finally {
+      setUploadingPlatform(null);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -678,6 +705,47 @@ export default function AdminPanelPage() {
               )}
             </div>
          </div>
+      </div>
+
+      {/* Control de Logos Multiplataforma Globales */}
+      <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg relative mt-6">
+        <h2 className="text-lg font-semibold text-white/90 mb-1 flex items-center gap-2">
+          <Upload className="w-5 h-5 text-emerald-400" />
+          Logos de Plataformas (Globales)
+        </h2>
+        <p className="text-white/30 text-sm mb-6 max-w-2xl">
+          Sube aquí los logos base sin fondo (.PNG) de altísima calidad. Estos logotipos serán inyectados mágicamente en el cerebro de la IA para cualquier agente que utilice estas plataformas. Al subirlos, sobrescribirán a los anteriores inmediatamente.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { id: "ecuabet", name: "Ecuabet", color: "text-[#FFDE00]" },
+            { id: "doradobet", name: "DoradoBet", color: "text-[#1ab35d]" },
+            { id: "masparley", name: "MasParley", color: "text-[#e82f2f]" },
+            { id: "databet", name: "DataBet", color: "text-[#2e74f2]" },
+          ].map((plat) => (
+            <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-4 rounded-xl flex flex-col items-center text-center gap-3">
+              <span className={`font-bold ${plat.color} text-sm`}>{plat.name}</span>
+              <label className="cursor-pointer bg-white/5 hover:bg-white/10 transition-colors border border-white/10 rounded-lg px-4 py-2 flex flex-col items-center justify-center w-full min-h-[80px]">
+                {uploadingPlatform === plat.id ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                ) : (
+                  <>
+                    <Upload className="w-5 h-5 text-white/40 mb-1" />
+                    <span className="text-[10px] text-white/40 font-medium">Subir PNG</span>
+                  </>
+                )}
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  accept="image/png, image/jpeg" 
+                  onChange={(e) => handleUploadGlobalLogo(e, plat.id)}
+                  disabled={uploadingPlatform !== null}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 pt-4 border-t border-white/[0.06]">

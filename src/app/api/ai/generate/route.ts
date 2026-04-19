@@ -34,6 +34,7 @@ export async function POST(request: Request) {
     let prompt = "";
     let useAgencyIdentity = false;
     let useAgencyCharacter = false;
+    let targetPlatforms: string[] = [];
     let referenceImages: { base64: string; mimeType: string }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
@@ -41,6 +42,9 @@ export async function POST(request: Request) {
       prompt = formData.get("prompt") as string;
       useAgencyIdentity = formData.get("useAgencyIdentity") === "true";
       useAgencyCharacter = formData.get("useAgencyCharacter") === "true";
+      
+      const tpStr = formData.get("targetPlatforms") as string;
+      if (tpStr) targetPlatforms = tpStr.split(",").filter(Boolean);
 
       // Hasta 3 imágenes de referencia directas desde el formulario
       for (let i = 0; i < 3; i++) {
@@ -56,6 +60,7 @@ export async function POST(request: Request) {
       prompt = body.prompt;
       useAgencyIdentity = body.useAgencyIdentity === true;
       useAgencyCharacter = body.useAgencyCharacter === true;
+      if (body.targetPlatforms) targetPlatforms = body.targetPlatforms.split(",").filter(Boolean);
     }
 
     if (!prompt?.trim()) {
@@ -79,8 +84,28 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 `;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
-      // Inyectar imágenes de marca pre-guardadas como referencias (con timeout de 8s cada una)
-      const urlsToFetch = [aiSettings.agencyLogoUrl, aiSettings.inspLogoUrl, aiSettings.brandLogoUrl].filter(Boolean);
+      // Inyectar imágenes pre-guardadas (agencia, estilo)
+      const urlsToFetch = [aiSettings.agencyLogoUrl, aiSettings.inspLogoUrl].filter(Boolean);
+      
+      // --- SISTEMA MULTIPLATAFORMA (LOGOS ROBUSTOS ADMINISTRADOS POR ZAMTOOLS) ---
+      // Aquí colocamos las URLs PÚBLICAS de las imágenes oficiales de altísima calidad
+      const OFFICIAL_PLATFORMS: Record<string, string> = {
+        ecuabet: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png",
+        doradobet: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png",
+        masparley: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png",
+        databet: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_databet.png",
+      };
+
+      if (targetPlatforms.length > 0) {
+        finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen Específicamente enfocado en promocionar las siguientes marca(s): ${targetPlatforms.join(", ").toUpperCase()}. Asegúrate de usar creativa e impecablemente sus logos proporcionados.`;
+        
+        targetPlatforms.forEach(plat => {
+          if (OFFICIAL_PLATFORMS[plat]) {
+            urlsToFetch.push(OFFICIAL_PLATFORMS[plat]);
+          }
+        });
+      }
+
       const fetchPromises = urlsToFetch.map(async (url: string) => {
         try {
           const res = await fetchWithTimeout(url, 8000);
