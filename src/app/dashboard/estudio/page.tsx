@@ -49,6 +49,8 @@ export default function EstudioIAPage() {
   const [showFormatMenu, setShowFormatMenu] = useState(false);
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
+  const [isModerator, setIsModerator] = useState(false);
+  const [autoPublishing, setAutoPublishing] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -71,8 +73,15 @@ export default function EstudioIAPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showFormatMenu]);
 
-  const loadHistory = async () => {
+  // Fetch history and check if user is moderator
+  const fetchHistory = useCallback(async () => {
     try {
+      const isModRes = await fetch("/api/social/auto-publish-moderator", { method: "GET" }).catch(() => null);
+      if (isModRes && isModRes.ok) {
+        const modData = await isModRes.json();
+        setIsModerator(modData.isModerator);
+      }
+
       const res = await fetch("/api/ai/history");
       const data = await res.json();
       if (data.success) setImages(data.images);
@@ -81,9 +90,9 @@ export default function EstudioIAPage() {
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { loadHistory(); }, []);
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
   useEffect(() => {
     if (isLoaded && user && user.publicMetadata?.aiSettings) {
@@ -247,7 +256,7 @@ export default function EstudioIAPage() {
 
       if (res.ok) {
         setLastModel(data.model || null);
-        loadHistory();
+        fetchHistory();
       } else {
         if (res.status === 402) {
           setErrorMsg(`No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`);
@@ -334,16 +343,38 @@ export default function EstudioIAPage() {
     }, 150);
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).catch(() => {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    });
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // Removed toast since we don't have it imported, just silent copy
+    } catch (err) {
+      console.error(err);
+    }
   };
+
+  const handleAutoPublish = async (img: any) => {
+    if (autoPublishing === img.id) return;
+    setAutoPublishing(img.id);
+    try {
+      const res = await fetch("/api/social/auto-publish-moderator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageUrl: img.image_url,
+          imagePrompt: img.prompt
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      alert("✅ ¡Enviado a redes sociales exitosamente!");
+    } catch (err: any) {
+      alert("❌ " + err.message);
+    } finally {
+      setAutoPublishing(null);
+    }
+  };
+
+  if (!isLoaded) return null;
 
   return (
     <VipGate>
@@ -750,6 +781,17 @@ export default function EstudioIAPage() {
                         <Trash2 className="w-3.5 h-3.5 shrink-0" /> Borrar
                       </button>
                     </div>
+
+                    {isModerator && (
+                      <button 
+                        onClick={() => handleAutoPublish(img)} 
+                        disabled={autoPublishing === img.id}
+                        className={`mt-1.5 w-full bg-blue-500/10 hover:bg-blue-500/15 text-blue-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-bold transition-colors border border-blue-500/15 ${autoPublishing === img.id ? 'opacity-50 cursor-wait' : ''}`}
+                      >
+                        {autoPublishing === img.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3.5 h-3.5 shrink-0 text-blue-400" />}
+                        {autoPublishing === img.id ? "Enviando..." : "⚡ Auto-Publicar"}
+                      </button>
+                    )}
 
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06]">
                       <div className="flex items-center gap-2">

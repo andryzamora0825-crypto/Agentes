@@ -97,7 +97,9 @@ export async function generateImage(
   userId: string,
   imageFormat: string = "square",
   aiSettings?: any,
-  targetPlatform: string = ""
+  targetPlatform: string = "",
+  useAgencyIdentity: boolean = true,
+  useAgencyCharacter: boolean = false
 ): Promise<{ imageUrl: string; model: string }> {
 
   // Format instructions (same as Estudio IA)
@@ -119,7 +121,7 @@ IMPORTANTE: Esta imagen es para publicar en redes sociales. Debe ser:
 - Sin texto superpuesto (a menos que se pida específicamente)
 - Alta calidad fotográfica o estilo gráfico premium`;
 
-  if (aiSettings) {
+  if (useAgencyIdentity && aiSettings) {
     const agencyContext = `
 [INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA Y CREATIVIDAD]: 
 Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
@@ -133,7 +135,7 @@ REGLAS DE ORO PARA EVITAR REPETICIÓN:
     finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
 
     // --- INYECCIÓN DE PERSONAJE (idéntico a Estudio IA) ---
-    if (aiSettings.characterImageUrl) {
+    if (useAgencyCharacter && aiSettings.characterImageUrl) {
       finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia (su rostro de referencia ha sido adjuntado). 
 REGLAS PARA EL PERSONAJE:
 - Mantén su apariencia y rasgos reconocibles.
@@ -146,7 +148,7 @@ REGLAS PARA EL PERSONAJE:
   
   const itemsToFetch: { url: string; label: string }[] = [];
 
-  if (aiSettings) {
+  if (useAgencyIdentity && aiSettings) {
     if (aiSettings.agencyLogoUrl) itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
     if (aiSettings.inspLogoUrl) itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual Referencial" });
     // Legacy support via `brandLogoUrl` just in case
@@ -193,7 +195,7 @@ ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamen
     if (OFFICIAL_PLATFORMS[platKey]) {
       itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
     }
-  } else if (aiSettings) {
+  } else if (useAgencyIdentity && aiSettings) {
     // Fallback to agency colors if no platform selected
     finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
 - Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
@@ -220,7 +222,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   });
   await Promise.all(fetchPromises);
 
-  if (aiSettings && aiSettings.characterImageUrl) {
+  if (useAgencyCharacter && aiSettings && aiSettings.characterImageUrl) {
     try {
       const res = await fetchWithTimeout(aiSettings.characterImageUrl, 8000);
       if (res.ok) {
@@ -335,7 +337,9 @@ export async function generateFullPost(
     userId,
     params.imageFormat || "square",
     aiSettings,
-    params.targetPlatform || ""
+    params.targetPlatform || "",
+    params.useAgencyIdentity ?? true,
+    params.useAgencyCharacter ?? false
   );
 
   return { caption, imageUrl, imagePrompt, model };

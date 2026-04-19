@@ -30,6 +30,8 @@ interface SocialSettingsData {
   auto_generate: boolean;
   daily_post_count: number;
   custom_prompt_template: string;
+  moderators_list: string; // We'll handle this as comma-separated string in UI
+  moderator_target_network: string;
 }
 
 interface SocialSettingsPanelProps {
@@ -52,6 +54,8 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
     auto_generate: false,
     daily_post_count: 1,
     custom_prompt_template: "",
+    moderators_list: "",
+    moderator_target_network: "facebook",
   });
 
   // Load existing settings
@@ -69,6 +73,8 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
             brand_voice: data.settings.brand_voice || "profesional y cercano",
             default_platform: data.settings.default_platform || "facebook",
             custom_prompt_template: data.settings.custom_prompt_template || "",
+            moderators_list: (data.settings.moderators_list || []).join(", "),
+            moderator_target_network: data.settings.moderator_target_network || "facebook",
           }));
         }
       })
@@ -82,10 +88,16 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
     setSuccess(false);
 
     try {
+      // Clean up array for moderators
+      const bodyPayload = {
+        ...settings,
+        moderators_list: settings.moderators_list.split(",").map(e => e.trim()).filter(e => e.length > 0)
+      };
+
       const res = await fetch("/api/social/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(bodyPayload),
       });
       const data = await res.json();
 
@@ -251,6 +263,44 @@ export default function SocialSettingsPanel({ onClose }: SocialSettingsPanelProp
               placeholder="Deja vacío para usar el prompt por defecto. Usa {topic} como placeholder del tema."
               className="w-full bg-[#050505] text-white border border-white/10 rounded-xl p-4 focus:outline-none focus:ring-1 focus:ring-[#FFDE00]/50 resize-none h-24 text-sm placeholder-gray-700"
             />
+          </div>
+        </div>
+
+        {/* ═══ EQUIPO DE MODERACIÓN ═══ */}
+        <div className="space-y-4 pt-6 border-t border-white/5">
+          <h3 className="text-sm font-black text-purple-400 uppercase tracking-widest flex items-center gap-2">
+            <Key className="w-4 h-4" />
+            Equipo de Moderación
+          </h3>
+          <p className="text-xs text-gray-400 mb-2">
+            Los correos agregados tendrán autorización para ver el botón ⚡ Auto-Publicar en Estudio IA.
+          </p>
+
+          <div>
+            <label className="text-xs font-bold text-gray-400 mb-1.5 block">
+              Emails Autorizados (Separados por Coma)
+            </label>
+            <textarea
+              value={settings.moderators_list}
+              onChange={(e) => setSettings({ ...settings, moderators_list: e.target.value })}
+              placeholder="mod1@agencia.com, mod2@agencia.com"
+              className="w-full bg-[#050505] text-white border border-white/10 rounded-xl p-4 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-none h-20 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-400 mb-1.5 block">
+              Red Objetivo para Moderadores
+            </label>
+            <select
+              value={settings.moderator_target_network}
+              onChange={(e) => setSettings({ ...settings, moderator_target_network: e.target.value })}
+              className="w-full bg-[#050505] text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-purple-500/50 text-sm"
+            >
+              <option value="facebook">Solo Facebook (Recomendado)</option>
+              <option value="instagram">Solo Instagram</option>
+              <option value="both">Facebook e Instagram</option>
+            </select>
           </div>
         </div>
 

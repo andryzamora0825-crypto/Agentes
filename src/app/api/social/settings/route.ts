@@ -62,6 +62,8 @@ export async function POST(request: Request) {
       auto_generate,
       daily_post_count,
       custom_prompt_template,
+      moderators_list,
+      moderator_target_network,
     } = body;
 
     // Upsert settings (insert or update)
@@ -85,6 +87,8 @@ export async function POST(request: Request) {
           auto_generate: auto_generate ?? false,
           daily_post_count: daily_post_count ?? 1,
           custom_prompt_template: custom_prompt_template ?? null,
+          moderators_list: moderators_list ?? null,
+          moderator_target_network: moderator_target_network ?? null,
         })
         .eq("user_id", user.id)
         .select()
@@ -106,6 +110,8 @@ export async function POST(request: Request) {
           auto_generate: auto_generate ?? false,
           daily_post_count: daily_post_count ?? 1,
           custom_prompt_template: custom_prompt_template ?? null,
+          moderators_list: moderators_list ?? null,
+          moderator_target_network: moderator_target_network ?? null,
         })
         .select()
         .single();

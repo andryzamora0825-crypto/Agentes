@@ -69,6 +69,9 @@ export default function SocialDashboardPage() {
   const availablePlatforms = ((user?.publicMetadata as any)?.aiSettings?.activePlatforms as string[]) || ["ecuabet"];
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
 
+  const [useAgencyIdentity, setUseAgencyIdentity] = useState(true);
+  const [useAgencyCharacter, setUseAgencyCharacter] = useState(false);
+
   // Fetch posts
   const fetchPosts = useCallback(async () => {
     try {
@@ -120,6 +123,8 @@ export default function SocialDashboardPage() {
           brandVoice,
           scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
           targetPlatform: selectedPlatform,
+          useAgencyIdentity,
+          useAgencyCharacter,
         }),
       });
 
@@ -439,6 +444,54 @@ export default function SocialDashboardPage() {
                   </div>
                 </div>
               )}
+
+              {/* Opciones de Marca y Personaje */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-medium text-white/40 uppercase tracking-widest block">
+                  Reglas de Branding Avanzadas
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setUseAgencyIdentity(!useAgencyIdentity)}
+                    className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
+                      useAgencyIdentity
+                        ? "bg-[#FFDE00]/10 border-[#FFDE00]/30"
+                        : "bg-[#0A0A0A] border-white/[0.08] hover:border-white/20"
+                    }`}
+                  >
+                    <div className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      useAgencyIdentity ? "bg-[#FFDE00] border-[#FFDE00] text-black" : "border-white/30"
+                    }`}>
+                      {useAgencyIdentity && <span className="text-[10px] font-bold">✓</span>}
+                    </div>
+                    <div>
+                      <div className={`text-xs font-semibold ${useAgencyIdentity ? "text-[#FFDE00]" : "text-white/70"}`}>Inyectar Identidad</div>
+                      <div className="text-[10px] text-white/40 mt-1 leading-tight">Usa colores de la agencia o de la plataforma si hay una seleccionada.</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUseAgencyCharacter(!useAgencyCharacter)}
+                    className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
+                      useAgencyCharacter
+                        ? "bg-purple-500/10 border-purple-500/30"
+                        : "bg-[#0A0A0A] border-white/[0.08] hover:border-white/20"
+                    }`}
+                  >
+                    <div className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      useAgencyCharacter ? "bg-purple-500 border-purple-500 text-black" : "border-white/30"
+                    }`}>
+                      {useAgencyCharacter && <span className="text-[10px] font-bold">✓</span>}
+                    </div>
+                    <div>
+                      <div className={`text-xs font-semibold ${useAgencyCharacter ? "text-purple-400" : "text-white/70"}`}>Representante IA</div>
+                      <div className="text-[10px] text-white/40 mt-1 leading-tight">Obliga a la IA a incluir el rostro de tu personaje en la toma.</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
 
               {/* Schedule */}
               <div className="pt-4 border-t border-white/[0.06]">

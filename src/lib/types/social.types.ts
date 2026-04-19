@@ -43,6 +43,8 @@ export interface SocialSettings {
   auto_generate: boolean;
   daily_post_count: number;
   custom_prompt_template: string | null;
+  moderators_list: string[] | null;
+  moderator_target_network: Platform | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +84,7 @@ export interface GenerateContentParams {
   platform?: Platform;
   imageFormat?: string;
   useAgencyIdentity?: boolean;
+  useAgencyCharacter?: boolean;
   targetPlatform?: string;
   customTemplate?: string;
 }
