@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     let useAgencyIdentity = false;
     let useAgencyCharacter = false;
     let targetPlatforms: string[] = [];
-    let referenceImages: { base64: string; mimeType: string }[] = [];
+    let referenceImages: { base64: string; mimeType: string; label?: string }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
         if (file) {
           const arrayBuffer = await file.arrayBuffer();
           const base64 = Buffer.from(arrayBuffer).toString("base64");
-          referenceImages.push({ base64, mimeType: file.type || "image/png" });
+          referenceImages.push({ base64, mimeType: file.type || "image/png", label: "Imagen de Referencia enviada por el usuario" });
         }
       }
     } else {
@@ -84,40 +84,47 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 `;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
-      // Inyectar imágenes pre-guardadas (agencia, estilo)
-      const urlsToFetch = [aiSettings.agencyLogoUrl, aiSettings.inspLogoUrl].filter(Boolean);
-      
       // --- SISTEMA MULTIPLATAFORMA (LOGOS ROBUSTOS ADMINISTRADOS POR ZAMTOOLS) ---
-      // Aquí colocamos las URLs PÚBLICAS de las imágenes oficiales de altísima calidad
+      const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
       const OFFICIAL_PLATFORMS: Record<string, string> = {
-        ecuabet: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png",
-        doradobet: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png",
-        masparley: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png",
-        databet: "https://rslhlpaxcwwchpcyiifc.supabase.co/storage/v1/object/public/ai-generations/agency-assets/default_databet.png",
+        ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
+        doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png`,
+        masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png`,
+        databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png`,
       };
 
+      const itemsToFetch: { url: string; label: string }[] = [];
+      
+      if (aiSettings.agencyLogoUrl) {
+        itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
+      }
+      if (aiSettings.inspLogoUrl) {
+        itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual Referencial" });
+      }
+
       if (targetPlatforms.length > 0) {
-        finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen Específicamente enfocado en promocionar las siguientes marca(s): ${targetPlatforms.join(", ").toUpperCase()}. Asegúrate de usar creativa e impecablemente sus logos proporcionados.`;
+        finalPrompt += `\n\n[PLATAFORMAS OBJETIVO]: DEBES generar esta imagen específicamente enfocada en promocionar las siguientes marca(s): ${targetPlatforms.join(", ").toUpperCase()}. Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS, usa los adjuntos.`;
         
         targetPlatforms.forEach(plat => {
           if (OFFICIAL_PLATFORMS[plat]) {
-            urlsToFetch.push(OFFICIAL_PLATFORMS[plat]);
+            itemsToFetch.push({ url: OFFICIAL_PLATFORMS[plat], label: `Logo OFICIAL de la casa de apuestas ${plat.toUpperCase()}` });
           }
         });
       }
 
-      const fetchPromises = urlsToFetch.map(async (url: string) => {
+      const fetchPromises = itemsToFetch.map(async (item) => {
         try {
-          const res = await fetchWithTimeout(url, 8000);
+          const res = await fetchWithTimeout(item.url, 8000);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             return { 
               base64: Buffer.from(arrayBuffer).toString("base64"), 
-              mimeType: res.headers.get('content-type') || "image/png" 
+              mimeType: res.headers.get('content-type') || "image/png",
+              label: item.label
             };
           }
         } catch (e) {
-          console.warn("⚠️ Timeout/error trayendo imagen de agencia (ignorando):", (e as Error).message);
+          console.warn(`⚠️ Timeout/error trayendo imagen ${item.label} (ignorando):`, (e as Error).message);
         }
         return null;
       });
@@ -137,7 +144,8 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
             const arrayBuffer = await res.arrayBuffer();
             referenceImages.push({
               base64: Buffer.from(arrayBuffer).toString("base64"),
-              mimeType: res.headers.get('content-type') || "image/png"
+              mimeType: res.headers.get('content-type') || "image/png",
+              label: "Foto del Representante/Personaje de la Agencia"
             });
           }
         } catch (e) {
@@ -177,6 +185,9 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
 
       const contents: any[] = [{ text: finalPrompt }];
       for (const img of referenceImages) {
+        if (img.label) {
+           contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
+        }
         contents.push({
           inlineData: {
             mimeType: img.mimeType,
