@@ -107,7 +107,7 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
         databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
         saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" },
-        astrobet: { primary: "Verde Neón (#00C800)", secondary: "Azul Marino Oscuro (#0A1E3C)" }
+        astrobet: { primary: "Azul Intenso (#1A3A6B)", secondary: "Rojo Vibrante (#E8253A)" }
       };
 
       if (targetPlatform) {
