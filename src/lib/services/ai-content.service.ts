@@ -167,11 +167,12 @@ REGLAS PARA EL PERSONAJE:
 ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir los nombres exactamente como se indican (ej. MasParley con M y P mayúsculas). Asegúrate de usar creativa e impecablemente LOS LOGOS OFICIALES DE ESTAS PLATAFORMAS (adjuntos como imágenes con sus respectivos nombres). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado en la imagen.`;
     
     const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
+    const cacheBuster = `?t=${Date.now()}`;
     const OFFICIAL_PLATFORMS: Record<string, string> = {
-      ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
-      doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png`,
-      masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png`,
-      databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png`,
+      ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png${cacheBuster}`,
+      doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png${cacheBuster}`,
+      masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png${cacheBuster}`,
+      databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png${cacheBuster}`,
     };
 
     targetPlatforms.forEach(plat => {
