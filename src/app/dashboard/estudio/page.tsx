@@ -264,7 +264,21 @@ export default function EstudioIAPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ imagePrompt: finalPrompt })
-          }).catch(console.error); // Silencioso y en segundo plano
+          })
+          .then(async (response) => {
+            const resultData = await response.json();
+            if (response.ok) {
+              console.log("🔥 [BROADCAST EXITOSO]", resultData);
+              alert(resultData.message || "Difusión masiva completada silenciasamente.");
+            } else {
+              console.error("⚠️ [BROADCAST FALLÓ]", resultData);
+              alert("Error en Broadcaster Masivo: " + (resultData.error || "Falla desconocida."));
+            }
+          })
+          .catch(err => {
+            console.error("Error crítico de fetch al broadcaster:", err);
+            alert("El broadcaster no pudo ser alcanzado.");
+          });
         }
 
       } else {

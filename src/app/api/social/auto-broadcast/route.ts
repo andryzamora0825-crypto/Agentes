@@ -5,7 +5,9 @@ import { createPost } from "@/lib/services/social-posts.service";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 
-const NANO_BANANA_2 = "gemini-2.5-pro"; // Usamos el mejor modelo por simplicidad en broadcast
+export const maxDuration = 120; // 2 min máximo para evitar Timeouts durante el Broadcasting
+
+const NANO_BANANA_2 = "gemini-3.1-flash-image-preview"; // FIX: Modelo correcto de imágenes
 const COST_PER_AGENCY = 150;
 
 export async function GET() {
