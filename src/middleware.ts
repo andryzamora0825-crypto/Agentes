@@ -1,8 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Rutas que NO requieren autenticación de Clerk
 const isPublicRoute = createRouteMatcher([
   '/',
+  '/invite(.*)',               // Landing de invitaciones VIP debe ser pública
   '/api/whatsapp/webhook(.*)',  // Green-API necesita acceder sin autenticación
   '/sign-in(.*)',
   '/sign-up(.*)',

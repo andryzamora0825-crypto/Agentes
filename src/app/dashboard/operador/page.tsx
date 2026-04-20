@@ -5,7 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Users, Coins, Ticket, Trash2, Plus, X, ShieldCheck,
-  Copy, Check, ChevronDown, ChevronUp, Crown, AlertTriangle
+  Copy, Check, ChevronDown, ChevronUp, Crown, AlertTriangle, Link as Link2
 } from "lucide-react";
 
 export default function OperadorPage() {
@@ -19,6 +19,7 @@ export default function OperadorPage() {
   const [creditInput, setCreditInput] = useState<Record<string, string>>({});
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Codes
   const [codes, setCodes] = useState<any[]>([]);
@@ -168,6 +169,12 @@ export default function OperadorPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyLinkUrl = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   if (!isLoaded || !isOperator) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-5rem)]">
@@ -202,14 +209,28 @@ export default function OperadorPage() {
 
           {/* Affiliate Code */}
           {operator?.affiliateCode && (
-            <button
-              onClick={() => copyCode(operator.affiliateCode)}
-              className="flex items-center gap-2.5 bg-[#FFDE00]/10 border border-[#FFDE00]/20 px-4 py-2.5 rounded-xl hover:bg-[#FFDE00]/20 transition-colors group"
-            >
-              <span className="text-[10px] text-[#FFDE00]/60 uppercase tracking-widest font-bold">Tu Código:</span>
-              <span className="text-sm font-black text-[#FFDE00] tracking-widest">{operator.affiliateCode}</span>
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-[#FFDE00]/50 group-hover:text-[#FFDE00]" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => copyCode(operator.affiliateCode)}
+                className="flex items-center gap-2.5 bg-[#FFDE00]/10 border border-[#FFDE00]/20 px-4 py-2.5 rounded-xl hover:bg-[#FFDE00]/20 transition-colors group"
+                title="Copiar Código Manualmente"
+              >
+                <span className="hidden sm:inline text-[10px] text-[#FFDE00]/60 uppercase tracking-widest font-bold">Tu Código:</span>
+                <span className="text-sm font-black text-[#FFDE00] tracking-widest">{operator.affiliateCode}</span>
+                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-[#FFDE00]/50 group-hover:text-[#FFDE00]" />}
+              </button>
+              
+              <div className="h-8 w-px bg-white/[0.06] mx-1"></div>
+
+              <button
+                onClick={() => copyLinkUrl(`${window.location.origin}/invite/${operator.affiliateCode}`)}
+                className="flex items-center gap-2 bg-[#141414] border border-white/[0.06] hover:border-cyan-500/30 hover:bg-cyan-500/10 px-4 py-2.5 rounded-xl transition-all text-sm font-bold text-white/70 hover:text-cyan-400 group"
+                title="Copiar Enlace de Invitación Directo"
+              >
+                {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Link2 className="w-4 h-4 text-white/40 group-hover:text-cyan-400" />}
+                <span className="hidden sm:inline">{copiedLink ? '¡Enlace Copiado!' : 'Copiar Link de Afiliado'}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
