@@ -996,24 +996,38 @@ export default function AdminPanelPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center bg-[#0A0A0A] rounded-xl border border-white/[0.06] overflow-hidden focus-within:border-[#FFDE00]/30 transition-colors max-w-full sm:max-w-xs w-full">
+                    <div className="flex flex-col sm:flex-row gap-2 max-w-full w-full sm:w-auto">
                        <input 
-                         type="number"
+                         type="text" 
+                         inputMode="numeric" 
+                         pattern="[0-9]*"
                          value={customCreditInput[u.id] || ''}
-                         onChange={(e) => setCustomCreditInput(prev => ({ ...prev, [u.id]: e.target.value }))}
-                         placeholder="Ej: 500 o -200"
-                         className="flex-1 min-w-0 bg-transparent text-white/90 placeholder-white/30 px-4 py-3 text-sm focus:outline-none"
+                         onChange={(e) => setCustomCreditInput(prev => ({ ...prev, [u.id]: e.target.value.replace(/[^0-9]/g, '') }))}
+                         placeholder="Ej: 500"
+                         className="w-full sm:w-32 bg-[#0A0A0A] border border-white/[0.06] rounded-xl text-white/90 placeholder-white/30 px-4 py-3 text-sm focus:outline-none focus:border-[#FFDE00]/50 transition-colors text-center font-bold"
                        />
-                       <button 
-                         onClick={() => {
-                           const amount = Number(customCreditInput[u.id]);
-                           if(!isNaN(amount) && amount !== 0) modifyCredits(u.id, u.credits, amount);
-                         }}
-                         disabled={processingId === u.id || !customCreditInput[u.id] || isNaN(Number(customCreditInput[u.id])) || Number(customCreditInput[u.id]) === 0}
-                         className="px-4 py-3 bg-white/[0.04] text-[#FFDE00] text-[11px] font-black uppercase hover:bg-[#FFDE00]/10 transition-all disabled:opacity-50 border-l border-white/[0.06] flex items-center justify-center shrink-0"
-                       >
-                         {processingId === u.id ? <Loader2 className="w-4 h-4 animate-spin text-[#FFDE00]" /> : 'APLICAR'}
-                       </button>
+                       <div className="flex items-center gap-2 w-full sm:w-auto">
+                         <button 
+                           onClick={() => {
+                             const amount = Math.abs(Number(customCreditInput[u.id]));
+                             if(amount > 0) modifyCredits(u.id, u.credits, -amount);
+                           }}
+                           disabled={processingId === u.id || !customCreditInput[u.id] || Number(customCreditInput[u.id]) <= 0 || (u.credits !== undefined && u.credits <= 0)}
+                           className="flex-1 sm:flex-none px-4 py-3 bg-red-500/10 text-red-500 text-[11px] font-black uppercase hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 border border-red-500/20 rounded-xl flex items-center justify-center min-w-[90px]"
+                         >
+                           - RESTAR
+                         </button>
+                         <button 
+                           onClick={() => {
+                             const amount = Math.abs(Number(customCreditInput[u.id]));
+                             if(amount > 0) modifyCredits(u.id, u.credits, amount);
+                           }}
+                           disabled={processingId === u.id || !customCreditInput[u.id] || Number(customCreditInput[u.id]) <= 0}
+                           className="flex-1 sm:flex-none px-4 py-3 bg-emerald-500/10 text-emerald-400 text-[11px] font-black uppercase hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 border border-emerald-500/20 rounded-xl flex items-center justify-center min-w-[90px]"
+                         >
+                           {processingId === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : '+ SUMAR'}
+                         </button>
+                       </div>
                     </div>
                   </div>
 
