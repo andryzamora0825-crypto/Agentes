@@ -6,7 +6,6 @@ import { GoogleGenAI } from "@google/genai";
 export const maxDuration = 300;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-const MODEL = "gemini-3-pro-image-preview"; // Pro for highest quality editing
 
 // Fetch image as base64
 async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
@@ -72,19 +71,23 @@ export async function POST(request: Request) {
         },
       ];
 
-      // 5. Call Gemini with retries
+      // 5. Call Gemini with retries + model fallback
+      const PRIMARY_MODEL = "gemini-3-pro-image-preview";
+      const FALLBACK_MODEL = "gemini-3.1-flash-image-preview";
       const MAX_RETRIES = 3;
       let response;
       let lastErr: any = null;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        // Use fallback model on retry attempts
+        const currentModel = attempt >= 2 ? FALLBACK_MODEL : PRIMARY_MODEL;
         const abortController = new AbortController();
         const timeout = setTimeout(() => abortController.abort(), 120_000);
 
         try {
-          console.log(`🪄 Editor PRO [${toolId}] Intento ${attempt}/${MAX_RETRIES}...`);
+          console.log(`🪄 Editor PRO [${toolId}] Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
           response = await ai.models.generateContent({
-            model: MODEL,
+            model: currentModel,
             contents,
             config: { responseModalities: ["TEXT", "IMAGE"] },
           });
@@ -94,10 +97,14 @@ export async function POST(request: Request) {
           clearTimeout(timeout);
           lastErr = retryErr;
           const msg = retryErr?.message || JSON.stringify(retryErr);
-          const isTransient = msg.includes("503") || msg.includes("429") || msg.includes("UNAVAILABLE") || msg.includes("RESOURCE_EXHAUSTED");
+          const isTransient = msg.includes("503") || msg.includes("500") || msg.includes("429")
+            || msg.includes("UNAVAILABLE") || msg.includes("RESOURCE_EXHAUSTED")
+            || msg.includes("INTERNAL") || msg.includes("internal error")
+            || msg.includes("Internal error") || msg.includes("overloaded");
           if (isTransient && attempt < MAX_RETRIES) {
-            console.warn(`⏳ Editor PRO retry ${attempt}...`);
-            await new Promise(r => setTimeout(r, 2000 * attempt));
+            const backoff = Math.min(2000 * attempt, 5000);
+            console.warn(`⏳ Editor PRO error transitorio → reintento ${attempt} en ${backoff/1000}s con ${FALLBACK_MODEL}...`);
+            await new Promise(r => setTimeout(r, backoff));
             continue;
           }
           throw retryErr;
@@ -171,6 +178,7 @@ export async function POST(request: Request) {
       const isTimeout = apiError?.name === "AbortError";
       const is503 = rawMsg.includes("503") || rawMsg.includes("UNAVAILABLE");
       const is429 = rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED");
+      const isInternal = rawMsg.includes("INTERNAL") || rawMsg.includes("Internal error") || rawMsg.includes("500");
 
       let friendlyMsg: string;
       if (isTimeout) {
@@ -179,6 +187,8 @@ export async function POST(request: Request) {
         friendlyMsg = "🔥 Servidores IA saturados. Espera 2 minutos e intenta de nuevo. Créditos reembolsados.";
       } else if (is429) {
         friendlyMsg = "⚡ Demasiadas solicitudes. Espera 30 segundos. Créditos reembolsados.";
+      } else if (isInternal) {
+        friendlyMsg = "🔧 La IA tuvo un error interno procesando esta imagen. Intenta de nuevo o prueba con otra herramienta. Créditos reembolsados.";
       } else {
         friendlyMsg = `❌ Error al procesar: ${rawMsg.slice(0, 100)}. Créditos reembolsados.`;
       }
