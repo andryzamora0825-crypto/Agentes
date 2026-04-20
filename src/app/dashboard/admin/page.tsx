@@ -82,6 +82,10 @@ export default function AdminPanelPage() {
   const [uploadingPlatform, setUploadingPlatform] = useState<string | null>(null);
   const [imageTokens, setImageTokens] = useState<Record<string, number>>({});
 
+  // Estados para Modal de Activity Logs y Entradas Dinámicas de Economía
+  const [customCreditInput, setCustomCreditInput] = useState<Record<string, string>>({});
+  const [modalViewingLogs, setModalViewingLogs] = useState<any | null>(null);
+
   // Sincronizar el formulario cuando abrimos el modal
   useEffect(() => {
     if (editingWa) {
@@ -276,6 +280,7 @@ export default function AdminPanelPage() {
        if (res.ok) {
          // UI optimista temporal
          setUsers(prev => prev.map(u => u.id === targetId ? { ...u, credits: newBalance } : u));
+         setCustomCreditInput(prev => ({ ...prev, [targetId]: "" })); // Limpiar Input
        } else {
          alert("Error inyectando economía. Revisa la consola.");
        }
@@ -936,6 +941,13 @@ export default function AdminPanelPage() {
                         </button>
                       )}
                       
+                      <button
+                        onClick={() => setModalViewingLogs(u)}
+                        className="bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500 hover:text-white px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors border border-cyan-500/20 whitespace-nowrap flex items-center gap-1.5"
+                      >
+                        Ver Movimientos
+                      </button>
+                      
                       {u.plan === 'VIP' && u.vipExpiresAt && (
                         <div className="bg-[#FFDE00]/5 border border-[#FFDE00]/10 px-3 py-1.5 rounded-md flex flex-wrap items-center gap-2">
                            <span className="text-[10px] text-[#FFDE00]/60 uppercase tracking-widest font-bold">RESTAN:</span>
@@ -984,31 +996,23 @@ export default function AdminPanelPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-[#0A0A0A] p-2 rounded-xl border border-white/[0.06]">
+                    <div className="flex items-center bg-[#0A0A0A] rounded-xl border border-white/[0.06] overflow-hidden focus-within:border-[#FFDE00]/30 transition-colors max-w-full sm:max-w-xs w-full">
+                       <input 
+                         type="number"
+                         value={customCreditInput[u.id] || ''}
+                         onChange={(e) => setCustomCreditInput(prev => ({ ...prev, [u.id]: e.target.value }))}
+                         placeholder="Ej: 500 o -200"
+                         className="flex-1 min-w-0 bg-transparent text-white/90 placeholder-white/30 px-4 py-3 text-sm focus:outline-none"
+                       />
                        <button 
-                         onClick={() => modifyCredits(u.id, u.credits, -1000)}
-                         disabled={processingId === u.id || (u.credits !== undefined && u.credits <= 0)}
-                         className="w-10 h-10 rounded-lg bg-white/[0.04] text-white/50 flex items-center justify-center hover:bg-red-500/20 hover:text-red-400 transition-colors disabled:opacity-50"
-                         title="Restar 1,000"
+                         onClick={() => {
+                           const amount = Number(customCreditInput[u.id]);
+                           if(!isNaN(amount) && amount !== 0) modifyCredits(u.id, u.credits, amount);
+                         }}
+                         disabled={processingId === u.id || !customCreditInput[u.id] || isNaN(Number(customCreditInput[u.id])) || Number(customCreditInput[u.id]) === 0}
+                         className="px-4 py-3 bg-white/[0.04] text-[#FFDE00] text-[11px] font-black uppercase hover:bg-[#FFDE00]/10 transition-all disabled:opacity-50 border-l border-white/[0.06] flex items-center justify-center shrink-0"
                        >
-                         <Minus className="w-5 h-5" />
-                       </button>
-                       <button 
-                         onClick={() => modifyCredits(u.id, u.credits, 1000)}
-                         disabled={processingId === u.id}
-                         className="w-10 h-10 rounded-lg bg-white/[0.04] text-white/50 flex items-center justify-center hover:bg-emerald-500/20 hover:text-emerald-400 transition-colors disabled:opacity-50"
-                         title="Añadir 1,000"
-                       >
-                         <Plus className="w-5 h-5" />
-                       </button>
-                       <div className="w-px h-6 bg-white/[0.06] mx-2"></div>
-                       <button 
-                         onClick={() => modifyCredits(u.id, u.credits, 10000)}
-                         disabled={processingId === u.id}
-                         className="px-4 h-10 rounded-lg text-[11px] font-black bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00] hover:text-black transition-all disabled:opacity-50"
-                         title="Inyectar Paquete Master"
-                       >
-                         MASTER +10K
+                         {processingId === u.id ? <Loader2 className="w-4 h-4 animate-spin text-[#FFDE00]" /> : 'APLICAR'}
                        </button>
                     </div>
                   </div>
@@ -1302,6 +1306,54 @@ export default function AdminPanelPage() {
                  </button>
               </form>
            </div>
+        </div>
+      )}
+      {/* MODAL: Activity Logs (Movimientos del Usuario) */}
+      {modalViewingLogs && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-[#0A0A0A] border border-white/10 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-white/[0.06] flex items-center justify-between sticky top-0 bg-[#0A0A0A] z-10 shrink-0">
+              <div>
+                <h3 className="font-black text-white text-lg flex items-center gap-2">
+                  <span className="text-cyan-400">📋</span> Registro de Movimientos
+                </h3>
+                <p className="text-xs text-white/40 mt-0.5">Actividad administrativa de {modalViewingLogs.name}</p>
+              </div>
+              <button 
+                onClick={() => setModalViewingLogs(null)}
+                className="text-white/50 hover:text-white p-2 hover:bg-white/10 rounded-full transition-colors"
+                title="Cerrar modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto flex-1 space-y-3">
+              {(!modalViewingLogs.activityLogs || modalViewingLogs.activityLogs.length === 0) ? (
+                <div className="text-center text-white/30 text-sm py-10 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                  Aún no hay movimientos registrados para este usuario.
+                </div>
+              ) : (
+                modalViewingLogs.activityLogs.map((log: any, idx: number) => (
+                  <div key={idx} className="bg-[#141414] border border-white/[0.04] p-3 rounded-xl flex items-start gap-3">
+                    <div className={`mt-0.5 w-8 h-8 rounded-full flex flex-shrink-0 items-center justify-center text-[14px] ${
+                      log.type === 'CREDITS' ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20' : 
+                      log.type === 'VIP' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 
+                      'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    }`}>
+                      {log.type === 'CREDITS' ? '🪙' : log.type === 'VIP' ? '💎' : '⭐'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                       <p className="text-sm font-semibold text-white/90 leading-snug">{log.details}</p>
+                       <span className="text-[10px] text-white/30 uppercase tracking-widest font-medium block mt-1">
+                         {new Date(log.timestamp).toLocaleString('es-ES', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                       </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 

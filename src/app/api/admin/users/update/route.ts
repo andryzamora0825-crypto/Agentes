@@ -20,7 +20,16 @@ export async function POST(request: Request) {
     const targetUser = await client.users.getUser(targetUserId);
 
     const updateData: any = {};
-    if (newCredits !== undefined) updateData.credits = newCredits;
+    let logType = "";
+    let logDetails = "";
+
+    if (newCredits !== undefined) {
+      updateData.credits = newCredits;
+      const oldCredits = (targetUser.publicMetadata?.credits as number) || 0;
+      const diff = newCredits - oldCredits;
+      logType = "CREDITS";
+      logDetails = `Balance modificado de ${oldCredits} a ${newCredits} (${diff >= 0 ? '+' : ''}${diff})`;
+    }
     
     if (action === "renew_vip") {
       updateData.plan = "VIP";
@@ -33,13 +42,26 @@ export async function POST(request: Request) {
         // Expired or null context: start 30 days from right now.
         updateData.vipExpiresAt = now + (30 * 24 * 60 * 60 * 1000);
       }
+      logType = "VIP";
+      logDetails = "Se renovó el tiempo VIP (+30 días)";
     } else if (newPlan !== undefined) {
       updateData.plan = newPlan;
       if (newPlan === "VIP") {
         updateData.vipExpiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 días en milisegundos
+        logType = "PLAN";
+        logDetails = "Ascendido a plan VIP";
       } else {
         updateData.vipExpiresAt = null; // Borramos el contador si pasa a FREE
+        logType = "PLAN";
+        logDetails = "Revocado a plan FREE";
       }
+    }
+
+    if (logType) {
+       const existingLogs = (targetUser.publicMetadata?.activityLogs as any[]) || [];
+       const newLog = { type: logType, details: logDetails, timestamp: Date.now() };
+       // Limitamos a los últimos 30 movimientos para evitar el límite de peso de Clerk Metadata
+       updateData.activityLogs = [newLog, ...existingLogs].slice(0, 30);
     }
     // Inyectar o remover créditos y planes
     await client.users.updateUserMetadata(targetUserId, {

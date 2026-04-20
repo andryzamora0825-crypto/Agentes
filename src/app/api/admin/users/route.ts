@@ -55,7 +55,8 @@ export async function GET() {
           auto_generate: socialSettingsMap[u.id]?.auto_generate || false,
         },
         createdAt: u.createdAt,
-        generationCount: imgCounts[email.toLowerCase()] || 0
+        generationCount: imgCounts[email.toLowerCase()] || 0,
+        activityLogs: meta?.activityLogs || []
       };
     });
 
