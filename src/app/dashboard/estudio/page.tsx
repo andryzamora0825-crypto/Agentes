@@ -227,7 +227,7 @@ export default function EstudioIAPage() {
     setLastModel(null);
 
     const abortController = new AbortController();
-    const clientTimeout = setTimeout(() => abortController.abort(), 70_000);
+    const clientTimeout = setTimeout(() => abortController.abort(), 85_000); // 85s (server maxDuration = 80s)
 
     try {
       const fd = new FormData();
@@ -295,9 +295,28 @@ export default function EstudioIAPage() {
       }
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        setErrorMsg("La generación tardó demasiado (>100s). Intenta con un prompt más corto.");
+        setErrorMsg("⏳ La generación está tardando más de lo esperado. Verificando si se completó...");
+        // El servidor puede seguir procesando aunque el cliente hizo timeout
+        // Verificar después de unos segundos si la imagen se generó
+        setTimeout(async () => {
+          try {
+            const checkRes = await fetch("/api/ai/history");
+            const checkData = await checkRes.json();
+            if (checkData.success && checkData.images?.length > images.length) {
+              setImages(checkData.images);
+              setErrorMsg(null);
+              setLastModel("Nano Banana 🍌 (tardó más de lo habitual)");
+            } else {
+              setErrorMsg("La generación tardó demasiado. Si no aparece en unos segundos, intenta de nuevo.");
+            }
+          } catch {
+            setErrorMsg("La generación tardó demasiado. Recarga la página para verificar si se generó.");
+          }
+        }, 8000); // Esperar 8s extra para que el servidor termine
       } else {
         setErrorMsg("Error interno conectando con el servidor.");
+        // También verificar por si acaso
+        setTimeout(() => fetchHistory(), 5000);
       }
     } finally {
       clearTimeout(clientTimeout);
