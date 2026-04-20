@@ -3,7 +3,7 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-export const maxDuration = 120; // 2 min máximo — si no responde en 90s, es un error real
+export const maxDuration = 80; // 80s — 50s por intento × 3 intentos con backoff rápido
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -235,21 +235,19 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       // Sin responseModalities: ["TEXT", "IMAGE"], el SDK NUNCA devuelve imágenes
       // y se queda colgado hasta que Vercel mata la función (5 min timeout fantasma)
       
-      // ═══ RETRY CON BACKOFF + FALLBACK DE MODELO PARA 503/429 ═══
-      const MAX_RETRIES = 5;
+      // ═══ RETRY RÁPIDO + FALLBACK DE MODELO PARA 503/429 ═══
+      const MAX_RETRIES = 3;
       let response;
       let lastRetryError: any = null;
-      // Modelo alternativo: si flash falla, probar pro y viceversa
       const fallbackModel = model === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        // En los últimos 2 intentos, cambiar al modelo alternativo
-        const currentModel = attempt >= (MAX_RETRIES - 1) ? fallbackModel : model;
+        const currentModel = attempt >= 2 ? fallbackModel : model;
         const abortController = new AbortController();
-        const geminiTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s máx
+        const geminiTimeout = setTimeout(() => abortController.abort(), 50_000);
 
         try {
-          console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con modelo ${currentModel}...`);
+          console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
           response = await ai.models.generateContent({
             model: currentModel,
             contents,
@@ -258,29 +256,26 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
             },
           });
           clearTimeout(geminiTimeout);
-          break; // Éxito — salir del loop
+          break;
         } catch (retryErr: any) {
           clearTimeout(geminiTimeout);
           lastRetryError = retryErr;
 
-          // Detectar errores transitorios (503 UNAVAILABLE, 429 RESOURCE_EXHAUSTED)
           const errMsg = retryErr?.message || "";
           const errStr = typeof retryErr === 'object' ? JSON.stringify(retryErr) : String(retryErr);
           const combinedMsg = `${errMsg} ${errStr}`;
-          const isTransient = combinedMsg.includes("503") || combinedMsg.includes("UNAVAILABLE") 
+          const isTransient = combinedMsg.includes("503") || combinedMsg.includes("UNAVAILABLE")
             || combinedMsg.includes("429") || combinedMsg.includes("RESOURCE_EXHAUSTED")
             || combinedMsg.includes("high demand") || combinedMsg.includes("overloaded")
             || combinedMsg.includes("temporarily") || combinedMsg.includes("capacity");
 
           if (isTransient && attempt < MAX_RETRIES) {
-            // Backoff exponencial: 3s, 6s, 12s, 15s (cap)
-            const backoffMs = Math.min(3000 * Math.pow(2, attempt - 1), 15000);
-            console.warn(`⏳ Gemini ${isTransient ? '503/429' : 'error'} — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs/1000}s (próximo modelo: ${attempt >= (MAX_RETRIES - 2) ? fallbackModel : model})...`);
+            const backoffMs = Math.min(2000 * attempt, 5000);
+            console.warn(`⏳ Gemini 503/429 — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs/1000}s (→ ${fallbackModel})...`);
             await new Promise(resolve => setTimeout(resolve, backoffMs));
             continue;
           }
 
-          // Error no transitorio o agotamos reintentos — propagar
           throw retryErr;
         }
       }
@@ -368,7 +363,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           rawMsg = JSON.stringify(apiError);
         }
       } catch { rawMsg = String(apiError); }
-      console.error("Error en Nano Banana (5 reintentos agotados):", rawMsg.slice(0, 500));
+      console.error("Error en Nano Banana (3 reintentos agotados):", rawMsg.slice(0, 500));
 
       const isTimeout = apiError?.name === "AbortError" || rawMsg.includes("abort");
       const is503 = rawMsg.includes("503") || rawMsg.includes("UNAVAILABLE") || rawMsg.includes("high demand") || rawMsg.includes("capacity");
@@ -379,7 +374,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       if (isTimeout) {
         friendlyMsg = "⏳ Nano Banana tardó demasiado (>90s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
       } else if (is503) {
-        friendlyMsg = "🔥 Los servidores de IA están saturados (alta demanda global). Se intentó 5 veces con 2 modelos diferentes. Espera 2–3 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
+        friendlyMsg = "🔥 Los servidores de IA están saturados (alta demanda global). Se intentó con 2 modelos diferentes. Espera 2–3 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
       } else if (is429) {
         friendlyMsg = "⚡ Demasiadas solicitudes seguidas. Espera 30 segundos e intenta de nuevo. Tus créditos fueron reembolsados.";
       } else if (isNoImage) {

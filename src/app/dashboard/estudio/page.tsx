@@ -227,7 +227,7 @@ export default function EstudioIAPage() {
     setLastModel(null);
 
     const abortController = new AbortController();
-    const clientTimeout = setTimeout(() => abortController.abort(), 100_000);
+    const clientTimeout = setTimeout(() => abortController.abort(), 70_000);
 
     try {
       const fd = new FormData();
