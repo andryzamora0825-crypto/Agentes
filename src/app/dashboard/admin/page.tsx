@@ -781,7 +781,7 @@ export default function AdminPanelPage() {
           Sube aquí los logos base sin fondo (.PNG) de altísima calidad. Estos logotipos serán inyectados mágicamente en el cerebro de la IA para cualquier agente que utilice estas plataformas. Al subirlos, sobrescribirán a los anteriores inmediatamente.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[
             { id: "ecuabet", name: "Ecuabet", color: "text-[#FFDE00]" },
             { id: "doradobet", name: "DoradoBet", color: "text-[#F5A623]" },
@@ -789,36 +789,42 @@ export default function AdminPanelPage() {
             { id: "databet", name: "DataBet", color: "text-[#1d4ed8]" },
             { id: "astrobet", name: "AstroBet", color: "text-[#4A8FE7]" },
           ].map((plat) => (
-            <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-4 rounded-xl flex flex-col items-center text-center gap-3 group relative">
-              <span className={`font-bold ${plat.color} text-sm z-10`}>{plat.name}</span>
+            <div key={plat.id} className="bg-[#0A0A0A] overflow-hidden border border-white/[0.05] p-3 rounded-xl flex items-center gap-4 hover:border-white/[0.1] transition-all group">
               
-              <div className="relative w-full aspect-square bg-[#141414] border border-white/5 rounded-lg overflow-hidden flex items-center justify-center p-4">
+              {/* Miniatura del Logo */}
+              <div className="relative w-16 h-16 shrink-0 bg-[#141414] border border-white/5 rounded-lg flex items-center justify-center p-2 shadow-inner">
                 <img 
                   src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ai-generations/agency-assets/default_${plat.id}.png?t=${imageTokens[plat.id] || 1}`} 
                   alt={plat.name}
-                  className="w-full h-full object-contain opacity-70 group-hover:opacity-100 transition-opacity"
+                  className="w-full h-full object-contain opacity-70 group-hover:opacity-100 transition-opacity drop-shadow-md"
                   onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.1'; }}
                   onLoad={(e) => { (e.target as HTMLImageElement).style.opacity = '1'; }}
                 />
               </div>
 
-              <label className="cursor-pointer bg-white/5 hover:bg-white/10 transition-colors border border-white/10 rounded-lg px-4 py-2 flex flex-col items-center justify-center w-full min-h-[50px] z-10">
-                {uploadingPlatform === plat.id ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-white/50" />
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 text-white/40 mb-1" />
-                    <span className="text-[10px] text-white/40 font-medium">Reemplazar PNG</span>
-                  </>
-                )}
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  accept="image/png, image/jpeg" 
-                  onChange={(e) => handleUploadGlobalLogo(e, plat.id)}
-                  disabled={uploadingPlatform !== null}
-                />
-              </label>
+              {/* Info y Botón Subir */}
+              <div className="flex-1 min-w-0 pr-2">
+                <span className={`block font-black ${plat.color} text-sm tracking-wide truncate mb-2`}>{plat.name}</span>
+                
+                <label className="cursor-pointer inline-flex items-center gap-2 bg-white/[0.04] hover:bg-white/[0.08] transition-colors border border-white/[0.08] rounded-md px-3 py-1.5 w-auto">
+                  {uploadingPlatform === plat.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-white/50" />
+                  ) : (
+                    <>
+                      <Upload className="w-3 h-3 text-white/40" />
+                      <span className="text-[10px] text-white/60 font-black uppercase tracking-widest">Subir PNG</span>
+                    </>
+                  )}
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/png, image/jpeg" 
+                    onChange={(e) => handleUploadGlobalLogo(e, plat.id)}
+                    disabled={uploadingPlatform !== null}
+                  />
+                </label>
+              </div>
+
             </div>
           ))}
         </div>
@@ -918,16 +924,16 @@ export default function AdminPanelPage() {
                 <div className="p-5 border-t border-white/[0.06] bg-[#0A0A0A] space-y-6">
                   
                   {/* Fila Múltiple: Info Extra y Opciones */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     {/* Generaciones */}
-                    <div className="flex items-center gap-3">
-                      <div className="text-[11px] text-white/40 font-medium bg-white/[0.04] px-3 py-1.5 rounded-md">
+                    <div className="flex items-center gap-3 w-full lg:w-auto">
+                      <div className="text-[11px] text-white/40 font-medium bg-white/[0.04] px-3 py-1.5 rounded-md whitespace-nowrap">
                         🖼️ {u.generationCount || 0} obras generadas
                       </div>
                       {(u.generationCount || 0) > 0 && (
                         <button
                           onClick={() => openGallery(u)}
-                          className="bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors border border-purple-500/20"
+                          className="bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors border border-purple-500/20 whitespace-nowrap"
                         >
                           Ver Obras
                         </button>
@@ -935,14 +941,14 @@ export default function AdminPanelPage() {
                     </div>
 
                     {/* Cambiar Rol */}
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] text-white/40 uppercase tracking-widest font-medium">Gestionar Plan:</span>
-                       <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto mt-2 lg:mt-0">
+                       <span className="text-[10px] text-white/40 uppercase tracking-widest font-medium whitespace-nowrap">Gestionar Plan:</span>
+                       <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                          {u.plan === 'VIP' && (
                            <button 
                              onClick={() => renewVip(u.id, u.vipExpiresAt)}
                              disabled={processingId === u.id}
-                             className="px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white"
+                             className="w-full sm:w-auto px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white"
                            >
                              {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'RENOVAR VIP (+30 DÍAS)'}
                            </button>
@@ -950,7 +956,7 @@ export default function AdminPanelPage() {
                          <button 
                            onClick={() => togglePlan(u.id, u.plan)}
                            disabled={processingId === u.id}
-                           className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[120px] ${u.plan === 'VIP' ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00]/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'}`}
+                           className={`w-full sm:w-auto px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[120px] ${u.plan === 'VIP' ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00]/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'}`}
                          >
                            {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : (u.plan === 'VIP' ? 'REVOCAR A FREE' : 'ASCENDER A VIP')}
                          </button>
