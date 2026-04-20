@@ -253,28 +253,68 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   }
 
   let response;
-  try {
-    const hasRefImages = referenceImages.length > 0;
-    const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+  const hasRefImages = referenceImages.length > 0;
+  const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+  const fallbackModel = modelToUse === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
 
-    // ═══ FIX CRÍTICO: responseModalities + timeout ═══
+  // ═══ RETRY CON BACKOFF + FALLBACK DE MODELO PARA 503/429 ═══
+  const MAX_RETRIES = 5;
+  let lastRetryError: any = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    // En los últimos 2 intentos, cambiar al modelo alternativo
+    const currentModel = attempt >= (MAX_RETRIES - 1) ? fallbackModel : modelToUse;
     const abortController = new AbortController();
     const geminiTimer = setTimeout(() => abortController.abort(), 90_000); // 90s máx
+
     try {
+      console.log(`🎨 [SOCIAL] Intento ${attempt}/${MAX_RETRIES} con modelo ${currentModel}...`);
       response = await ai.models.generateContent({
-        model: modelToUse,
+        model: currentModel,
         contents: contentParts,
         config: {
           responseModalities: ["TEXT", "IMAGE"],
         },
       });
-    } finally {
       clearTimeout(geminiTimer);
+      break; // Éxito
+    } catch (retryErr: any) {
+      clearTimeout(geminiTimer);
+      lastRetryError = retryErr;
+
+      const errMsg = retryErr?.message || "";
+      const errStr = typeof retryErr === 'object' ? JSON.stringify(retryErr) : String(retryErr);
+      const combinedMsg = `${errMsg} ${errStr}`;
+      const isTransient = combinedMsg.includes("503") || combinedMsg.includes("UNAVAILABLE")
+        || combinedMsg.includes("429") || combinedMsg.includes("RESOURCE_EXHAUSTED")
+        || combinedMsg.includes("high demand") || combinedMsg.includes("overloaded")
+        || combinedMsg.includes("temporarily") || combinedMsg.includes("capacity");
+      const isTimeout = retryErr?.name === "AbortError" || combinedMsg.includes("abort");
+
+      if (isTimeout) {
+        console.error("🔴 [SOCIAL] TIMEOUT (>90s) en Nano Banana");
+        throw new Error("⏳ Timeout: el modelo tardó más de 90 segundos. Intenta con un prompt más simple.");
+      }
+
+      if (isTransient && attempt < MAX_RETRIES) {
+        const backoffMs = Math.min(3000 * Math.pow(2, attempt - 1), 15000);
+        console.warn(`⏳ [SOCIAL] Gemini 503/429 — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      // Error no transitorio o agotamos reintentos
+      console.error("🔴 [SOCIAL] Error en Nano Banana Gemini:", errMsg.slice(0, 300));
+      throw new Error(
+        isTransient
+          ? "🔥 Los servidores de IA están saturados. Se intentó 5 veces con 2 modelos. Espera 2–3 minutos e intenta de nuevo."
+          : `El modelo de imagen falló: ${errMsg.slice(0, 100) || "Error desconocido"}`
+      );
     }
-  } catch (err: any) {
-    const isTimeout = err?.name === "AbortError";
-    console.error("🔴 Error DENTRO de Nano Banana Gemini:", isTimeout ? "TIMEOUT (>90s)" : err);
-    throw new Error(isTimeout ? "Timeout: el modelo tardó más de 90 segundos" : `El modelo de imagen de Google falló: ${err?.message || "Error desconocido"}`);
+  }
+
+  if (!response) {
+    throw new Error(lastRetryError?.message || "Nano Banana no respondió después de múltiples intentos.");
   }
 
   // Extract image from response (same pattern as Estudio IA)

@@ -285,7 +285,12 @@ export default function EstudioIAPage() {
         if (res.status === 402) {
           setErrorMsg(`No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`);
         } else {
-          setErrorMsg(data.error || "Error en la generación. Intenta de nuevo.");
+          // SANITIZAR: Nunca mostrar JSON crudo al usuario
+          let msg = data.error || "Error en la generación. Intenta de nuevo.";
+          if (msg.startsWith("{") || msg.startsWith("[") || msg.includes('"code":')) {
+            msg = "🔥 Los servidores de IA están saturados. Espera 2–3 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
+          }
+          setErrorMsg(msg);
         }
       }
     } catch (err: any) {
