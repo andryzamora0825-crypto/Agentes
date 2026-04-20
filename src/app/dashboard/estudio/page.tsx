@@ -252,7 +252,17 @@ export default function EstudioIAPage() {
         body: fd,
         signal: abortController.signal,
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        // Si json() falla, suele ser un 504 de Vercel (Timeout) que devuelve HTML
+        if (res.status === 504) {
+          throw new Error("VercelTimeout");
+        }
+        throw new Error("Error leyendo respuesta del servidor: " + res.status);
+      }
 
       if (res.ok) {
         setLastModel(data.model || null);
@@ -269,7 +279,6 @@ export default function EstudioIAPage() {
             const resultData = await response.json();
             if (response.ok) {
               console.log("🔥 [BROADCAST EXITOSO]", resultData);
-              // alert removida a petición
             } else {
               console.error("⚠️ [BROADCAST FALLÓ]", resultData);
               alert("Error en Broadcaster Masivo: " + (resultData.error || "Falla desconocida."));
@@ -294,10 +303,9 @@ export default function EstudioIAPage() {
         }
       }
     } catch (err: any) {
-      if (err?.name === "AbortError") {
+      if (err?.name === "AbortError" || err?.message === "VercelTimeout") {
         setErrorMsg("⏳ La generación está tardando más de lo esperado. Verificando si se completó...");
-        // El servidor puede seguir procesando aunque el cliente hizo timeout
-        // Verificar después de unos segundos si la imagen se generó
+        // El servidor puede seguir procesando aunque haya timeout
         setTimeout(async () => {
           try {
             const checkRes = await fetch("/api/ai/history");
@@ -312,10 +320,9 @@ export default function EstudioIAPage() {
           } catch {
             setErrorMsg("La generación tardó demasiado. Recarga la página para verificar si se generó.");
           }
-        }, 8000); // Esperar 8s extra para que el servidor termine
+        }, 8000); 
       } else {
-        setErrorMsg("Error interno conectando con el servidor.");
-        // También verificar por si acaso
+        setErrorMsg(`Error interno conectando con el servidor. (${err?.message || "Desconocido"})`);
         setTimeout(() => fetchHistory(), 5000);
       }
     } finally {
