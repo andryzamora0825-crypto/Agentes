@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Menu, X, MessageSquare } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 
 export default function ClientSidebarWrapper({ 
   userButton, 
