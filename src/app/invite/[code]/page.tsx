@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Loader2, Crown, ShieldCheck, ArrowRight, UserPlus, CheckCircle2, AlertTriangle, X } from "lucide-react";
 
 export default function InvitePage() {
-  const params = useParams();
-  const code = (params?.code as string)?.toUpperCase();
+  const pathname = usePathname();
+  // Extraemos el código de la URL: /invite/OP-1234 -> OP-1234
+  const code = pathname?.split('/').pop()?.toUpperCase() || "";
+  
   const { isSignedIn, isLoaded, user } = useUser();
   const router = useRouter();
 
