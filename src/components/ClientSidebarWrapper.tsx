@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Menu, X, MessageSquare } from "lucide-react";
+import { Menu, X, MessageSquare, LogOut } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useClerk } from "@clerk/nextjs";
 
 export default function ClientSidebarWrapper({ 
   userButton, 
@@ -18,6 +18,7 @@ export default function ClientSidebarWrapper({
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const pathname = usePathname();
+  const { signOut } = useClerk();
 
   useEffect(() => { setIsOpen(false); }, [pathname]);
 
@@ -133,9 +134,16 @@ export default function ClientSidebarWrapper({
         <div className="shrink-0 p-4 lg:p-4 border-t border-white/[0.06] bg-white/[0.02]">
           <div className="flex items-center gap-3">
             {userButton}
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0 flex-1">
               <span className="text-xs text-white/50 truncate">Mi Cuenta</span>
             </div>
+            <button
+              onClick={() => signOut({ redirectUrl: '/' })}
+              className="w-8 h-8 rounded-lg bg-white/[0.04] hover:bg-red-500/15 flex items-center justify-center text-zinc-600 hover:text-red-400 transition-all active:scale-90"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </aside>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown, Globe } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import VipGate from "@/components/VipGate";
 
 const FORMAT_OPTIONS = [
@@ -93,6 +94,23 @@ export default function EstudioIAPage() {
   }, []);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  // Pre-fill prompt from query params (from Community "Recrear" button)
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const prePrompt = searchParams.get("prompt");
+    if (prePrompt) {
+      setPrompt(prePrompt);
+      setTimeout(() => {
+        const textarea = document.getElementById("prompt-input") as HTMLTextAreaElement | null;
+        if (textarea) {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+          textarea.focus();
+        }
+      }, 200);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (isLoaded && user && user.publicMetadata?.aiSettings) {
@@ -375,6 +393,29 @@ export default function EstudioIAPage() {
       alert("Error de conexión al eliminar.");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const publishToCommunity = async (img: any) => {
+    try {
+      const res = await fetch("/api/comunidad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: img.image_url,
+          prompt_used: img.prompt,
+          model_used: img.model || "Nano IA",
+          reference_images: [],
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("¡Publicado en la comunidad con éxito! +5 Créditos 🎁 (En desarrollo)");
+      } else {
+        alert(data.error || "No se pudo publicar.");
+      }
+    } catch {
+      alert("Error de conexión al publicar.");
     }
   };
 
@@ -789,8 +830,14 @@ export default function EstudioIAPage() {
                   </div>
 
                   <div className="mt-auto">
+                    <button 
+                      onClick={() => publishToCommunity(img)} 
+                      className="w-full mb-1.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-400 py-1.5 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-blue-500/15"
+                    >
+                      <Globe className="w-3 h-3 shrink-0" /> Hacer Público
+                    </button>
                     {/* Action buttons 2x2 */}
-                    <div className="grid grid-cols-2 gap-1.5 mt-4">
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button 
                         onClick={() => forceDownload(img.image_url, `zamtools_ia_${img.id.slice(0,6)}.png`)} 
                         className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/15 text-[#FFDE00] py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-[#FFDE00]/15"
