@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const body = await req.json();
-    const { image_url, prompt_used, model_used } = body;
+    const { image_url, prompt_used, model_used, reference_urls } = body;
 
     if (!image_url || !prompt_used) {
       return NextResponse.json({ error: "Imagen y prompt son requeridos." }, { status: 400 });
@@ -49,6 +49,7 @@ export async function POST(req: Request) {
         image_url,
         prompt_used,
         model_used: model_used || "Nano IA",
+        reference_urls: reference_urls && reference_urls.length > 0 ? reference_urls : null,
         likes_count: 0
       });
 

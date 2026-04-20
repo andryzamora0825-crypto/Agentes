@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown, Globe } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown, Globe, Wand2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import VipGate from "@/components/VipGate";
+import EditorPRO from "@/components/EditorPRO";
 
 const FORMAT_OPTIONS = [
   { id: 'auto', label: 'Auto', ratio: '', desc: 'IA decide', icon: 'sparkles' },
@@ -52,6 +53,7 @@ export default function EstudioIAPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
   const [isModerator, setIsModerator] = useState(false);
   const [autoPublishing, setAutoPublishing] = useState<string | null>(null);
+  const [editorImage, setEditorImage] = useState<any | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -405,7 +407,7 @@ export default function EstudioIAPage() {
           image_url: img.image_url,
           prompt_used: img.prompt,
           model_used: img.model || "Nano IA",
-          reference_images: [],
+          reference_urls: img.reference_urls || [],
         })
       });
       const data = await res.json();
@@ -836,6 +838,12 @@ export default function EstudioIAPage() {
                     >
                       <Globe className="w-3 h-3 shrink-0" /> Hacer Público
                     </button>
+                    <button 
+                      onClick={() => setEditorImage(img)} 
+                      className="w-full mb-1.5 bg-gradient-to-r from-[#FFDE00]/10 to-[#FFB800]/10 hover:from-[#FFDE00]/20 hover:to-[#FFB800]/20 text-[#FFDE00] py-1.5 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-[#FFDE00]/15"
+                    >
+                      <Wand2 className="w-3 h-3 shrink-0" /> Editor PRO ✨
+                    </button>
                     {/* Action buttons 2x2 */}
                     <div className="grid grid-cols-2 gap-1.5">
                       <button 
@@ -935,6 +943,15 @@ export default function EstudioIAPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Editor PRO Modal */}
+      {editorImage && (
+        <EditorPRO
+          image={editorImage}
+          onClose={() => setEditorImage(null)}
+          onImageSaved={() => fetchHistory()}
+        />
       )}
 
     </VipGate>

@@ -14,6 +14,7 @@ interface GalleryItem {
   image_url: string;
   prompt_used: string;
   model_used: string;
+  reference_urls: string[] | null;
   likes_count: number;
   created_at: string;
 }
@@ -260,6 +261,24 @@ export default function ComunidadPage() {
                   {lightbox.model_used || "Nano IA"}
                 </div>
 
+                {/* Reference Images */}
+                {lightbox.reference_urls && lightbox.reference_urls.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-1.5">Imágenes de Referencia</p>
+                    <div className="flex gap-1.5">
+                      {lightbox.reference_urls.map((url, i) => (
+                        <img
+                          key={i}
+                          src={url}
+                          alt={`Ref ${i + 1}`}
+                          className="w-14 h-14 rounded-lg object-cover border border-white/[0.06] hover:border-white/[0.15] transition-colors cursor-pointer"
+                          onClick={() => window.open(url, '_blank')}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="mt-auto flex flex-col gap-2">
                   <button
@@ -412,15 +431,30 @@ function MasonryCard({ item, index, onCopy, onRecreate, onLike, onLightbox, copi
         </div>
       </div>
 
-      {/* Footer: Author */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-white/[0.04]">
-        <img
-          src={item.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author_name)}&background=1a1a2e&color=fff&size=28`}
-          alt=""
-          className="w-5 h-5 rounded-full border border-white/[0.08]"
-        />
-        <span className="text-[10px] font-medium text-zinc-400 truncate flex-1">{item.author_name}</span>
-        <span className="text-[9px] text-zinc-600 shrink-0">{timeAgo(item.created_at)}</span>
+      {/* Footer: Author + Reference indicators */}
+      <div className="px-3 py-2.5 border-t border-white/[0.04]">
+        {item.reference_urls && item.reference_urls.length > 0 && (
+          <div className="flex gap-1 mb-2">
+            {item.reference_urls.map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt={`Ref ${i + 1}`}
+                className="w-6 h-6 rounded object-cover border border-white/[0.08] opacity-60"
+              />
+            ))}
+            <span className="text-[9px] text-zinc-600 self-center ml-1">refs</span>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <img
+            src={item.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author_name)}&background=1a1a2e&color=fff&size=28`}
+            alt=""
+            className="w-5 h-5 rounded-full border border-white/[0.08]"
+          />
+          <span className="text-[10px] font-medium text-zinc-400 truncate flex-1">{item.author_name}</span>
+          <span className="text-[9px] text-zinc-600 shrink-0">{timeAgo(item.created_at)}</span>
+        </div>
       </div>
     </div>
   );

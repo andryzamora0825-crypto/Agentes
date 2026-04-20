@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     let useAgencyIdentity = false;
     let useAgencyCharacter = false;
     let targetPlatform = "";
-    let referenceImages: { base64: string; mimeType: string; label?: string }[] = [];
+    let referenceImages: { base64: string; mimeType: string; label?: string; isUserRef?: boolean }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         if (file) {
           const arrayBuffer = await file.arrayBuffer();
           const base64 = Buffer.from(arrayBuffer).toString("base64");
-          referenceImages.push({ base64, mimeType: file.type || "image/png", label: "Imagen de Referencia enviada por el usuario" });
+          referenceImages.push({ base64, mimeType: file.type || "image/png", label: "Imagen de Referencia enviada por el usuario", isUserRef: true });
         }
       }
     } else {
@@ -326,13 +326,34 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       const finalPermanentUrl = publicUrlData.publicUrl;
 
-      // 6. Guardar registro en BD
+      // 6. Persistir imágenes de referencia del USUARIO en Storage
+      const userRefUrls: string[] = [];
+      const userRefs = referenceImages.filter(r => r.isUserRef);
+      for (let i = 0; i < userRefs.length; i++) {
+        try {
+          const refBuf = Buffer.from(userRefs[i].base64, "base64");
+          const refExt = userRefs[i].mimeType.includes("jpeg") ? "jpg" : "png";
+          const refName = `refs/${user.id}_${Date.now()}_ref${i}.${refExt}`;
+          const { error: refUpErr } = await supabase.storage
+            .from("ai-generations")
+            .upload(refName, refBuf, { contentType: userRefs[i].mimeType, upsert: false });
+          if (!refUpErr) {
+            const { data: refUrl } = supabase.storage.from("ai-generations").getPublicUrl(refName);
+            userRefUrls.push(refUrl.publicUrl);
+          }
+        } catch (refErr) {
+          console.warn("⚠️ Error subiendo referencia", i, refErr);
+        }
+      }
+
+      // 7. Guardar registro en BD
       const { error: dbError } = await supabase.from("ai_images").insert({
         prompt,
         image_url: finalPermanentUrl,
         author_id: user.primaryEmailAddress?.emailAddress,
         author_name: user.fullName || user.firstName || "Agente",
         author_avatar_url: user.imageUrl,
+        reference_urls: userRefUrls.length > 0 ? userRefUrls : null,
       });
 
       if (dbError) throw dbError;
