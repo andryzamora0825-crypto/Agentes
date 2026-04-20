@@ -904,9 +904,6 @@ export default function AdminPanelPage() {
 
                 <div className="flex items-center gap-4 shrink-0 pointer-events-none">
                   {/* Estadísticas Visibles en Colapsado */}
-                  {expandedUserId !== u.id && u.plan === 'VIP' && u.vipExpiresAt && (
-                    <VipCountdown expiresAt={u.vipExpiresAt} />
-                  )}
                   {expandedUserId !== u.id && (u.generationCount || 0) > 0 && (
                     <div className="hidden sm:block text-[11px] font-bold text-purple-400">
                       🎨 {u.generationCount}
@@ -925,8 +922,8 @@ export default function AdminPanelPage() {
                   
                   {/* Fila Múltiple: Info Extra y Opciones */}
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    {/* Generaciones */}
-                    <div className="flex items-center gap-3 w-full lg:w-auto">
+                    {/* Generaciones & Tiempo VIP */}
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
                       <div className="text-[11px] text-white/40 font-medium bg-white/[0.04] px-3 py-1.5 rounded-md whitespace-nowrap">
                         🖼️ {u.generationCount || 0} obras generadas
                       </div>
@@ -937,6 +934,15 @@ export default function AdminPanelPage() {
                         >
                           Ver Obras
                         </button>
+                      )}
+                      
+                      {u.plan === 'VIP' && u.vipExpiresAt && (
+                        <div className="bg-[#FFDE00]/5 border border-[#FFDE00]/10 px-3 py-1.5 rounded-md flex flex-wrap items-center gap-2">
+                           <span className="text-[10px] text-[#FFDE00]/60 uppercase tracking-widest font-bold">RESTAN:</span>
+                           <div className="scale-90 origin-left -my-1">
+                             <VipCountdown expiresAt={u.vipExpiresAt} />
+                           </div>
+                        </div>
                       )}
                     </div>
 

@@ -289,7 +289,7 @@ export default function ChatPage() {
                           <p className="text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                         )}
                         <span className={`text-[10px] uppercase font-bold mt-1.5 block text-right ${isMine ? "text-black/40" : "text-gray-600"}`}>
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(msg.created_at).toLocaleString('es-ES', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>
