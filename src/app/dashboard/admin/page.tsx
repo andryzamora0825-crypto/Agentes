@@ -314,6 +314,37 @@ export default function AdminPanelPage() {
     }
   };
 
+  const renewVip = async (targetId: string, currentExpiry: number | undefined | null) => {
+    if (!confirm(`¿Estás seguro de agregar 30 DÍAS a su tiempo VIP?`)) return;
+    setProcessingId(targetId);
+    try {
+       const res = await fetch("/api/admin/users/update", {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ targetUserId: targetId, action: "renew_vip" })
+       });
+
+       if (res.ok) {
+         const now = Date.now();
+         const newExpiry = (currentExpiry && currentExpiry > now) 
+           ? currentExpiry + (30 * 24 * 60 * 60 * 1000)
+           : now + (30 * 24 * 60 * 60 * 1000);
+         
+         setUsers(prev => prev.map(u => u.id === targetId ? { 
+           ...u, 
+           plan: "VIP", 
+           vipExpiresAt: newExpiry
+         } : u));
+       } else {
+         alert("Error renovando el plan VIP.");
+       }
+    } catch (e) {
+      alert("Error en la conexión.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const deployStatusCampaign = async () => {
     const rawPrompts = promptsText.split('\n').filter(p => p.trim() !== "");
     if (rawPrompts.length === 0) {
@@ -906,13 +937,24 @@ export default function AdminPanelPage() {
                     {/* Cambiar Rol */}
                     <div className="flex items-center gap-2">
                        <span className="text-[10px] text-white/40 uppercase tracking-widest font-medium">Gestionar Plan:</span>
-                       <button 
-                         onClick={() => togglePlan(u.id, u.plan)}
-                         disabled={processingId === u.id}
-                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[120px] ${u.plan === 'VIP' ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00]/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'}`}
-                       >
-                         {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : (u.plan === 'VIP' ? 'REVOCAR A FREE' : 'ASCENDER A VIP')}
-                       </button>
+                       <div className="flex items-center gap-2">
+                         {u.plan === 'VIP' && (
+                           <button 
+                             onClick={() => renewVip(u.id, u.vipExpiresAt)}
+                             disabled={processingId === u.id}
+                             className="px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white"
+                           >
+                             {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'RENOVAR VIP (+30 DÍAS)'}
+                           </button>
+                         )}
+                         <button 
+                           onClick={() => togglePlan(u.id, u.plan)}
+                           disabled={processingId === u.id}
+                           className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[120px] ${u.plan === 'VIP' ? 'bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00]/20' : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'}`}
+                         >
+                           {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : (u.plan === 'VIP' ? 'REVOCAR A FREE' : 'ASCENDER A VIP')}
+                         </button>
+                       </div>
                     </div>
                   </div>
 

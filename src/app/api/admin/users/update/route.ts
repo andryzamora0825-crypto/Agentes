@@ -10,16 +10,30 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { targetUserId, newCredits, newPlan } = body;
+    const { targetUserId, newCredits, newPlan, action } = body;
 
     if (!targetUserId) {
       return NextResponse.json({ error: "Faltan parámetros de seguridad." }, { status: 400 });
     }
 
+    const client = await clerkClient();
+    const targetUser = await client.users.getUser(targetUserId);
+
     const updateData: any = {};
     if (newCredits !== undefined) updateData.credits = newCredits;
-    // Lógica Regresiva VIP (30 Días)
-    if (newPlan !== undefined) {
+    
+    if (action === "renew_vip") {
+      updateData.plan = "VIP";
+      const currentExpiry = targetUser.publicMetadata?.vipExpiresAt as number | undefined;
+      const now = Date.now();
+      if (currentExpiry && currentExpiry > now) {
+        // Stack: it's not expired yet, add 30 days to the remaining time.
+        updateData.vipExpiresAt = currentExpiry + (30 * 24 * 60 * 60 * 1000);
+      } else {
+        // Expired or null context: start 30 days from right now.
+        updateData.vipExpiresAt = now + (30 * 24 * 60 * 60 * 1000);
+      }
+    } else if (newPlan !== undefined) {
       updateData.plan = newPlan;
       if (newPlan === "VIP") {
         updateData.vipExpiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 días en milisegundos
@@ -27,9 +41,6 @@ export async function POST(request: Request) {
         updateData.vipExpiresAt = null; // Borramos el contador si pasa a FREE
       }
     }
-
-    const client = await clerkClient();
-    
     // Inyectar o remover créditos y planes
     await client.users.updateUserMetadata(targetUserId, {
       publicMetadata: updateData
