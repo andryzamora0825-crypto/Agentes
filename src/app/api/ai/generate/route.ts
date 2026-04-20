@@ -235,18 +235,23 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       // Sin responseModalities: ["TEXT", "IMAGE"], el SDK NUNCA devuelve imágenes
       // y se queda colgado hasta que Vercel mata la función (5 min timeout fantasma)
       
-      // ═══ RETRY CON BACKOFF PARA ERRORES 503/429 (ALTA DEMANDA) ═══
-      const MAX_RETRIES = 3;
+      // ═══ RETRY CON BACKOFF + FALLBACK DE MODELO PARA 503/429 ═══
+      const MAX_RETRIES = 5;
       let response;
       let lastRetryError: any = null;
+      // Modelo alternativo: si flash falla, probar pro y viceversa
+      const fallbackModel = model === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        // En los últimos 2 intentos, cambiar al modelo alternativo
+        const currentModel = attempt >= (MAX_RETRIES - 1) ? fallbackModel : model;
         const abortController = new AbortController();
         const geminiTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s máx
 
         try {
+          console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con modelo ${currentModel}...`);
           response = await ai.models.generateContent({
-            model,
+            model: currentModel,
             contents,
             config: {
               responseModalities: ["TEXT", "IMAGE"],
@@ -259,14 +264,18 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           lastRetryError = retryErr;
 
           // Detectar errores transitorios (503 UNAVAILABLE, 429 RESOURCE_EXHAUSTED)
-          const errMsg = retryErr?.message || JSON.stringify(retryErr) || "";
-          const isTransient = errMsg.includes("503") || errMsg.includes("UNAVAILABLE") 
-            || errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED")
-            || errMsg.includes("high demand") || errMsg.includes("overloaded");
+          const errMsg = retryErr?.message || "";
+          const errStr = typeof retryErr === 'object' ? JSON.stringify(retryErr) : String(retryErr);
+          const combinedMsg = `${errMsg} ${errStr}`;
+          const isTransient = combinedMsg.includes("503") || combinedMsg.includes("UNAVAILABLE") 
+            || combinedMsg.includes("429") || combinedMsg.includes("RESOURCE_EXHAUSTED")
+            || combinedMsg.includes("high demand") || combinedMsg.includes("overloaded")
+            || combinedMsg.includes("temporarily") || combinedMsg.includes("capacity");
 
           if (isTransient && attempt < MAX_RETRIES) {
-            const backoffMs = Math.min(2000 * Math.pow(2, attempt - 1), 10000); // 2s, 4s, 8s (máx 10s)
-            console.warn(`⏳ Gemini 503/429 — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs}ms...`);
+            // Backoff exponencial: 3s, 6s, 12s, 15s (cap)
+            const backoffMs = Math.min(3000 * Math.pow(2, attempt - 1), 15000);
+            console.warn(`⏳ Gemini ${isTransient ? '503/429' : 'error'} — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs/1000}s (próximo modelo: ${attempt >= (MAX_RETRIES - 2) ? fallbackModel : model})...`);
             await new Promise(resolve => setTimeout(resolve, backoffMs));
             continue;
           }
@@ -342,30 +351,41 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
     } catch (apiError: any) {
       // Revertir pago si falló la generación
-      await client.users.updateUserMetadata(user.id, {
-        publicMetadata: { credits: currentCredits },
-      });
+      try {
+        await client.users.updateUserMetadata(user.id, {
+          publicMetadata: { credits: currentCredits },
+        });
+      } catch (refundErr) {
+        console.error("⚠️ Error reembolsando créditos:", refundErr);
+      }
       
       // Mensaje de error amigable — NUNCA mostrar JSON crudo al usuario
-      const rawMsg = apiError?.message || JSON.stringify(apiError) || "";
-      console.error("Error en Nano Banana:", rawMsg);
+      // Extraer mensaje de forma segura de cualquier formato de error del SDK
+      let rawMsg = "";
+      try {
+        rawMsg = apiError?.message || "";
+        if (!rawMsg && typeof apiError === 'object') {
+          rawMsg = JSON.stringify(apiError);
+        }
+      } catch { rawMsg = String(apiError); }
+      console.error("Error en Nano Banana (5 reintentos agotados):", rawMsg.slice(0, 500));
 
       const isTimeout = apiError?.name === "AbortError" || rawMsg.includes("abort");
-      const is503 = rawMsg.includes("503") || rawMsg.includes("UNAVAILABLE") || rawMsg.includes("high demand");
+      const is503 = rawMsg.includes("503") || rawMsg.includes("UNAVAILABLE") || rawMsg.includes("high demand") || rawMsg.includes("capacity");
       const is429 = rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED") || rawMsg.includes("rate");
       const isNoImage = rawMsg.includes("no devolvió una imagen") || rawMsg.includes("respondió con texto");
 
       let friendlyMsg: string;
       if (isTimeout) {
-        friendlyMsg = "Nano Banana tardó demasiado (>90s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
+        friendlyMsg = "⏳ Nano Banana tardó demasiado (>90s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
       } else if (is503) {
-        friendlyMsg = "El modelo IA está saturado por alta demanda. Espera 1–2 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
+        friendlyMsg = "🔥 Los servidores de IA están saturados (alta demanda global). Se intentó 5 veces con 2 modelos diferentes. Espera 2–3 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
       } else if (is429) {
-        friendlyMsg = "Demasiadas solicitudes seguidas. Espera unos segundos e intenta de nuevo. Tus créditos fueron reembolsados.";
+        friendlyMsg = "⚡ Demasiadas solicitudes seguidas. Espera 30 segundos e intenta de nuevo. Tus créditos fueron reembolsados.";
       } else if (isNoImage) {
-        friendlyMsg = "La IA respondió solo con texto y no generó imagen. Intenta reformular tu prompt. Tus créditos fueron reembolsados.";
+        friendlyMsg = "🎨 La IA respondió solo con texto y no generó imagen. Intenta reformular tu prompt de forma más visual. Tus créditos fueron reembolsados.";
       } else {
-        friendlyMsg = "Nano Banana falló al generar la imagen. Tus créditos han sido reembolsados. Intenta de nuevo.";
+        friendlyMsg = "❌ Nano Banana falló al generar la imagen. Tus créditos han sido reembolsados. Intenta de nuevo en unos momentos.";
       }
 
       return NextResponse.json({
