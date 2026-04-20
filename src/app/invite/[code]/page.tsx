@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Loader2, Crown, ShieldCheck, ArrowRight, UserPlus, CheckCircle2, AlertTriangle, X } from "lucide-react";
 
-export default function InvitePage({ params }: { params: { code: string } }) {
-  const code = params.code?.toUpperCase();
+export default function InvitePage() {
+  const params = useParams();
+  const code = (params?.code as string)?.toUpperCase();
   const { isSignedIn, isLoaded, user } = useUser();
   const router = useRouter();
 
