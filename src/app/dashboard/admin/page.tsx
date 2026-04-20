@@ -961,7 +961,32 @@ export default function AdminPanelPage() {
                     {/* Cambiar Rol */}
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto mt-2 lg:mt-0">
                        <span className="text-[10px] text-white/40 uppercase tracking-widest font-medium whitespace-nowrap">Gestionar Plan:</span>
-                       <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                       <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+                         
+                         {u.role !== 'operator' && (
+                           <button
+                             onClick={async () => {
+                               if (!confirm(`¿Convertir a ${u.name} en OPERADOR B2B2C? Se le generará un código de afiliado y un inventario vacío.`)) return;
+                               setProcessingId(u.id);
+                               try {
+                                 const res = await fetch("/api/admin/users/update", {
+                                   method: "POST",
+                                   headers: { "Content-Type": "application/json" },
+                                   body: JSON.stringify({ targetUserId: u.id, action: "promote_operator" })
+                                 });
+                                 if (res.ok) {
+                                   const data = await res.json();
+                                   setUsers(prev => prev.map(x => x.id === u.id ? { ...x, role: 'operator', affiliateCode: data.affiliateCode || 'F5 para ver...', operatorInventory: { vipTokens: 0, credits: 0 } } : x));
+                                 } else { alert("Error promoviendo."); }
+                               } catch(e) { alert("Error de red."); } finally { setProcessingId(null); }
+                             }}
+                             disabled={processingId === u.id}
+                             className="w-full sm:w-auto px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 min-w-[120px] bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500 hover:text-white"
+                           >
+                             {processingId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '👑 CONVERTIR EN OPERADOR'}
+                           </button>
+                         )}
+
                          {u.plan === 'VIP' && (
                            <button 
                              onClick={() => renewVip(u.id, u.vipExpiresAt)}
@@ -1030,6 +1055,73 @@ export default function AdminPanelPage() {
                        </div>
                     </div>
                   </div>
+
+                   {/* Inventario del Operador (Solo visible si ya es Operador) */}
+                   {u.role === 'operator' && (
+                     <div className="bg-[#141414] border border-purple-500/30 rounded-xl p-5 shadow-[0_0_15px_rgba(168,85,247,0.05)]">
+                       <div className="text-[10px] text-purple-400 uppercase font-black tracking-widest mb-4 flex items-center gap-2">
+                         👑 GESTIÓN DE INVENTARIO DEL OPERADOR
+                       </div>
+                       
+                       <div className="space-y-4">
+                         <div className="flex items-center justify-between bg-[#0A0A0A] p-3 rounded-lg border border-white/[0.04]">
+                           <span className="text-xs text-white/40">Código Afiliado Distribuidor:</span>
+                           <span className="text-sm font-black text-[#FFDE00] tracking-widest">{u.affiliateCode || '...'}</span>
+                         </div>
+                         <div className="grid grid-cols-2 gap-3">
+                           <div className="bg-[#0A0A0A] p-4 rounded-lg border border-purple-500/20 shadow-inner">
+                             <div className="text-[10px] text-white/30 uppercase tracking-widest font-bold mb-1">VIP Tokens de Venta</div>
+                             <div className="text-2xl font-black text-white">{u.operatorInventory?.vipTokens || 0}</div>
+                           </div>
+                           <div className="bg-[#0A0A0A] p-4 rounded-lg border border-[#FFDE00]/20 shadow-inner">
+                             <div className="text-[10px] text-white/30 uppercase tracking-widest font-bold mb-1">Créditos al por Mayor</div>
+                             <div className="text-2xl font-black text-white">{(u.operatorInventory?.credits || 0).toLocaleString()}</div>
+                           </div>
+                         </div>
+                         <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                           <input
+                             type="text" inputMode="numeric" pattern="[0-9]*"
+                             placeholder="Tokens VIP a cargar"
+                             className="flex-1 bg-[#0A0A0A] border border-white/[0.06] rounded-xl text-white px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 text-center font-bold placeholder-white/20 transition-colors"
+                             id={`inv-vip-${u.id}`}
+                           />
+                           <input
+                             type="text" inputMode="numeric" pattern="[0-9]*"
+                             placeholder="Créditos a cargar"
+                             className="flex-1 bg-[#0A0A0A] border border-white/[0.06] rounded-xl text-white px-4 py-3 text-sm focus:outline-none focus:border-[#FFDE00]/50 text-center font-bold placeholder-white/20 transition-colors"
+                             id={`inv-credits-${u.id}`}
+                           />
+                           <button
+                             onClick={async () => {
+                               const vipEl = document.getElementById(`inv-vip-${u.id}`) as HTMLInputElement;
+                               const credEl = document.getElementById(`inv-credits-${u.id}`) as HTMLInputElement;
+                               const vipD = Number(vipEl?.value) || 0;
+                               const credD = Number(credEl?.value) || 0;
+                               if (vipD === 0 && credD === 0) return alert("Ingresa al menos una cantidad.");
+                               if (!confirm(`¿Cargar +${vipD} VIP Tokens y +${credD} Créditos al inventario mayorista de este operador?`)) return;
+                               setProcessingId(u.id);
+                               try {
+                                 const res = await fetch("/api/admin/users/update", {
+                                   method: "POST",
+                                   headers: { "Content-Type": "application/json" },
+                                   body: JSON.stringify({ targetUserId: u.id, action: "modify_inventory", vipTokensDelta: vipD, creditsDelta: credD })
+                                 });
+                                 if (res.ok) {
+                                   setUsers(prev => prev.map(x => x.id === u.id ? { ...x, operatorInventory: { vipTokens: (x.operatorInventory?.vipTokens || 0) + vipD, credits: (x.operatorInventory?.credits || 0) + credD } } : x));
+                                   if (vipEl) vipEl.value = '';
+                                   if (credEl) credEl.value = '';
+                                 } else { alert("Error cargando inventario al operador."); }
+                               } catch(e) { alert("Error de red."); } finally { setProcessingId(null); }
+                             }}
+                             disabled={processingId === u.id}
+                             className="px-6 py-3 bg-gradient-to-r from-purple-500 to-[#FFDE00] text-black font-black rounded-xl text-[11px] uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50 shrink-0 shadow-lg"
+                           >
+                             {processingId === u.id ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : '🚀 SURTIR INVENTARIO'}
+                           </button>
+                         </div>
+                       </div>
+                     </div>
+                   )}
 
                   {/* Módulos Extra (WhatsApp & Social) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

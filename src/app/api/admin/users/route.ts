@@ -15,7 +15,7 @@ export async function GET() {
     // Obtenemos lista de usuarios de Clerk (limite por defecto 100-500)
     const response = await client.users.getUserList({
       orderBy: "-created_at",
-      limit: 100
+      limit: 500
     });
     const { data: imgData } = await supabase.from("ai_images").select("author_id");
     const imgCounts: Record<string, number> = {};
@@ -56,7 +56,11 @@ export async function GET() {
         },
         createdAt: u.createdAt,
         generationCount: imgCounts[email.toLowerCase()] || 0,
-        activityLogs: meta?.activityLogs || []
+        activityLogs: meta?.activityLogs || [],
+        role: meta?.role || 'user',
+        affiliateCode: meta?.affiliateCode || null,
+        operatorInventory: meta?.operatorInventory || null,
+        linkedOperatorId: meta?.linkedOperatorId || null
       };
     });
 

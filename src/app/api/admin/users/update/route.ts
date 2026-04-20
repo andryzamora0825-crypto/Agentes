@@ -36,10 +36,8 @@ export async function POST(request: Request) {
       const currentExpiry = targetUser.publicMetadata?.vipExpiresAt as number | undefined;
       const now = Date.now();
       if (currentExpiry && currentExpiry > now) {
-        // Stack: it's not expired yet, add 30 days to the remaining time.
         updateData.vipExpiresAt = currentExpiry + (30 * 24 * 60 * 60 * 1000);
       } else {
-        // Expired or null context: start 30 days from right now.
         updateData.vipExpiresAt = now + (30 * 24 * 60 * 60 * 1000);
       }
       logType = "VIP";
@@ -47,14 +45,35 @@ export async function POST(request: Request) {
     } else if (newPlan !== undefined) {
       updateData.plan = newPlan;
       if (newPlan === "VIP") {
-        updateData.vipExpiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 días en milisegundos
+        updateData.vipExpiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
         logType = "PLAN";
         logDetails = "Ascendido a plan VIP";
       } else {
-        updateData.vipExpiresAt = null; // Borramos el contador si pasa a FREE
+        updateData.vipExpiresAt = null;
         logType = "PLAN";
         logDetails = "Revocado a plan FREE";
       }
+    }
+
+    // ── OPERADOR: Promoción a Operador ──
+    if (action === "promote_operator") {
+      const code = "OP-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+      updateData.role = "operator";
+      updateData.affiliateCode = code;
+      updateData.operatorInventory = { vipTokens: 0, credits: 0 };
+      logType = "PLAN";
+      logDetails = `Promovido a OPERADOR (Código: ${code})`;
+    }
+
+    // ── OPERADOR: Modificar Inventario (Solo Admin) ──
+    if (action === "modify_inventory") {
+      const { vipTokensDelta, creditsDelta } = body;
+      const currentInventory = (targetUser.publicMetadata as any)?.operatorInventory || { vipTokens: 0, credits: 0 };
+      const newVipTokens = Math.max(0, (currentInventory.vipTokens || 0) + (vipTokensDelta || 0));
+      const newCredits = Math.max(0, (currentInventory.credits || 0) + (creditsDelta || 0));
+      updateData.operatorInventory = { vipTokens: newVipTokens, credits: newCredits };
+      logType = "CREDITS";
+      logDetails = `Inventario Operador modificado: VIP Tokens ${currentInventory.vipTokens}→${newVipTokens}, Créditos ${currentInventory.credits}→${newCredits}`;
     }
 
     if (logType) {
@@ -68,7 +87,11 @@ export async function POST(request: Request) {
       publicMetadata: updateData
     });
 
-    return NextResponse.json({ success: true, updatedBalance: newCredits });
+    return NextResponse.json({ 
+      success: true, 
+      updatedBalance: newCredits,
+      affiliateCode: updateData.affiliateCode
+    });
   } catch (error: any) {
     console.error("Fallo al inyectar economía admin:", error);
     return NextResponse.json({ error: "Error conectando al panel central de Clerk." }, { status: 500 });

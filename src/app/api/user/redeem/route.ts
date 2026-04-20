@@ -98,26 +98,32 @@ export async function POST(request: Request) {
       successMessage = `¡Felicidades! Has activado ${promoCode.reward_value} días VIP + ${comboCredits} créditos.`;
     }
 
-    await client.users.updateUserMetadata(user.id, {
-      publicMetadata: {
-        ...currentMetadata,
-        ...updateToApply
-      }
-    });
-
-    // 6. Registrar el canjeo para evitar múltiples usos
-    await supabase
+    // 5. Registrar el canjeo PRIMERO para evitar race conditions (si esto falla por unicidad, aborta)
+    const { error: insertError } = await supabase
       .from("promo_redemptions")
       .insert({
         code_id: promoCode.id,
         user_email: email
       });
 
-    // 7. Aumentar el contador de uso
+    if (insertError) {
+      // Si viola la constraint de unicidad, o da error, no aplicamos la recompensa
+      return NextResponse.json({ error: "Ya has canjeado este código o la transacción falló." }, { status: 400 });
+    }
+
+    // 6. Aumentar el contador de uso
     await supabase
       .from("promo_codes")
       .update({ used_count: promoCode.used_count + 1 })
       .eq("id", promoCode.id);
+
+    // 7. Aplicar la Recompensa en Clerk de manera segura
+    await client.users.updateUserMetadata(user.id, {
+      publicMetadata: {
+        ...currentMetadata,
+        ...updateToApply
+      }
+    });
 
     return NextResponse.json({ success: true, message: successMessage });
 

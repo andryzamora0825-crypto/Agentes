@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2 } from "lucide-react";
+import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2, Crown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
@@ -16,6 +16,7 @@ export default function SidebarNav() {
   const [hasSocialMedia, setHasSocialMedia] = useState(false);
   
   const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
+  const isOperator = (user?.publicMetadata as any)?.role === "operator";
 
   useEffect(() => {
     fetch("/api/user/sync")
@@ -37,6 +38,7 @@ export default function SidebarNav() {
   const navItems = [
     { name: "Notas de Retiro",     href: "/dashboard",              exact: true,  icon: FileText,      adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Panel Admin",         href: "/dashboard/admin",         exact: false, icon: ShieldCheck,   adminOnly: true,  vipOnly: false, requiresBot: false },
+    { name: "Mi Agencia",           href: "/dashboard/operador",      exact: false, icon: Crown,         adminOnly: false, vipOnly: false, requiresBot: false, operatorOnly: true },
     { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Social Media",        href: "/dashboard/social",        exact: false, icon: Share2,        adminOnly: false, vipOnly: false, requiresBot: false, requiresSocial: true },
     { name: "Bot WhatsApp",        href: "/dashboard/whatsapp",      exact: false, icon: MessageSquare, adminOnly: false, vipOnly: true,  requiresBot: false },
@@ -56,6 +58,7 @@ export default function SidebarNav() {
 
       {navItems.map((item, index) => {
         if (item.adminOnly && !isAdmin) return null;
+        if ((item as any).operatorOnly && !isOperator) return null;
         if (item.vipOnly && !isVip) return null;
         if (item.requiresBot && !hasWhatsappBot && !isAdmin) return null;
         if ((item as any).requiresSocial && !hasSocialMedia && !isAdmin) return null;

@@ -2,7 +2,7 @@
 
 import { UserProfile, useUser, useClerk } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
-import { Settings, Shield, Coins, Loader2, Calendar, LogOut, Star, Zap, Upload, Globe } from "lucide-react";
+import { Settings, Shield, Coins, Loader2, Calendar, LogOut, Star, Zap, Upload, Globe, Link2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +14,12 @@ export default function ConfiguracionPage() {
   const [plan, setPlan] = useState<string>("Cargando...");
   const [daysLeft, setDaysLeft] = useState<number>(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  // Affiliate linking states
+  const [affiliateInput, setAffiliateInput] = useState('');
+  const [linkingOperator, setLinkingOperator] = useState(false);
+  const [linkedOperatorName, setLinkedOperatorName] = useState<string | null>(null);
+  const [linkedOperatorId, setLinkedOperatorId] = useState<string | null>(null);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,7 +48,16 @@ export default function ConfiguracionPage() {
         }
       })
       .catch(console.error);
-  }, []);
+
+    // Check if already linked to an operator
+    if (user?.publicMetadata) {
+      const meta = user.publicMetadata as any;
+      if (meta.linkedOperatorId) {
+        setLinkedOperatorId(meta.linkedOperatorId);
+        setLinkedOperatorName(meta.linkedOperatorName || 'Agencia Vinculada');
+      }
+    }
+  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -152,6 +167,73 @@ export default function ConfiguracionPage() {
         </div>
 
       </div>
+
+      {/* Vincular Agencia / Operador */}
+      {(user?.publicMetadata as any)?.role !== 'operator' && (
+        <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-cyan-500/10 p-2 rounded-lg border border-cyan-500/20">
+              <Link2 className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-white/90 tracking-tight">Vinculación de Agencia</h2>
+              <p className="text-white/30 text-sm mt-0.5">Conecta tu cuenta a un operador autorizado.</p>
+            </div>
+          </div>
+
+          {linkedOperatorId ? (
+            <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-4 flex items-center gap-3">
+              <div className="bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                <Shield className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-emerald-400">Vinculado exitosamente</p>
+                <p className="text-xs text-white/30 mt-0.5">Tu cuenta está conectada permanentemente a: <strong className="text-white/50">{linkedOperatorName}</strong></p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                value={affiliateInput}
+                onChange={(e) => setAffiliateInput(e.target.value.toUpperCase())}
+                placeholder="Ej: OP-7F4B2"
+                className="flex-1 bg-[#0A0A0A] border border-white/[0.08] rounded-lg px-4 py-3 text-white/90 text-sm focus:outline-none focus:border-cyan-500/40 placeholder-white/20 font-bold tracking-widest uppercase transition-colors"
+              />
+              <button
+                disabled={linkingOperator || !affiliateInput.trim()}
+                onClick={async () => {
+                  if (!confirm('⚠️ ATENCIÓN: Este enlace es PERMANENTE e IRREVERSIBLE. ¿Estás seguro de vincularte a esta agencia?')) return;
+                  setLinkingOperator(true);
+                  try {
+                    const res = await fetch('/api/user/link-operator', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ affiliateCode: affiliateInput.trim() })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setLinkedOperatorId('linked');
+                      setLinkedOperatorName(data.operatorName);
+                      alert(data.message);
+                    } else {
+                      alert(data.error);
+                    }
+                  } catch (e) {
+                    alert('Error de conexión.');
+                  } finally {
+                    setLinkingOperator(false);
+                  }
+                }}
+                className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold px-6 py-3 rounded-lg text-sm transition-all disabled:opacity-50 flex items-center gap-2 justify-center shrink-0"
+              >
+                {linkingOperator ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                Vincular
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Clerk UserProfile */}
       <div className="rounded-lg overflow-hidden border border-white/[0.06]">
