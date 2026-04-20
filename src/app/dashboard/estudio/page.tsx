@@ -227,7 +227,7 @@ export default function EstudioIAPage() {
     setLastModel(null);
 
     const abortController = new AbortController();
-    const clientTimeout = setTimeout(() => abortController.abort(), 85_000); // 85s (server maxDuration = 80s)
+    const clientTimeout = setTimeout(() => abortController.abort(), 280_000); // 280s (casi 5 mins para aprovechar Vercel PRO)
 
     try {
       const fd = new FormData();

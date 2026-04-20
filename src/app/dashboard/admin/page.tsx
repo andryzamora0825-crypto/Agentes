@@ -6,6 +6,37 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+const VipCountdown = ({ expiresAt }: { expiresAt: number }) => {
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updateTime = () => {
+      const diff = expiresAt - Date.now();
+      if (diff <= 0) {
+        setTimeLeft("VENCIDO");
+      } else {
+        const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+        const m = Math.floor((diff / (1000 * 60)) % 60);
+        const s = Math.floor((diff / 1000) % 60);
+        setTimeLeft(`${d}d ${h}h ${m}m ${s}s`);
+      }
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  if (!timeLeft) return null;
+  const isExpired = timeLeft === "VENCIDO";
+
+  return (
+    <div className={`flex items-center px-2 py-1 rounded text-[10px] font-mono border ${!isExpired ? 'bg-[#FFDE00]/5 text-[#FFDE00]/70 border-[#FFDE00]/10' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+      {timeLeft === "VENCIDO" ? "VENCIDO" : <>{timeLeft} Left</>}
+    </div>
+  );
+};
+
 export default function AdminPanelPage() {
   const { user } = useUser();
   const router = useRouter();
@@ -837,9 +868,7 @@ export default function AdminPanelPage() {
                 <div className="flex items-center gap-4 shrink-0 pointer-events-none">
                   {/* Estadísticas Visibles en Colapsado */}
                   {expandedUserId !== u.id && u.plan === 'VIP' && u.vipExpiresAt && (
-                    <div className="hidden sm:flex items-center bg-[#FFDE00]/5 px-2 py-1 rounded text-[10px] text-[#FFDE00]/70 font-mono border border-[#FFDE00]/10">
-                      {Math.max(0, Math.ceil((u.vipExpiresAt - Date.now()) / (1000 * 60 * 60 * 24)))}D Left
-                    </div>
+                    <VipCountdown expiresAt={u.vipExpiresAt} />
                   )}
                   {expandedUserId !== u.id && (u.generationCount || 0) > 0 && (
                     <div className="hidden sm:block text-[11px] font-bold text-purple-400">

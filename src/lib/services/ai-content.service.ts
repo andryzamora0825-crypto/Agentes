@@ -264,7 +264,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const currentModel = attempt >= 2 ? fallbackModel : modelToUse;
     const abortController = new AbortController();
-    const geminiTimer = setTimeout(() => abortController.abort(), 50_000);
+    const geminiTimer = setTimeout(() => abortController.abort(), 120_000); // 120s máx (Vercel PRO)
 
     try {
       console.log(`🎨 [SOCIAL] Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);

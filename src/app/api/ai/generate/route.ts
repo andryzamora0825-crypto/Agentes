@@ -3,7 +3,7 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-export const maxDuration = 80; // 80s — 50s por intento × 3 intentos con backoff rápido
+export const maxDuration = 300; // 5 minutos máximo (Soportado por Vercel Pro) para soportar alta demanda de Google
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -244,7 +244,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         const currentModel = attempt >= 2 ? fallbackModel : model;
         const abortController = new AbortController();
-        const geminiTimeout = setTimeout(() => abortController.abort(), 50_000);
+        const geminiTimeout = setTimeout(() => abortController.abort(), 120_000); // 120s máx por intento (Vercel PRO lo soporta)
 
         try {
           console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);

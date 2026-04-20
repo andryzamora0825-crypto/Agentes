@@ -20,6 +20,26 @@ export default function ClientSidebarWrapper({
 
   useEffect(() => { setIsOpen(false); }, [pathname]);
 
+  const { user, isLoaded } = useUser();
+  useEffect(() => {
+    // 🛡️ REVISOR GLOBAL DE CADUCIDAD VIP
+    // Si la persona sigue marcada como VIP pero su tiempo expiró, disparamos la revocación
+    if (isLoaded && user && typeof user.publicMetadata === 'object') {
+      const { plan, vipExpiresAt } = user.publicMetadata as any;
+      if (plan === 'VIP' && vipExpiresAt) {
+        if (Date.now() > Number(vipExpiresAt)) {
+          console.warn("⚠️ Tiempo VIP expirado detectado en el cliente. Bajando a FREE...");
+          fetch('/api/user/sync')
+            .then(res => res.json())
+            .then(() => {
+              window.location.reload(); // Recarga para que toda la UI se limpie y tome el nuevo token
+            })
+            .catch(err => console.error("Error al revocar VIP:", err));
+        }
+      }
+    }
+  }, [user, isLoaded]);
+
   useEffect(() => {
     const fetchUnread = () => {
       fetch(`/api/chat?action=unread_count&t=${Date.now()}`, {
