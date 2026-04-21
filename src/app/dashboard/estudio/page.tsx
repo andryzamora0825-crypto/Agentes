@@ -247,7 +247,7 @@ export default function EstudioIAPage() {
     setLastModel(null);
 
     const abortController = new AbortController();
-    const clientTimeout = setTimeout(() => abortController.abort(), 280_000); // 280s (casi 5 mins para aprovechar Vercel PRO)
+    const clientTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s (server tiene 60s por intento, max 2 intentos)
 
     try {
       const fd = new FormData();
@@ -286,7 +286,21 @@ export default function EstudioIAPage() {
 
       if (res.ok) {
         setLastModel(data.model || null);
-        fetchHistory();
+        // ═══ OPTIMIZACIÓN: Inyectar localmente en vez de re-descargar TODO el historial ═══
+        // Esto elimina la espera de fetchHistory() que en WiFi lento puede tardar 5-15s extra
+        if (data.imageUrl) {
+          setImages(prev => [{
+            id: `local_${Date.now()}`,
+            prompt,
+            image_url: data.imageUrl,
+            author_id: user?.primaryEmailAddress?.emailAddress || "",
+            author_name: user?.fullName || user?.firstName || "Agente",
+            author_avatar_url: user?.imageUrl || "",
+            created_at: new Date().toISOString(),
+          }, ...prev]);
+        }
+        // Sync completo en background (silencioso, no bloquea UI)
+        setTimeout(() => fetchHistory(), 3000);
         
         // Disparar auto-publicación MASIVA si es moderador (Fire and forget silencioso)
         if (isModerator) {

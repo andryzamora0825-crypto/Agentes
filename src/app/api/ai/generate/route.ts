@@ -3,7 +3,7 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-export const maxDuration = 300; // 5 minutos máximo (Soportado por Vercel Pro) para soportar alta demanda de Google
+export const maxDuration = 300; // 5 minutos máximo (Soportado por Vercel Pro)
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -12,8 +12,8 @@ const NANO_BANANA_2   = "gemini-3.1-flash-image-preview";
 // Nano Banana Pro — requiere billing, alta fidelidad + imágenes de referencia
 const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
-// Helper: fetch con timeout para evitar cuelgues en imágenes de referencia
-async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+// Helper: fetch con timeout agresivo para evitar cuelgues
+async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -66,9 +66,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta el prompt" }, { status: 400 });
     }
 
-
     // Usamos el prompt base
     let finalPrompt = prompt;
+
+    // ═══ OPTIMIZACIÓN: Preparar fetches de imágenes en paralelo con verificación de créditos ═══
+    const itemsToFetch: { url: string; label: string }[] = [];
 
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
@@ -92,8 +94,6 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         astrobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_astrobet.png${cacheBuster}`,
       };
 
-      const itemsToFetch: { url: string; label: string }[] = [];
-      
       if (aiSettings.agencyLogoUrl) {
         itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
       }
@@ -141,62 +141,72 @@ ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamen
 - Color Secundario: ${aiSettings.secondaryColor || '#000000'}
 Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
       }
+    }
 
-      const fetchPromises = itemsToFetch.map(async (item) => {
+    // ═══ OPTIMIZACIÓN CLAVE: Lanzar fetch de imágenes + personaje + créditos TODO EN PARALELO ═══
+    const fetchImagesPromise = Promise.all(
+      itemsToFetch.map(async (item) => {
         try {
-          const res = await fetchWithTimeout(item.url, 8000);
+          const res = await fetchWithTimeout(item.url, 5000); // ← 5s en vez de 8s
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             const mimeType = res.headers.get('content-type') || "image/png";
-            
-            // FILTRO CRITICO: Solo enviar a Gemini si realmente es una imagen (Evitar Error 500 Internal)
             if (mimeType.includes("image")) {
-              return { 
-                base64: Buffer.from(arrayBuffer).toString("base64"), 
-                mimeType,
-                label: item.label
-              };
+              return { base64: Buffer.from(arrayBuffer).toString("base64"), mimeType, label: item.label };
             }
           }
         } catch (e) {
           console.warn(`⚠️ Timeout/error trayendo imagen ${item.label} (ignorando):`, (e as Error).message);
         }
         return null;
-      });
-      const results = await Promise.all(fetchPromises);
-      for (const r of results) {
-        if (r) referenceImages.push(r);
-      }
-    }
+      })
+    );
 
-    // --- INYECCIÓN DE PERSONAJE DE AGENCIA ---
-    if (useAgencyCharacter && user.publicMetadata?.aiSettings) {
-      const aiSettings: any = user.publicMetadata.aiSettings;
-      if (aiSettings.characterImageUrl) {
-        try {
-          const res = await fetchWithTimeout(aiSettings.characterImageUrl, 8000);
-          if (res.ok) {
-            const arrayBuffer = await res.arrayBuffer();
-            referenceImages.push({
-              base64: Buffer.from(arrayBuffer).toString("base64"),
-              mimeType: res.headers.get('content-type') || "image/png",
-              label: "Foto del Representante/Personaje de la Agencia"
-            });
+    const fetchCharacterPromise = (useAgencyCharacter && user.publicMetadata?.aiSettings)
+      ? (async () => {
+          const aiSettings: any = user.publicMetadata!.aiSettings;
+          if (!aiSettings.characterImageUrl) return null;
+          try {
+            const res = await fetchWithTimeout(aiSettings.characterImageUrl, 5000);
+            if (res.ok) {
+              const arrayBuffer = await res.arrayBuffer();
+              return {
+                base64: Buffer.from(arrayBuffer).toString("base64"),
+                mimeType: res.headers.get('content-type') || "image/png",
+                label: "Foto del Representante/Personaje de la Agencia"
+              };
+            }
+          } catch (e) {
+            console.warn("⚠️ Timeout/error trayendo imagen de personaje (ignorando):", (e as Error).message);
           }
-        } catch (e) {
-          console.warn("⚠️ Timeout/error trayendo imagen de personaje (ignorando):", (e as Error).message);
-        }
-        finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada.`;
-      }
+          return null;
+        })()
+      : Promise.resolve(null);
+
+    // ═══ EJECUTAR TODO EN PARALELO ═══
+    const [brandImageResults, characterResult] = await Promise.all([
+      fetchImagesPromise,
+      fetchCharacterPromise,
+    ]);
+
+    // Añadir imágenes de marca que se descargaron con éxito
+    for (const r of brandImageResults) {
+      if (r) referenceImages.push(r);
     }
 
-    // Refuerzo vital del formato al final del prompt para que el modelo no lo olvide
+    // Añadir personaje si se descargó
+    if (characterResult) {
+      referenceImages.push(characterResult);
+      finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada.`;
+    }
+
+    // Refuerzo vital del formato al final del prompt
     finalPrompt += `\n\n[INSTRUCCIONES FINALES]: ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ EN SU PROMPT.`;
 
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
     const hasRefImages = referenceImages.length > 0;
-    const cost = 150; // Costo fijo independientemente de los extras
+    const cost = 150;
 
     if (currentCredits < cost) {
       return NextResponse.json({
@@ -231,12 +241,8 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         });
       }
 
-      // ═══ FIX CRÍTICO: responseModalities + timeout con AbortController ═══
-      // Sin responseModalities: ["TEXT", "IMAGE"], el SDK NUNCA devuelve imágenes
-      // y se queda colgado hasta que Vercel mata la función (5 min timeout fantasma)
-      
-      // ═══ RETRY RÁPIDO + FALLBACK DE MODELO PARA 503/429 ═══
-      const MAX_RETRIES = 3;
+      // ═══ RETRY OPTIMIZADO: timeout más agresivo + backoff más corto ═══
+      const MAX_RETRIES = 2; // ← 2 reintentos en vez de 3 para reducir espera total
       let response;
       let lastRetryError: any = null;
       const fallbackModel = model === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
@@ -244,7 +250,8 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         const currentModel = attempt >= 2 ? fallbackModel : model;
         const abortController = new AbortController();
-        const geminiTimeout = setTimeout(() => abortController.abort(), 120_000); // 120s máx por intento (Vercel PRO lo soporta)
+        // ═══ OPTIMIZACIÓN: 60s en vez de 120s → si no responde en 60s, el modelo está saturado ═══
+        const geminiTimeout = setTimeout(() => abortController.abort(), 60_000);
 
         try {
           console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
@@ -270,9 +277,9 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
             || combinedMsg.includes("temporarily") || combinedMsg.includes("capacity");
 
           if (isTransient && attempt < MAX_RETRIES) {
-            const backoffMs = Math.min(2000 * attempt, 5000);
-            console.warn(`⏳ Gemini 503/429 — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs/1000}s (→ ${fallbackModel})...`);
-            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            // ═══ OPTIMIZACIÓN: backoff de 1.5s fijo en vez de 2-5s escalado ═══
+            console.warn(`⏳ Gemini error transitorio — Reintento ${attempt}/${MAX_RETRIES} en 1.5s (→ ${fallbackModel})...`);
+            await new Promise(resolve => setTimeout(resolve, 1500));
             continue;
           }
 
@@ -306,7 +313,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         throw new Error("Nano Banana no devolvió una imagen. El modelo respondió con texto. Intenta reformular el prompt.");
       }
 
-      // 5. Guardar en Supabase Storage para inmortalidad
+      // ═══ OPTIMIZACIÓN MASIVA: Upload a Supabase + guardar en BD EN PARALELO ═══
       const imageBuffer = Buffer.from(imageBase64, "base64");
       const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
       const fileName = `nanobanana_${user.id}_${Date.now()}.${ext}`;
@@ -326,37 +333,35 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       const finalPermanentUrl = publicUrlData.publicUrl;
 
-      // 6. Persistir imágenes de referencia del USUARIO en Storage
-      const userRefUrls: string[] = [];
-      const userRefs = referenceImages.filter(r => r.isUserRef);
-      for (let i = 0; i < userRefs.length; i++) {
-        try {
-          const refBuf = Buffer.from(userRefs[i].base64, "base64");
-          const refExt = userRefs[i].mimeType.includes("jpeg") ? "jpg" : "png";
-          const refName = `refs/${user.id}_${Date.now()}_ref${i}.${refExt}`;
-          const { error: refUpErr } = await supabase.storage
-            .from("ai-generations")
-            .upload(refName, refBuf, { contentType: userRefs[i].mimeType, upsert: false });
-          if (!refUpErr) {
-            const { data: refUrl } = supabase.storage.from("ai-generations").getPublicUrl(refName);
-            userRefUrls.push(refUrl.publicUrl);
-          }
-        } catch (refErr) {
-          console.warn("⚠️ Error subiendo referencia", i, refErr);
-        }
-      }
-
-      // 7. Guardar registro en BD
-      const { error: dbError } = await supabase.from("ai_images").insert({
+      // ═══ OPTIMIZACIÓN: Guardar en BD + subir refs del usuario EN PARALELO (fire-and-forget refs) ═══
+      const dbInsertPromise = supabase.from("ai_images").insert({
         prompt,
         image_url: finalPermanentUrl,
         author_id: user.primaryEmailAddress?.emailAddress,
         author_name: user.fullName || user.firstName || "Agente",
         author_avatar_url: user.imageUrl,
-        reference_urls: userRefUrls.length > 0 ? userRefUrls : null,
+        reference_urls: null, // Se actualiza async abajo si hay refs
       });
 
-      if (dbError) throw dbError;
+      // Subir refs del usuario en background (no bloquear respuesta)
+      const userRefs = referenceImages.filter(r => r.isUserRef);
+      if (userRefs.length > 0) {
+        // Fire-and-forget: no esperamos a que termine
+        Promise.all(userRefs.map(async (ref, i) => {
+          try {
+            const refBuf = Buffer.from(ref.base64, "base64");
+            const refExt = ref.mimeType.includes("jpeg") ? "jpg" : "png";
+            const refName = `refs/${user.id}_${Date.now()}_ref${i}.${refExt}`;
+            await supabase.storage.from("ai-generations").upload(refName, refBuf, { contentType: ref.mimeType, upsert: false });
+          } catch (refErr) {
+            console.warn("⚠️ Error subiendo referencia (background)", i, refErr);
+          }
+        })).catch(() => {}); // Silenciar errores — es best-effort
+      }
+
+      // Esperar solo el insert de la BD (es rápido, ~50ms)
+      const { error: dbError } = await dbInsertPromise;
+      if (dbError) console.warn("⚠️ Error guardando en BD (no crítico):", dbError);
 
       return NextResponse.json({
         success: true,
@@ -375,8 +380,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         console.error("⚠️ Error reembolsando créditos:", refundErr);
       }
       
-      // Mensaje de error amigable — NUNCA mostrar JSON crudo al usuario
-      // Extraer mensaje de forma segura de cualquier formato de error del SDK
+      // Mensaje de error amigable
       let rawMsg = "";
       try {
         rawMsg = apiError?.message || "";
@@ -384,7 +388,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           rawMsg = JSON.stringify(apiError);
         }
       } catch { rawMsg = String(apiError); }
-      console.error("Error en Nano Banana (3 reintentos agotados):", rawMsg.slice(0, 500));
+      console.error("Error en Nano Banana:", rawMsg.slice(0, 500));
 
       const isTimeout = apiError?.name === "AbortError" || rawMsg.includes("abort");
       const is503 = rawMsg.includes("503") || rawMsg.includes("UNAVAILABLE") || rawMsg.includes("high demand") || rawMsg.includes("capacity");
@@ -393,9 +397,9 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       let friendlyMsg: string;
       if (isTimeout) {
-        friendlyMsg = "⏳ Nano Banana tardó demasiado (>90s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
+        friendlyMsg = "⏳ Nano Banana tardó demasiado (>60s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
       } else if (is503) {
-        friendlyMsg = "🔥 Los servidores de IA están saturados (alta demanda global). Se intentó con 2 modelos diferentes. Espera 2–3 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
+        friendlyMsg = "🔥 Los servidores de IA están saturados (alta demanda global). Espera 1–2 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
       } else if (is429) {
         friendlyMsg = "⚡ Demasiadas solicitudes seguidas. Espera 30 segundos e intenta de nuevo. Tus créditos fueron reembolsados.";
       } else if (isNoImage) {

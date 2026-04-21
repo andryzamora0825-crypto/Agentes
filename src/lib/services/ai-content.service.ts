@@ -16,8 +16,8 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 const NANO_BANANA_2 = "gemini-3.1-flash-image-preview";
 const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
-// Helper: fetch con timeout para evitar cuelgues
-async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+// Helper: fetch con timeout agresivo para evitar cuelgues
+async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -257,14 +257,14 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
   const fallbackModel = modelToUse === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
 
-  // ═══ RETRY RÁPIDO + FALLBACK DE MODELO PARA 503/429 ═══
-  const MAX_RETRIES = 3;
+  // ═══ RETRY OPTIMIZADO + FALLBACK DE MODELO PARA 503/429 ═══
+  const MAX_RETRIES = 2;
   let lastRetryError: any = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const currentModel = attempt >= 2 ? fallbackModel : modelToUse;
     const abortController = new AbortController();
-    const geminiTimer = setTimeout(() => abortController.abort(), 120_000); // 120s máx (Vercel PRO)
+    const geminiTimer = setTimeout(() => abortController.abort(), 60_000); // 60s máx — si no responde, está saturado
 
     try {
       console.log(`🎨 [SOCIAL] Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
@@ -295,8 +295,8 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
 
       if (isTransient && attempt < MAX_RETRIES) {
-        const backoffMs = Math.min(2000 * attempt, 5000);
-        console.warn(`⏳ [SOCIAL] Gemini 503/429 — Reintento ${attempt}/${MAX_RETRIES} en ${backoffMs/1000}s...`);
+        const backoffMs = 1500;
+        console.warn(`⏳ [SOCIAL] Gemini error transitorio — Reintento ${attempt}/${MAX_RETRIES} en 1.5s...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
       }

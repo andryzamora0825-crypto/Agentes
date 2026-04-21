@@ -11,7 +11,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) return null;
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       // 5. Call Gemini with retries + model fallback
       const PRIMARY_MODEL = "gemini-3-pro-image-preview";
       const FALLBACK_MODEL = "gemini-3.1-flash-image-preview";
-      const MAX_RETRIES = 3;
+      const MAX_RETRIES = 2;
       let response;
       let lastErr: any = null;
 
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
         // Use fallback model on retry attempts
         const currentModel = attempt >= 2 ? FALLBACK_MODEL : PRIMARY_MODEL;
         const abortController = new AbortController();
-        const timeout = setTimeout(() => abortController.abort(), 120_000);
+        const timeout = setTimeout(() => abortController.abort(), 60_000);
 
         try {
           console.log(`🪄 Editor PRO [${toolId}] Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
@@ -104,8 +104,8 @@ export async function POST(request: Request) {
             || msg.includes("Bad Gateway") || msg.includes("bad gateway")
             || msg.includes("DEADLINE_EXCEEDED") || msg.includes("deadline");
           if (isTransient && attempt < MAX_RETRIES) {
-            const backoff = Math.min(2000 * attempt, 5000);
-            console.warn(`⏳ Editor PRO error transitorio → reintento ${attempt} en ${backoff/1000}s con ${FALLBACK_MODEL}...`);
+            const backoff = 1500;
+            console.warn(`⏳ Editor PRO error transitorio → reintento ${attempt} en 1.5s con ${FALLBACK_MODEL}...`);
             await new Promise(r => setTimeout(r, backoff));
             continue;
           }
