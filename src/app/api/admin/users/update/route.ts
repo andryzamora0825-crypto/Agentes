@@ -76,6 +76,13 @@ export async function POST(request: Request) {
       logDetails = `Inventario Operador modificado: VIP Tokens ${currentInventory.vipTokens}→${newVipTokens}, Créditos ${currentInventory.credits}→${newCredits}`;
     }
 
+    if (action === "modify_ai_settings") {
+      const { aiSettings } = body;
+      updateData.aiSettings = aiSettings;
+      logType = "PLAN";
+      logDetails = "Configuraciones de Identidad (IA) actualizadas por Admin";
+    }
+
     if (logType) {
        const existingLogs = (targetUser.publicMetadata?.activityLogs as any[]) || [];
        const newLog = { type: logType, details: logDetails, timestamp: Date.now() };

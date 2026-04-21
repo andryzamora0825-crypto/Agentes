@@ -57,6 +57,7 @@ export async function GET() {
         createdAt: u.createdAt,
         generationCount: imgCounts[email.toLowerCase()] || 0,
         activityLogs: meta?.activityLogs || [],
+        aiSettings: meta?.aiSettings || null,
         role: meta?.role || 'user',
         affiliateCode: meta?.affiliateCode || null,
         operatorInventory: meta?.operatorInventory || null,

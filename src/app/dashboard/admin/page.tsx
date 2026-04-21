@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload, Star } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -72,6 +72,17 @@ export default function AdminPanelPage() {
   const [editingSocial, setEditingSocial] = useState<any | null>(null);
   const [socialForm, setSocialForm] = useState({ isUnlocked: false, meta_page_id: "", meta_page_access_token: "", meta_ig_user_id: "", auto_generate: false });
 
+  // Estados del modal de Identidad IA
+  const [editingIdentity, setEditingIdentity] = useState<any | null>(null);
+  const [identityForm, setIdentityForm] = useState({
+    agencyName: "",
+    agencyDesc: "",
+    contactNumber: "",
+    extraContact: "",
+    primaryColor: "#FFDE00",
+    secondaryColor: "#000000"
+  });
+
   // Estados del modal Galería Secreta (Admin-only)
   const [galleryUser, setGalleryUser] = useState<any | null>(null);
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
@@ -109,6 +120,20 @@ export default function AdminPanelPage() {
       });
     }
   }, [editingSocial]);
+
+  useEffect(() => {
+    if (editingIdentity) {
+      const s = editingIdentity.aiSettings || {};
+      setIdentityForm({
+        agencyName: s.agencyName || "",
+        agencyDesc: s.agencyDesc || "",
+        contactNumber: s.contactNumber || "",
+        extraContact: s.extraContact || "",
+        primaryColor: s.primaryColor || "#FFDE00",
+        secondaryColor: s.secondaryColor || "#000000"
+      });
+    }
+  }, [editingIdentity]);
 
   const saveWaSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,6 +212,41 @@ export default function AdminPanelPage() {
     } catch (err) {
       console.error(err);
       alert("Error de red");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const saveIdentitySettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIdentity) return;
+    
+    setProcessingId(editingIdentity.id);
+    try {
+      const res = await fetch("/api/admin/users/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: editingIdentity.id,
+          action: "modify_ai_settings",
+          aiSettings: {
+            ...(editingIdentity.aiSettings || {}),
+            ...identityForm
+          }
+        })
+      });
+
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === editingIdentity.id ? { 
+          ...u, 
+          aiSettings: { ...(u.aiSettings || {}), ...identityForm } 
+        } : u));
+        setEditingIdentity(null);
+      } else {
+        alert("Error guardando configuraciones de identidad.");
+      }
+    } catch (e) {
+      alert("Error.");
     } finally {
       setProcessingId(null);
     }
@@ -279,7 +339,21 @@ export default function AdminPanelPage() {
 
        if (res.ok) {
          // UI optimista temporal
-         setUsers(prev => prev.map(u => u.id === targetId ? { ...u, credits: newBalance } : u));
+         setUsers(prev => prev.map(u => {
+           if (u.id === targetId) {
+             const newLog = {
+               type: 'CREDITS',
+               details: `Balance modificado de ${base} a ${newBalance} (${amount >= 0 ? '+' : ''}${amount})`,
+               timestamp: Date.now()
+             };
+             return { 
+               ...u, 
+               credits: newBalance,
+               activityLogs: [newLog, ...(u.activityLogs || [])].slice(0, 30)
+             };
+           }
+           return u;
+         }));
          setCustomCreditInput(prev => ({ ...prev, [targetId]: "" })); // Limpiar Input
        } else {
          alert("Error inyectando economía. Revisa la consola.");
@@ -304,11 +378,22 @@ export default function AdminPanelPage() {
        });
 
        if (res.ok) {
-         setUsers(prev => prev.map(u => u.id === targetId ? { 
-           ...u, 
-           plan: newPlan, 
-           vipExpiresAt: newPlan === 'VIP' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null 
-         } : u));
+         setUsers(prev => prev.map(u => {
+           if (u.id === targetId) {
+             const newLog = {
+               type: 'PLAN',
+               details: newPlan === 'VIP' ? "Ascendido a plan VIP" : "Revocado a plan FREE",
+               timestamp: Date.now()
+             };
+             return { 
+               ...u, 
+               plan: newPlan, 
+               vipExpiresAt: newPlan === 'VIP' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null,
+               activityLogs: [newLog, ...(u.activityLogs || [])].slice(0, 30)
+             };
+           }
+           return u;
+         }));
        } else {
          alert("Error modificando el plan.");
        }
@@ -335,11 +420,22 @@ export default function AdminPanelPage() {
            ? currentExpiry + (30 * 24 * 60 * 60 * 1000)
            : now + (30 * 24 * 60 * 60 * 1000);
          
-         setUsers(prev => prev.map(u => u.id === targetId ? { 
-           ...u, 
-           plan: "VIP", 
-           vipExpiresAt: newExpiry
-         } : u));
+         setUsers(prev => prev.map(u => {
+           if (u.id === targetId) {
+             const newLog = {
+               type: 'VIP',
+               details: "Se renovó el tiempo VIP (+30 días)",
+               timestamp: Date.now()
+             };
+             return { 
+               ...u, 
+               plan: "VIP", 
+               vipExpiresAt: newExpiry,
+               activityLogs: [newLog, ...(u.activityLogs || [])].slice(0, 30)
+             };
+           }
+           return u;
+         }));
        } else {
          alert("Error renovando el plan VIP.");
        }
@@ -1107,7 +1203,23 @@ export default function AdminPanelPage() {
                                    body: JSON.stringify({ targetUserId: u.id, action: "modify_inventory", vipTokensDelta: vipD, creditsDelta: credD })
                                  });
                                  if (res.ok) {
-                                   setUsers(prev => prev.map(x => x.id === u.id ? { ...x, operatorInventory: { vipTokens: (x.operatorInventory?.vipTokens || 0) + vipD, credits: (x.operatorInventory?.credits || 0) + credD } } : x));
+                                   setUsers(prev => prev.map(x => {
+                                     if (x.id === u.id) {
+                                       const newVip = (x.operatorInventory?.vipTokens || 0) + vipD;
+                                       const newCred = (x.operatorInventory?.credits || 0) + credD;
+                                       const newLog = {
+                                         type: 'CREDITS',
+                                         details: `Inventario Operador modificado: VIP Tokens ${x.operatorInventory?.vipTokens || 0}→${newVip}, Créditos ${x.operatorInventory?.credits || 0}→${newCred}`,
+                                         timestamp: Date.now()
+                                       };
+                                       return { 
+                                         ...x, 
+                                         operatorInventory: { vipTokens: newVip, credits: newCred },
+                                         activityLogs: [newLog, ...(x.activityLogs || [])].slice(0, 30)
+                                       };
+                                     }
+                                     return x;
+                                   }));
                                    if (vipEl) vipEl.value = '';
                                    if (credEl) credEl.value = '';
                                  } else { alert("Error cargando inventario al operador."); }
@@ -1123,8 +1235,22 @@ export default function AdminPanelPage() {
                      </div>
                    )}
 
-                  {/* Módulos Extra (WhatsApp & Social) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Módulos Extra (Identidad, WhatsApp & Social) */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Identidad IA */}
+                    <div className="flex justify-between items-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-[#0A0A0A] border border-[#FFDE00]/20 p-5 rounded-xl shadow-inner relative overflow-hidden">
+                       <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFDE00]/10 blur-3xl -mr-10 -mt-10 rounded-full blur-2xl"></div>
+                       <div className="z-10 text-[12px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2">
+                          <Star className="w-5 h-5 text-[#FFDE00]" /> IDENTIDAD IA
+                       </div>
+                       <button
+                         onClick={() => setEditingIdentity(u)}
+                         className={`z-10 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${u.aiSettings?.agencyName ? 'bg-[#FFDE00] text-black shadow-[0_0_15px_rgba(255,222,0,0.4)]' : 'bg-white/5 text-gray-400 hover:text-white border border-white/10 hover:border-white/20'}`}
+                       >
+                         {u.aiSettings?.agencyName ? '⚙️ CONFIGURAR' : 'CONFIGURAR'}
+                       </button>
+                    </div>
+
                     {/* WhatsApp Bot */}
                     <div className="flex justify-between items-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-[#0A0A0A] border border-[#25D366]/20 p-5 rounded-xl shadow-inner relative overflow-hidden">
                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#25D366]/10 blur-3xl -mr-10 -mt-10 rounded-full blur-2xl"></div>
@@ -1239,6 +1365,107 @@ export default function AdminPanelPage() {
                    className="w-full bg-[#25D366] hover:bg-[#1DA851] text-black font-black uppercase tracking-widest py-3 rounded-xl mt-4 transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-50"
                  >
                    {processingId === editingWa.id ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar y Desplegar'}
+                 </button>
+              </form>
+           </div>
+        </div>
+      )}
+      {/* MODAL IDENTIDAD IA */}
+      {editingIdentity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+           <div className="bg-[#111111] border border-white/10 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-lg w-full relative my-8">
+              <button onClick={() => setEditingIdentity(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+              
+              <div className="w-12 h-12 bg-gradient-to-br from-[#FFDE00] to-yellow-600 rounded-xl flex items-center justify-center shadow-lg mb-4">
+                 <Star className="w-6 h-6 text-black" />
+              </div>
+              
+              <h3 className="text-xl font-black text-white mb-2">Identidad IA para {editingIdentity.name}</h3>
+              <p className="text-xs text-gray-400 mb-6 leading-relaxed">
+                Aquí puedes ajustar las instrucciones a nivel motor de cómo la IA percibe la agencia o la marca local del usuario.
+              </p>
+
+              <form onSubmit={saveIdentitySettings} className="space-y-4">
+                 <div>
+                   <label className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-1 block">Nombre de Agencia</label>
+                   <input
+                     type="text"
+                     value={identityForm.agencyName}
+                     onChange={(e) => setIdentityForm({...identityForm, agencyName: e.target.value})}
+                     className="w-full bg-[#0A0A0A] border border-white/[0.06] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#FFDE00]/50"
+                     placeholder="Ej. VIPApuestas"
+                   />
+                 </div>
+                 
+                 <div>
+                   <label className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-1 block">Tono / Descripción de Agencia</label>
+                   <textarea
+                     rows={2}
+                     value={identityForm.agencyDesc}
+                     onChange={(e) => setIdentityForm({...identityForm, agencyDesc: e.target.value})}
+                     className="w-full bg-[#0A0A0A] border border-white/[0.06] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#FFDE00]/50"
+                     placeholder="Ej. Estilo profesional, tonos dorados y futuristas"
+                   ></textarea>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <label className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-1 block">Contacto 1</label>
+                     <input
+                       type="text"
+                       value={identityForm.contactNumber}
+                       onChange={(e) => setIdentityForm({...identityForm, contactNumber: e.target.value})}
+                       className="w-full bg-[#0A0A0A] border border-white/[0.06] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#FFDE00]/50"
+                       placeholder="+593 XXX XXX"
+                     />
+                   </div>
+                   <div>
+                     <label className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-1 block">Contacto 2</label>
+                     <input
+                       type="text"
+                       value={identityForm.extraContact}
+                       onChange={(e) => setIdentityForm({...identityForm, extraContact: e.target.value})}
+                       className="w-full bg-[#0A0A0A] border border-white/[0.06] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#FFDE00]/50"
+                       placeholder="Opcional"
+                     />
+                   </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4 pb-2">
+                   <div>
+                     <label className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-1 block">Color Primario</label>
+                     <div className="flex gap-2 items-center">
+                       <input 
+                         type="color" 
+                         value={identityForm.primaryColor}
+                         onChange={(e) => setIdentityForm({...identityForm, primaryColor: e.target.value})}
+                         className="w-10 h-10 rounded overflow-hidden cursor-pointer bg-transparent border-0 p-0"
+                       />
+                       <span className="text-white/80 font-mono text-xs uppercase">{identityForm.primaryColor}</span>
+                     </div>
+                   </div>
+                   <div>
+                     <label className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-1 block">Color Secundario</label>
+                     <div className="flex gap-2 items-center">
+                       <input 
+                         type="color" 
+                         value={identityForm.secondaryColor}
+                         onChange={(e) => setIdentityForm({...identityForm, secondaryColor: e.target.value})}
+                         className="w-10 h-10 rounded overflow-hidden cursor-pointer bg-transparent border-0 p-0"
+                       />
+                       <span className="text-white/80 font-mono text-xs uppercase">{identityForm.secondaryColor}</span>
+                     </div>
+                   </div>
+                 </div>
+
+                 <button
+                   type="submit"
+                   disabled={processingId === editingIdentity.id}
+                   className="w-full mt-4 bg-gradient-to-r from-[#FFDE00] to-yellow-500 text-black font-black uppercase text-sm px-4 py-4 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                 >
+                   {processingId === editingIdentity.id ? <Loader2 className="w-5 h-5 animate-spin" /> : 'GUARDAR IDENTIDAD'}
                  </button>
               </form>
            </div>
