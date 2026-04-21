@@ -150,7 +150,7 @@ export async function POST(request: Request) {
 
       // 8. Save to history
       await supabase.from("ai_images").insert({
-        prompt: `[Editor PRO: ${toolId}] ${prompt.slice(0, 200)}`,
+        prompt: `[Editor PRO: ${toolId}] ${prompt}`,
         image_url: finalUrl,
         author_id: user.primaryEmailAddress?.emailAddress,
         author_name: user.fullName || user.firstName || "Agente",

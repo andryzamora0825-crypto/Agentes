@@ -325,6 +325,26 @@ export default function EditorPRO({ image, onClose, onImageSaved }: EditorPROPro
     return selectedStyle;
   };
 
+  const forceDownload = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Fallo en fetch");
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+    } catch (e) {
+      console.error("Error al descargar:", e);
+      // Fallback
+      window.open(url, "_blank");
+    }
+  };
+
   const buildPrompt = (toolId: string): string | null => {
     const tool = getToolById(toolId);
     if (!tool) return null;
@@ -686,16 +706,13 @@ export default function EditorPRO({ image, onClose, onImageSaved }: EditorPROPro
                       )}
                     </button>
                     {resultUrl && (
-                      <a
-                        href={resultUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
+                      <button
+                        onClick={() => forceDownload(resultUrl, `EditorPRO_${Date.now()}.png`)}
                         className="shrink-0 p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-zinc-300 transition-colors"
                         title="Descargar resultado"
                       >
                         <Download className="w-4 h-4" />
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
