@@ -233,49 +233,49 @@ const LIGHT_OPTIONS = [
 const MAGIC_TOOLS: MagicTool[] = [
   {
     id: "remove-bg", name: "Quitar Fondo", shortName: "Fondo",
-    icon: <Scissors className="w-4 h-4" />, credits: 100,
+    icon: <Scissors className="w-4 h-4" />, credits: 25,
     color: "text-emerald-400",
     activeClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 shadow-emerald-500/5",
     prompt: `[INSTRUCCIÓN CRÍTICA]: Toma esta imagen exacta y ELIMINA completamente el fondo. Mantén ÚNICAMENTE al sujeto principal con un fondo 100% TRANSPARENTE. NO modifiques al sujeto.`
   },
   {
     id: "upscale", name: "Upscaler 4K", shortName: "4K",
-    icon: <ZoomIn className="w-4 h-4" />, credits: 150,
+    icon: <ZoomIn className="w-4 h-4" />, credits: 25,
     color: "text-blue-400",
     activeClass: "bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-blue-500/5",
     prompt: `[INSTRUCCIÓN CRÍTICA]: REGENERA esta imagen idéntica en MÁXIMA RESOLUCIÓN (mínimo 2048x2048). Bordes definidos, texturas claras, colores vibrantes. NO cambies composición ni colores.`
   },
   {
     id: "replace-bg", name: "Nuevo Fondo", shortName: "Escena",
-    icon: <ImageIcon className="w-4 h-4" />, credits: 200,
+    icon: <ImageIcon className="w-4 h-4" />, credits: 25,
     color: "text-violet-400",
     activeClass: "bg-violet-500/15 border-violet-500/30 text-violet-400 shadow-violet-500/5",
     prompt: ""
   },
   {
     id: "style-transfer", name: "Filtro de Estilo", shortName: "Estilo",
-    icon: <Palette className="w-4 h-4" />, credits: 200,
+    icon: <Palette className="w-4 h-4" />, credits: 25,
     color: "text-pink-400",
     activeClass: "bg-pink-500/15 border-pink-500/30 text-pink-400 shadow-pink-500/5",
     prompt: ""
   },
   {
     id: "inpainting", name: "Borrador Mágico", shortName: "Borrar",
-    icon: <Eraser className="w-4 h-4" />, credits: 150,
+    icon: <Eraser className="w-4 h-4" />, credits: 25,
     color: "text-amber-400",
     activeClass: "bg-amber-500/15 border-amber-500/30 text-amber-400 shadow-amber-500/5",
     prompt: ""
   },
   {
     id: "vectorize", name: "Vectorizar SVG", shortName: "Vector",
-    icon: <FileCode className="w-4 h-4" />, credits: 100,
+    icon: <FileCode className="w-4 h-4" />, credits: 25,
     color: "text-cyan-400",
     activeClass: "bg-cyan-500/15 border-cyan-500/30 text-cyan-400 shadow-cyan-500/5",
     prompt: `[INSTRUCCIÓN CRÍTICA]: Redibuja esta imagen como ilustración vectorial limpia: bordes definidos, colores sólidos planos, sin gradientes. Estilo logo/ícono SVG profesional.`
   },
   {
     id: "relight", name: "Re-iluminar", shortName: "Luz",
-    icon: <Sun className="w-4 h-4" />, credits: 150,
+    icon: <Sun className="w-4 h-4" />, credits: 25,
     color: "text-orange-400",
     activeClass: "bg-orange-500/15 border-orange-500/30 text-orange-400 shadow-orange-500/5",
     prompt: ""

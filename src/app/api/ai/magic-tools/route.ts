@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     // 1. Check credits
     const currentCredits = Number(user.publicMetadata?.credits || 0);
-    const cost = Math.min(Math.max(credits || 100, 50), 500); // Clamp 50-500
+    const cost = Math.min(Math.max(credits || 25, 25), 500); // Clamp 25-500
 
     if (currentCredits < cost) {
       return NextResponse.json({
@@ -97,10 +97,12 @@ export async function POST(request: Request) {
           clearTimeout(timeout);
           lastErr = retryErr;
           const msg = retryErr?.message || JSON.stringify(retryErr);
-          const isTransient = msg.includes("503") || msg.includes("500") || msg.includes("429")
+          const isTransient = msg.includes("503") || msg.includes("502") || msg.includes("500") || msg.includes("429")
             || msg.includes("UNAVAILABLE") || msg.includes("RESOURCE_EXHAUSTED")
             || msg.includes("INTERNAL") || msg.includes("internal error")
-            || msg.includes("Internal error") || msg.includes("overloaded");
+            || msg.includes("Internal error") || msg.includes("overloaded")
+            || msg.includes("Bad Gateway") || msg.includes("bad gateway")
+            || msg.includes("DEADLINE_EXCEEDED") || msg.includes("deadline");
           if (isTransient && attempt < MAX_RETRIES) {
             const backoff = Math.min(2000 * attempt, 5000);
             console.warn(`⏳ Editor PRO error transitorio → reintento ${attempt} en ${backoff/1000}s con ${FALLBACK_MODEL}...`);
@@ -175,7 +177,8 @@ export async function POST(request: Request) {
       const rawMsg = apiError?.message || String(apiError);
       console.error(`[Editor PRO ${toolId}] Error:`, rawMsg.slice(0, 500));
 
-      const isTimeout = apiError?.name === "AbortError";
+      const isTimeout = apiError?.name === "AbortError" || rawMsg.includes("DEADLINE_EXCEEDED");
+      const is502 = rawMsg.includes("502") || rawMsg.includes("Bad Gateway");
       const is503 = rawMsg.includes("503") || rawMsg.includes("UNAVAILABLE");
       const is429 = rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED");
       const isInternal = rawMsg.includes("INTERNAL") || rawMsg.includes("Internal error") || rawMsg.includes("500");
@@ -183,12 +186,14 @@ export async function POST(request: Request) {
       let friendlyMsg: string;
       if (isTimeout) {
         friendlyMsg = "⏳ La IA tardó demasiado. Intenta de nuevo en unos momentos. Créditos reembolsados.";
+      } else if (is502) {
+        friendlyMsg = "🌐 Error de conexión con la IA (Bad Gateway). El servidor está procesando muchas solicitudes. Espera 1 minuto e intenta de nuevo. Créditos reembolsados.";
       } else if (is503) {
         friendlyMsg = "🔥 Servidores IA saturados. Espera 2 minutos e intenta de nuevo. Créditos reembolsados.";
       } else if (is429) {
         friendlyMsg = "⚡ Demasiadas solicitudes. Espera 30 segundos. Créditos reembolsados.";
       } else if (isInternal) {
-        friendlyMsg = "🔧 La IA tuvo un error interno procesando esta imagen. Intenta de nuevo o prueba con otra herramienta. Créditos reembolsados.";
+        friendlyMsg = "🔧 La IA tuvo un error interno. Intenta de nuevo o prueba con otra herramienta. Créditos reembolsados.";
       } else {
         friendlyMsg = `❌ Error al procesar: ${rawMsg.slice(0, 100)}. Créditos reembolsados.`;
       }
