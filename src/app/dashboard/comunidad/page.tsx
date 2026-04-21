@@ -220,15 +220,15 @@ export default function ComunidadPage() {
             </button>
 
             <div
-              className="max-w-3xl w-full flex flex-col lg:flex-row gap-5 animate-scale-in"
+              className="max-w-3xl w-full max-h-[90dvh] overflow-y-auto custom-scrollbar flex flex-col lg:flex-row gap-5 animate-scale-in"
               onClick={e => e.stopPropagation()}
             >
               {/* Image */}
-              <div className="flex-1 flex items-center justify-center">
+              <div className="flex-1 flex items-center justify-center shrink-0">
                 <img
                   src={lightbox.image_url}
                   alt="Arte comunitario"
-                  className="max-w-full max-h-[75vh] object-contain rounded-xl"
+                  className="max-w-full max-h-[55vh] lg:max-h-[85vh] object-contain rounded-xl"
                 />
               </div>
 
