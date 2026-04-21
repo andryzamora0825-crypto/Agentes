@@ -607,6 +607,7 @@ export default function EstudioIAPage() {
                 <textarea
                   id="prompt-input"
                   value={prompt}
+                  rows={1}
                   onChange={e => {
                     setPrompt(e.target.value);
                     e.target.style.height = 'auto';
@@ -614,8 +615,7 @@ export default function EstudioIAPage() {
                   }}
                   onFocus={() => setShowAttachMenu(false)}
                   placeholder="Describe tu imagen aquí"
-                  className="w-full bg-transparent text-white/90 focus:outline-none !outline-none !ring-0 focus:!ring-0 !border-0 focus:!border-0 !shadow-none focus:!shadow-none resize-none py-3 min-h-[44px] max-h-[150px] text-[15px] placeholder-zinc-500 custom-scrollbar"
-                  style={{ height: '44px' }}
+                  className="flex-1 w-full bg-transparent text-white/90 focus:outline-none !outline-none !ring-0 focus:!ring-0 !border-0 focus:!border-0 !shadow-none focus:!shadow-none resize-none py-2.5 sm:py-3 min-h-[40px] sm:min-h-[44px] max-h-[150px] text-sm sm:text-[15px] placeholder-zinc-500 custom-scrollbar leading-tight sm:leading-normal"
                 />
 
                 {/* Actions: Format + Mic inside the pill */}
