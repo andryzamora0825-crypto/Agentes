@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Loader2, Sparkles, Trophy, Dices, ChevronRight, Check, X, AlertCircle, Clock, Zap, Square, Smartphone, Monitor, RectangleVertical, RectangleHorizontal } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Loader2, Sparkles, Trophy, Dices, ChevronRight, Check, X, AlertCircle, Clock, Zap, Square, Smartphone, Monitor, RectangleVertical, RectangleHorizontal, RefreshCw } from "lucide-react";
 
 // Opciones de Formato
 const FORMAT_OPTIONS = [
@@ -197,6 +197,156 @@ interface GeneratedIdea {
   copy: string;
 }
 
+type IdeaField = keyof GeneratedIdea;
+
+const FIELD_POOLS: Record<IdeaField, string[]> = {
+  protagonist: PROTAGONISTAS,
+  visual: CONCEPTOS_VISUALES,
+  hook: GANCHOS_ECUABET,
+  copy: COPYS_POST,
+};
+
+const CARD_CONFIG: { key: IdeaField; label: string; color: string; bg: string }[] = [
+  { key: "protagonist", label: "Protagonista",       color: "text-blue-300",    bg: "bg-blue-500/10 border-blue-500/15" },
+  { key: "visual",      label: "Concepto Visual",    color: "text-purple-300",  bg: "bg-purple-500/10 border-purple-500/15" },
+  { key: "hook",        label: "Gancho Promocional", color: "text-amber-300",   bg: "bg-amber-500/10 border-amber-500/15" },
+  { key: "copy",        label: "Copy para Redes",    color: "text-emerald-300", bg: "bg-emerald-500/10 border-emerald-500/15" },
+];
+
+type SwipePhase = "idle" | "exit-left" | "exit-right" | "enter-left" | "enter-right";
+
+function SwipeCard({
+  label,
+  value,
+  color,
+  bg,
+  onSwipe,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  bg: string;
+  onSwipe: () => void;
+}) {
+  const [dragX, setDragX] = useState(0);
+  const [phase, setPhase] = useState<SwipePhase>("idle");
+  const [dragging, setDragging] = useState(false);
+  const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const captured = useRef(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  const SWIPE_THRESHOLD = 90;
+  const EXIT_DISTANCE = 360;
+
+  useEffect(() => {
+    if (phase === "enter-left" || phase === "enter-right") {
+      const raf = requestAnimationFrame(() => setPhase("idle"));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [phase]);
+
+  const clearStart = () => {
+    startX.current = null;
+    startY.current = null;
+    captured.current = false;
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (phase !== "idle") return;
+    startX.current = e.clientX;
+    startY.current = e.clientY;
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (startX.current === null || startY.current === null) return;
+    const dx = e.clientX - startX.current;
+    const dy = e.clientY - startY.current;
+
+    if (!captured.current) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        captured.current = true;
+        try { cardRef.current?.setPointerCapture(e.pointerId); } catch {}
+        setDragging(true);
+      } else if (Math.abs(dy) > 8) {
+        clearStart();
+        return;
+      } else {
+        return;
+      }
+    }
+    setDragX(dx);
+  };
+
+  const onPointerEnd = (e: React.PointerEvent) => {
+    if (!captured.current) {
+      clearStart();
+      return;
+    }
+    const dx = dragX;
+    try { cardRef.current?.releasePointerCapture(e.pointerId); } catch {}
+    clearStart();
+    setDragging(false);
+
+    if (Math.abs(dx) >= SWIPE_THRESHOLD) {
+      const dir: "left" | "right" = dx > 0 ? "right" : "left";
+      setPhase(dir === "right" ? "exit-right" : "exit-left");
+      window.setTimeout(() => {
+        onSwipe();
+        setDragX(0);
+        setPhase(dir === "right" ? "enter-left" : "enter-right");
+      }, 220);
+    } else {
+      setDragX(0);
+    }
+  };
+
+  let translateX = dragX;
+  if (phase === "exit-left" || phase === "enter-left") translateX = -EXIT_DISTANCE;
+  else if (phase === "exit-right" || phase === "enter-right") translateX = EXIT_DISTANCE;
+
+  const rotation = translateX * 0.04;
+  const isExiting = phase === "exit-left" || phase === "exit-right";
+  const isEntering = phase === "enter-left" || phase === "enter-right";
+  const opacity = isExiting ? 0 : isEntering ? 0 : 1 - Math.min(Math.abs(dragX) / 420, 0.35);
+  const animate = !dragging && !isEntering;
+
+  const hintIntensity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
+  const showHint = dragging && Math.abs(dragX) > 20;
+  const hintSide = dragX > 0 ? "right" : "left";
+
+  return (
+    <div
+      ref={cardRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      className={`relative p-3 rounded-lg border ${bg} cursor-grab active:cursor-grabbing select-none touch-pan-y`}
+      style={{
+        transform: `translateX(${translateX}px) rotate(${rotation}deg)`,
+        opacity,
+        transition: animate ? "transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease" : "none",
+        willChange: "transform, opacity",
+      }}
+    >
+      <span className={`text-[10px] uppercase tracking-widest font-bold ${color}`}>{label}</span>
+      <p className="text-xs text-white/80 mt-1 leading-relaxed pointer-events-none">{value}</p>
+      {showHint && (
+        <div
+          className={`pointer-events-none absolute top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/50 border border-white/10 ${
+            hintSide === "right" ? "left-3" : "right-3"
+          }`}
+          style={{ opacity: hintIntensity }}
+        >
+          <RefreshCw className="w-3 h-3 text-white/80" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">Cambiar</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AdGeneratorProps {
   onResult: (imagePrompt: string, caption: string) => void;
   onDirectGenerate?: (imagePrompt: string, caption: string, formatId: string, platformId: string) => void;
@@ -233,6 +383,21 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
       visual: pick(CONCEPTOS_VISUALES),
       hook: pick(GANCHOS_ECUABET),
       copy: pick(COPYS_POST),
+    });
+  }, []);
+
+  // ═══ Reemplazar una sola tarjeta (swipe) sin repetir el valor actual ═══
+  const replaceField = useCallback((key: IdeaField) => {
+    setGeneratedIdea(prev => {
+      if (!prev) return prev;
+      const pool = FIELD_POOLS[key];
+      if (pool.length <= 1) return prev;
+      const current = prev[key];
+      let next = pool[Math.floor(Math.random() * pool.length)];
+      if (next === current) {
+        next = pool[(pool.indexOf(current) + 1) % pool.length];
+      }
+      return { ...prev, [key]: next };
     });
   }, []);
 
@@ -386,16 +551,19 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
 
             {generatedIdea && (
               <div className="space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-300">
-                {[
-                  { label: "Protagonista", value: generatedIdea.protagonist, color: "text-blue-300", bg: "bg-blue-500/10 border-blue-500/15" },
-                  { label: "Concepto Visual", value: generatedIdea.visual, color: "text-purple-300", bg: "bg-purple-500/10 border-purple-500/15" },
-                  { label: "Gancho Promocional", value: generatedIdea.hook, color: "text-amber-300", bg: "bg-amber-500/10 border-amber-500/15" },
-                  { label: "Copy para Redes", value: generatedIdea.copy, color: "text-emerald-300", bg: "bg-emerald-500/10 border-emerald-500/15" },
-                ].map((item, i) => (
-                  <div key={i} className={`p-3 rounded-lg border ${item.bg}`}>
-                    <span className={`text-[10px] uppercase tracking-widest font-bold ${item.color}`}>{item.label}</span>
-                    <p className="text-xs text-white/80 mt-1 leading-relaxed">{item.value}</p>
-                  </div>
+                <p className="text-[10px] text-zinc-500 flex items-center gap-1.5 px-1">
+                  <RefreshCw className="w-3 h-3" />
+                  Desliza una tarjeta ← o → para cambiarla por otra
+                </p>
+                {CARD_CONFIG.map(cfg => (
+                  <SwipeCard
+                    key={cfg.key}
+                    label={cfg.label}
+                    value={generatedIdea[cfg.key]}
+                    color={cfg.color}
+                    bg={cfg.bg}
+                    onSwipe={() => replaceField(cfg.key)}
+                  />
                 ))}
               </div>
             )}
