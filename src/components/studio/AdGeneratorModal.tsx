@@ -288,7 +288,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
         body = { mode: "creative", generatedIdea };
       } else if (activeTab === "sports" && selectedMatches.size > 0) {
         const chosen = matches.filter(m => selectedMatches.has(m.id));
-        body = { mode: "sports", matches: chosen };
+        body = { mode: "sports", matches: chosen, sport: selectedSport };
       }
 
       const res = await fetch("/api/ai/sports-prompt", {

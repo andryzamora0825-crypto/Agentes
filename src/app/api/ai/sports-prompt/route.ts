@@ -8,7 +8,105 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const body = await request.json();
-    const { matches, mode, generatedIdea } = body;
+    const { matches, mode, generatedIdea, sport } = body;
+
+    // ═══ VOCABULARIO VISUAL POR DEPORTE ═══
+    const SPORT_VOCAB: Record<string, { arena: string; action: string; ball: string; trophy: string; players: string; gear: string; celebration: string }> = {
+      football: {
+        arena: "estadio de fútbol nocturno con reflectores épicos y césped impecable",
+        action: "ejecutando una chilena espectacular, pateando un tiro libre o driblando rivales",
+        ball: "balón de fútbol oficial",
+        trophy: "copa/trofeo dorado del torneo",
+        players: "futbolistas con sus camisetas y shorts oficiales, botines de fútbol",
+        gear: "botines, espinilleras, guantes de portero",
+        celebration: "celebrando un gol con brazos extendidos, deslizándose de rodillas por el césped"
+      },
+      basketball: {
+        arena: "cancha de baloncesto profesional NBA con duela brillante y tableros iluminados",
+        action: "clavando un mate espectacular, lanzando un triple desde media cancha o driblando entre rivales",
+        ball: "balón de baloncesto oficial naranja",
+        trophy: "trofeo Larry O'Brien / copa del campeonato de baloncesto",
+        players: "jugadores de baloncesto con jerseys, shorts largos y zapatillas deportivas de alto rendimiento",
+        gear: "zapatillas de baloncesto, muñequeras, cintillos",
+        celebration: "golpeando su pecho con el puño, colgándose del aro tras un mate"
+      },
+      tennis: {
+        arena: "cancha de tenis profesional (arcilla, césped o superficie dura) con gradas repletas",
+        action: "ejecutando un saque poderoso, un revés cruzado devastador o una volea en la red",
+        ball: "pelota de tenis amarilla en movimiento",
+        trophy: "copa/trofeo plateado de Grand Slam o torneo ATP",
+        players: "tenistas con polo deportivo, falda/shorts técnicos y calzado de tenis profesional",
+        gear: "raqueta de tenis profesional, muñequera, vincha deportiva",
+        celebration: "levantando la raqueta al cielo, cayendo de rodillas en la cancha con emoción"
+      },
+      baseball: {
+        arena: "estadio de béisbol profesional MLB de noche con reflectores y diamante impecable",
+        action: "bateando un home run con swing poderoso, lanzando una recta de fuego o atrapando una pelota en diving catch",
+        ball: "pelota de béisbol con costuras rojas",
+        trophy: "trofeo Commissioner's Trophy / copa del campeonato de béisbol",
+        players: "beisbolistas con uniforme completo: camiseta, pantalones, gorra y guante de béisbol",
+        gear: "bate de béisbol, guante de béisbol, casco de bateo, gorra",
+        celebration: "saltando sobre home plate, lanzando el bate al aire tras un home run"
+      },
+      "american-football": {
+        arena: "estadio de fútbol americano NFL con campo verde marcado con yardas y graderío masivo",
+        action: "lanzando un pase de touchdown perfecto, corriendo con el balón esquivando tackles o interceptando un pase",
+        ball: "balón de fútbol americano ovalado de cuero",
+        trophy: "trofeo Vince Lombardi plateado del Super Bowl",
+        players: "jugadores de fútbol americano con casco, hombreras, jersey y pantalones con protecciones",
+        gear: "casco con facemask, hombreras, guantes de receptor",
+        celebration: "haciendo un spike del balón en la end zone, levantando el trofeo"
+      },
+      hockey: {
+        arena: "pista de hockey sobre hielo profesional NHL con hielo impecable y vallas de cristal",
+        action: "disparando un slapshot potente, deteniendo un tiro imposible o peleando por el puck en las vallas",
+        ball: "puck de hockey negro deslizándose sobre el hielo",
+        trophy: "Copa Stanley brillando con efecto cromado",
+        players: "jugadores de hockey con casco, jersey, pantalones acolchados y patines de hielo",
+        gear: "stick de hockey, patines de hielo, casco con visor, guantes de hockey",
+        celebration: "levantando la Copa Stanley sobre su cabeza, deslizándose de rodillas sobre el hielo"
+      },
+      volleyball: {
+        arena: "cancha de voleibol profesional con red oficial y tribunas repletas de aficionados",
+        action: "ejecutando un remate devastador sobre la red, haciendo una clavada o realizando un bloqueo espectacular",
+        ball: "balón de voleibol oficial tricolor",
+        trophy: "copa/trofeo dorado de campeonato de voleibol",
+        players: "jugadores de voleibol con camiseta sin mangas y shorts cortos deportivos",
+        gear: "rodilleras deportivas, muñequeras",
+        celebration: "gritando y golpeando el suelo con el puño, abrazo de equipo en la cancha"
+      },
+      handball: {
+        arena: "cancha de handball profesional indoor con portería y tribunas",
+        action: "saltando en el aire y lanzando un tiro potente a portería, realizando una finta espectacular",
+        ball: "balón de handball",
+        trophy: "copa/trofeo dorado de campeonato de handball",
+        players: "jugadores de handball con camiseta ajustada y shorts, zapatillas indoor",
+        gear: "muñequeras, resina en las manos",
+        celebration: "corriendo hacia las tribunas con brazos abiertos"
+      },
+      rugby: {
+        arena: "estadio de rugby con campo de césped y postes en H al fondo, noche lluviosa épica",
+        action: "corriendo con el balón ovalado esquivando placajes, ejecutando un tackle demoledor o pateando a postes",
+        ball: "balón ovalado de rugby",
+        trophy: "copa Webb Ellis o trofeo de campeonato de rugby",
+        players: "jugadores de rugby con jersey ceñido, shorts cortos y tacos de rugby, sin casco ni protecciones",
+        gear: "protector bucal, vendas en las piernas, scrum cap",
+        celebration: "formando un huddle de equipo, levantando el trofeo bajo la lluvia"
+      },
+      boxing: {
+        arena: "ring de boxeo profesional con cuerdas, esquinas y reflectores cenitales, humo dramático",
+        action: "lanzando un gancho devastador, esquivando un golpe con footwork elegante o conectando un uppercut",
+        ball: "guantes de boxeo rojos/dorados con impacto de sudor volando",
+        trophy: "cinturón de campeón mundial de boxeo con placas doradas",
+        players: "boxeadores con shorts de boxeo brillantes, guantes, vendas y sin camiseta, cuerpo atlético",
+        gear: "guantes de boxeo, vendas en las manos, protector bucal",
+        celebration: "levantando los brazos en victoria, mostrando el cinturón de campeón"
+      },
+    };
+
+    // Detectar vocabulario del deporte (default: football)
+    const sportKey = sport || "football";
+    const vocab = SPORT_VOCAB[sportKey] || SPORT_VOCAB["football"];
 
     const aiSettings: any = user.publicMetadata?.aiSettings || {};
     const agencyName = aiSettings.agencyName || "Ecuabet";
@@ -43,9 +141,18 @@ export async function POST(request: Request) {
 
         systemPrompt = `Eres un director creativo TOP de publicidad deportiva de apuestas para Latinoamérica. Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
 
+DEPORTE: El deporte es ${sportKey.toUpperCase()}. Usa EXCLUSIVAMENTE esta ambientación:
+- Escenario: ${vocab.arena}
+- Jugadores/Deportistas: ${vocab.players}
+- Acción típica: ${vocab.action}
+- Elemento deportivo: ${vocab.ball}
+- Trofeo/Premio: ${vocab.trophy}
+- Equipamiento: ${vocab.gear}
+- Celebración: ${vocab.celebration}
+
 Genera un JSON con "imagePrompt" y "caption" para: ${m.home} vs ${m.away} a las ${m.time} — ${m.league}.
 
-**imagePrompt** — Prompt en ESPAÑOL, ultra-descriptivo y fotorrealista. Escoge UNA composición al azar:
+**imagePrompt** — Prompt en ESPAÑOL, ultra-descriptivo y fotorrealista. Usa SOLO la ambientación del deporte indicado arriba. Escoge UNA composición al azar:
 
 A) DUELO CARA A CARA CON TROFEO: Composición dividida. Izquierda: un jugador estrella de ${m.home} con su uniforme oficial posando desafiante. Derecha: un jugador estrella de ${m.away} con su uniforme oficial en posición de combate. Entre ambos: el trofeo/copa de la ${m.league} brillando con luz dorada. Los escudos oficiales de ambos equipos flotan sobre cada lado. Fondo de estadio nocturno con reflectores épicos.
 
@@ -69,9 +176,9 @@ J) SPOTLIGHT DEL TROFEO: Fondo completamente negro. En el centro, la copa/trofeo
 
 K) DIAGONAL EXPLOSIVA: Composición dividida en diagonal. Mitad superior-izquierda: jugador de ${m.home} con su camiseta real atacando hacia el frente. Mitad inferior-derecha: jugador de ${m.away} defendiendo con intensidad. La diagonal central es una explosión de energía dorada con el texto del enfrentamiento. Escudos 3D en las esquinas opuestas. Copa de la competición detrás de la explosión.
 
-L) CELEBRACIÓN DE GOL: Un jugador estrella celebrando un gol con los brazos extendidos, corriendo hacia la cámara con expresión de euforia. Detrás de él, el estadio entero en éxtasis con papel picado y bengalas. Los escudos de ${m.home} y ${m.away} integrados como banderas ondeando en la tribuna. Copa de la ${m.league} resplandeciendo en el cielo como constelación.
+L) CELEBRACIÓN ÉPICA: Un deportista estrella ${vocab.celebration}, corriendo/moviéndose hacia la cámara con expresión de euforia. Detrás de él, el ${vocab.arena} entero en éxtasis con papel picado y bengalas. Los escudos de ${m.home} y ${m.away} integrados como banderas ondeando en la tribuna. ${vocab.trophy} resplandeciendo en el cielo como constelación.
 
-M) TENSIÓN DE CAMERINO: Vista interior de un vestuario de lujo. Un jugador de ${m.home} sentándose en la banca atándose los botines, mirada de determinación. En reflejo del espejo o pantalla del vestuario se ve un jugador de ${m.away} haciendo lo mismo. Los escudos de ambos equipos colgados en las paredes. Copa del torneo visible al fondo del pasillo hacia la cancha. Iluminación dramática cálida.
+M) TENSIÓN DE CAMERINO: Vista interior de un vestuario/vestidor de lujo. Un deportista de ${m.home} preparándose con su ${vocab.gear}, mirada de determinación. En reflejo del espejo se ve un deportista de ${m.away} haciendo lo mismo. Los escudos de ambos equipos colgados en las paredes. ${vocab.trophy} visible al fondo del pasillo. Iluminación dramática cálida.
 
 N) GALERÍA DE CAMPEONES: Pasillo oscuro tipo museo con cuadros dorados enmarcados. En dos cuadros centrales: retratos fotorrealistas de jugadores estrella de cada equipo con sus uniformes. Entre los cuadros, la copa de la ${m.league} sobre un pedestal iluminado. Los escudos de los equipos tallados en los marcos dorados. Piso de mármol oscuro con reflejos.
 
@@ -110,9 +217,16 @@ JSON: { "imagePrompt": "...", "caption": "..." }`;
 
         systemPrompt = `Eres un director creativo TOP de publicidad deportiva de apuestas para Latinoamérica. Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
 
+DEPORTE: ${sportKey.toUpperCase()}. Ambientación obligatoria:
+- Escenario: ${vocab.arena}
+- Deportistas: ${vocab.players}
+- Acción: ${vocab.action}
+- Elemento: ${vocab.ball}
+- Trofeo: ${vocab.trophy}
+
 Tienes ${matchCount} partidos. Genera JSON con "imagePrompt" y "caption".
 
-**imagePrompt** — ESPAÑOL. Fotorrealista. Los enfrentamientos que DEBEN estar escritos legiblemente en la imagen son:
+**imagePrompt** — ESPAÑOL. Fotorrealista. Usa la ambientación del deporte indicado. Los enfrentamientos que DEBEN estar escritos legiblemente en la imagen son:
 ${matches.map((m: any) => `"${m.home} vs ${m.away} — ${m.time}"`).join("\n")}
 
 Escoge UNA composición visual (NO escribas el nombre de la opción en la imagen):
