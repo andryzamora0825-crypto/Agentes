@@ -193,7 +193,7 @@ export async function POST(request: Request) {
 
     // Construir bloque de contacto solo si hay datos
     const contactBlock = contactNumber
-      ? `- CONTACTO OBLIGATORIO EN LA IMAGEN: Incluye el número "${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""} en la parte inferior de la imagen, con diseño integrado: fondo con franja sutil de color ${primaryColor}, tipografía bold y limpia, con icono de WhatsApp o teléfono al lado. Debe verse profesional, NO flotando sin diseño.`
+      ? `- DATOS DE CONTACTO: Añade una franja elegante en la parte inferior con color ${primaryColor} que muestre exactamente el texto "${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""}. Añade un icono sutil de WhatsApp. IMPORTANTE: NO escribas la palabra "contacto" ni "obligatorio", dibuja ÚNICAMENTE los números o la dirección web indicada.`
       : "";
 
     if (!process.env.OPENAI_API_KEY) {

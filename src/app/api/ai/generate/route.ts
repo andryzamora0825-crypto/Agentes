@@ -120,8 +120,14 @@ export async function POST(request: Request) {
         const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings.primaryColor || '#FFDE00';
         const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings.secondaryColor || '#000000';
 
-        finalPrompt += `\nMarca: ${formattedPlat}. Colores: Primario ${pColor}, Secundario ${sColor}. Incluye creativamente colores/logo. Escribe "${formattedPlat}" impecablemente.`;
+        finalPrompt += `\nMarca: ${formattedPlat}. Colores: Primario ${pColor}, Secundario ${sColor}. Incluye creativamente colores/logo. Escribe "${formattedPlat}" con ortografía PERFECTA.`;
         
+        finalPrompt += `\nREGLA ORTOGRÁFICA CRÍTICA: Escribe EXACTAMENTE "${formattedPlat}". PROHIBIDO añadir, omitir o cambiar letras. REVISA CUIDADOSAMENTE LETRA POR LETRA: ${formattedPlat.split('').join('-')}.`;
+
+        if (platKey === 'ecuabet') {
+          finalPrompt += ` En especial, PROHIBIDO escribir "Ecubabet", "Ecuabett" o "Ecuabettt".`;
+        }
+
         if (OFFICIAL_PLATFORMS[platKey]) {
           itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
         }
