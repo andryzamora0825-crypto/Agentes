@@ -171,11 +171,14 @@ const SPORTS = [
   { id: "basketball",        label: "Baloncesto",       emoji: "🏀", active: true },
   { id: "tennis",            label: "Tenis",            emoji: "🎾", active: true },
   { id: "baseball",          label: "Béisbol",          emoji: "⚾", active: true },
+  { id: "boxing",            label: "Boxeo",            emoji: "🥊", active: true },
+  { id: "mma",               label: "MMA / UFC",        emoji: "🤼", active: true },
   { id: "american-football", label: "F. Americano",     emoji: "🏈", active: true },
   { id: "hockey",            label: "Hockey",           emoji: "🏒", active: true },
   { id: "volleyball",        label: "Voleibol",         emoji: "🏐", active: true },
   { id: "handball",          label: "Handball",         emoji: "🤾", active: true },
   { id: "rugby",             label: "Rugby",            emoji: "🏉", active: true },
+  { id: "motorsport",        label: "Automovilismo",    emoji: "🏎️", active: true },
 ];
 
 interface Match {

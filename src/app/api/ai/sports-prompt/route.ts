@@ -102,6 +102,24 @@ export async function POST(request: Request) {
         gear: "guantes de boxeo, vendas en las manos, protector bucal",
         celebration: "levantando los brazos en victoria, mostrando el cinturón de campeón"
       },
+      mma: {
+        arena: "octágono de UFC/MMA con malla metálica, luces cenitales azules y rojas, ambiente de combate",
+        action: "conectando un rodillazo volador, ejecutando una llave de sumisión o lanzando una patada giratoria",
+        ball: "guantes de MMA pequeños con nudillos expuestos, puños vendados",
+        trophy: "cinturón de campeón UFC con placa octagonal dorada",
+        players: "peleadores de MMA con shorts de combate, guantes pequeños, sin camiseta, tatuajes y cuerpo definido",
+        gear: "guantes de MMA, protector bucal, vendas en las manos, espinilleras opcionales",
+        celebration: "subido a la malla del octágono celebrando, mostrando el cinturón UFC en alto"
+      },
+      motorsport: {
+        arena: "circuito de carreras profesional de noche con luces LED en las curvas, recta principal iluminada",
+        action: "acelerando a máxima velocidad por la recta, adelantando en una curva cerrada con chispas volando del asfalto",
+        ball: "casco de piloto con visor reflejante y diseño personalizado",
+        trophy: "trofeo de primer lugar de Gran Premio con champagne explotando",
+        players: "pilotos con traje de carreras ignífugo con logos de patrocinadores, casco puesto o en mano",
+        gear: "casco de carreras, guantes de piloto, traje ignífugo, HANS device",
+        celebration: "de pie sobre el podio rociando champagne, con el trofeo en alto y confeti cayendo"
+      },
     };
 
     // Detectar vocabulario del deporte (default: football)
