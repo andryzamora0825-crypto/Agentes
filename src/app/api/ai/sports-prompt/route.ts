@@ -134,6 +134,34 @@ export async function POST(request: Request) {
     const contactNumber = aiSettings.contactNumber || "";
     const extraContact = aiSettings.extraContact || "";
 
+    // ═══ FECHA LEGIBLE (ES) ═══ Ej: "23 ABR" / "23 ABRIL 2026"
+    const now = new Date();
+    const MESES_CORTOS = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+    const MESES_LARGOS = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+    const dd = now.getDate();
+    const dateShort = `${dd} ${MESES_CORTOS[now.getMonth()]}`;
+    const dateLong  = `${dd} DE ${MESES_LARGOS[now.getMonth()]} ${now.getFullYear()}`;
+
+    // ═══ CTA OBLIGATORIO — frases genuinas de recarga/acción ═══
+    const RECHARGE_CTAS = [
+      "¡RECARGA YA!",
+      "RECARGA TU SALDO AQUÍ",
+      "RECARGA Y GANA",
+      "¡APUESTA YA!",
+      "¡NO TE QUEDES FUERA!",
+      "ENTRA Y GANA",
+      "DEPOSITA Y JUEGA",
+      "RECARGA AHORA",
+      "REGÍSTRATE Y GANA",
+      "ÚNETE AL JUEGO",
+      "ACTIVA TU BONO HOY",
+      "¡DALE PLAY A TU APUESTA!",
+      "RECARGA EN SEGUNDOS",
+      "TU JUGADA, TU GANANCIA",
+      "APUESTA CON LOS PROS",
+    ];
+    const cta = RECHARGE_CTAS[Math.floor(Math.random() * RECHARGE_CTAS.length)];
+
     // Construir bloque de contacto solo si hay datos
     const contactBlock = contactNumber
       ? `- CONTACTO OBLIGATORIO EN LA IMAGEN: Incluye el número "${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""} en la parte inferior de la imagen, con diseño integrado: fondo con franja sutil de color ${primaryColor}, tipografía bold y limpia, con icono de WhatsApp o teléfono al lado. Debe verse profesional, NO flotando sin diseño.`
@@ -170,7 +198,23 @@ DEPORTE: El deporte es ${sportKey.toUpperCase()}. Usa EXCLUSIVAMENTE esta ambien
 
 Genera un JSON con "imagePrompt" y "caption" para: ${m.home} vs ${m.away} a las ${m.time} — ${m.league}.
 
-**imagePrompt** — Prompt en ESPAÑOL, ultra-descriptivo y fotorrealista. Usa SOLO la ambientación del deporte indicado arriba. Escoge UNA composición al azar:
+**imagePrompt** — Prompt en ESPAÑOL, ultra-descriptivo y fotorrealista. Usa SOLO la ambientación del deporte indicado arriba.
+
+═══════════════════════════════════════════════════════════════════
+ANTES DE DESCRIBIR NADA VISUAL, DEFINE EL TEXTO IMPRESO EN LA IMAGEN
+═══════════════════════════════════════════════════════════════════
+Empieza el imagePrompt con el siguiente bloque literal (es una instrucción al modelo de imagen para que renderice texto legible y perfectamente escrito, NO son etiquetas ni metadatos):
+
+"TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (todos los textos deben quedar perfectamente legibles, sin letras deformadas, bien ortografiados):
+• TÍTULO CENTRAL del duelo en tipografía deportiva bold gigante: '${m.home.toUpperCase()} VS ${m.away.toUpperCase()}'
+• HORA DEL PARTIDO en badge/recuadro destacado con ícono de reloj, número grande bold color ${primaryColor} sobre fondo ${secondaryColor}: '${m.time}'
+• FECHA integrada junto a la hora (tarjeta pequeña o sub-línea): '${dateShort}'
+• LIGA/COMPETICIÓN como subtítulo elegante: '${m.league.toUpperCase()}'
+• LLAMADA A LA ACCIÓN en banner/botón inferior grande, con color ${primaryColor}, tipografía impactante, estilo botón premium: '${cta}'
+• LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
+Estos 6 elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si alguno falta o sale ilegible."
+
+Luego de ese bloque, describe la composición visual. Escoge UNA composición al azar:
 
 A) DUELO CARA A CARA CON TROFEO: Composición dividida. Izquierda: un jugador estrella de ${m.home} con su uniforme oficial posando desafiante. Derecha: un jugador estrella de ${m.away} con su uniforme oficial en posición de combate. Entre ambos: el trofeo/copa de la ${m.league} brillando con luz dorada. Los escudos oficiales de ambos equipos flotan sobre cada lado. Fondo de estadio nocturno con reflectores épicos.
 
@@ -204,18 +248,19 @@ O) CHOQUE FUEGO VS HIELO: Composición dual. Lado izquierdo: jugador de ${m.home
 
 P) PROMO APP MÓVIL: Un smartphone premium en el centro de la imagen mostrando el enfrentamiento en su pantalla. Saliendo de la pantalla emergen jugadores fotorrealistas de ambos equipos en acción, como si saltaran del teléfono a la realidad. Copa del torneo flotando sobre el teléfono. Escudos 3D a los lados. Fondo oscuro con destellos de la marca. Texto "¡Apuesta ya!" integrado con diseño moderno.
 
-REGLAS ESTRICTAS:
-- Texto "${m.home} vs ${m.away}" y hora "${m.time}" UNA SOLA VEZ, centrado con tipografía deportiva moderna bold.
+REGLAS ESTRICTAS (el texto DEBE aparecer renderizado en la imagen final):
+- OBLIGATORIO VISIBLE: "${m.home.toUpperCase()} VS ${m.away.toUpperCase()}" (título), "${m.time}" (hora en badge), "${dateShort}" (fecha), "${m.league.toUpperCase()}" (liga), "${cta}" (CTA en botón/banner inferior).
+- NO omitas ninguno de esos textos. NO los resumas. NO uses abreviaciones distintas. Si la composición no da espacio, ajusta layout para que todos quepan legibles.
 - Escudos oficiales de AMBOS equipos DEBEN aparecer con acabado 3D o metálico premium.
 - Si la liga tiene copa/trofeo, INCLÚYELO en la composición.
 - Jugadores DEBEN llevar los uniformes/colores reales de sus equipos.
 ${contactBlock}
 - Logo "${agencyName}" UNA VEZ en posición prominente. PROHÍBE logos duplicados.
 - Colores de la marca: ${primaryColor}/${secondaryColor}.
-- NUNCA escribas "HOY". Usa la hora real.
-- Máximo 100 palabras. Fotorrealismo publicitario premium. ESPAÑOL.
+- NUNCA escribas "HOY" ni "MAÑANA": usa la hora "${m.time}" y fecha "${dateShort}" tal cual.
+- Máximo 140 palabras. Fotorrealismo publicitario premium. ESPAÑOL.
 
-**caption** — Copy agresivo en ESPAÑOL para redes sociales. Menciona ambos equipos, hora, liga y competición. Incluye CTA urgente (ej: "¡Recarga con tiempo!", "¡No te quedes fuera!"). Emojis. 2-3 hashtags.${contactNumber ? ` Al final incluye: "📲 Contáctanos: ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
+**caption** — Copy agresivo en ESPAÑOL para redes sociales. Menciona ambos equipos, hora, fecha (${dateShort}), liga y competición. Incluye el CTA "${cta}". Emojis. 2-3 hashtags.${contactNumber ? ` Al final incluye: "📲 Contáctanos: ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
 
@@ -244,10 +289,22 @@ DEPORTE: ${sportKey.toUpperCase()}. Ambientación obligatoria:
 
 Tienes ${matchCount} partidos. Genera JSON con "imagePrompt" y "caption".
 
-**imagePrompt** — ESPAÑOL. Fotorrealista. Usa la ambientación del deporte indicado. Los enfrentamientos que DEBEN estar escritos legiblemente en la imagen son:
-${matches.map((m: any) => `"${m.home} vs ${m.away} — ${m.time}"`).join("\n")}
+**imagePrompt** — ESPAÑOL. Fotorrealista. Usa la ambientación del deporte indicado.
 
-Escoge UNA composición visual (NO escribas el nombre de la opción en la imagen):
+═══════════════════════════════════════════════════════════════════
+ANTES DE DESCRIBIR NADA VISUAL, DEFINE EL TEXTO IMPRESO EN LA IMAGEN
+═══════════════════════════════════════════════════════════════════
+Empieza el imagePrompt con el siguiente bloque literal (instrucción al modelo de imagen para renderizar texto legible y perfectamente escrito):
+
+"TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (todos los textos deben quedar perfectamente legibles, sin letras deformadas ni faltas de ortografía):
+• ENCABEZADO: 'CARTELERA ${dateShort}' en tipografía deportiva bold.
+• ${matchCount} FILAS DE PARTIDOS, cada una con su propia tarjeta/fila visible y legible:
+${matches.map((m: any, i: number) => `   ${i + 1}) '${m.home.toUpperCase()} VS ${m.away.toUpperCase()}' junto con hora '${m.time}' en badge destacado y liga '${m.league.toUpperCase()}' como subtítulo.`).join("\n")}
+• LLAMADA A LA ACCIÓN en banner/botón inferior grande con color ${primaryColor}, tipografía impactante: '${cta}'
+• LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
+Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si falta algún partido, alguna hora o el CTA."
+
+Luego de ese bloque, describe la composición visual. Escoge UNA composición (NO escribas el nombre de la opción en la imagen):
 
 A) PANELES DIVIDIDOS: Imagen dividida en ${matchCount} paneles horizontales. Cada panel muestra un jugador en acción del partido correspondiente con los escudos de ambos equipos y la hora. Franja central vertical dorada con el logo de "${agencyName}". Fondo de estadio nocturno por detrás.
 
@@ -269,17 +326,19 @@ I) SALA VIP CON PANTALLAS: Interior de un lounge VIP de apuestas ultra-premium. 
 
 J) GRID MÓVIL APP: Un smartphone premium gigante en el centro de la composición. En su pantalla se muestra un grid organizado con los ${matchCount} partidos: escudos enfrentados, "vs" y hora de cada uno. Desde el teléfono salen rayos de energía y jugadores fotorrealistas emergiendo en 3D. Fondo oscuro con partículas doradas flotantes. Logo de "${agencyName}" integrado en la app.
 
-REGLAS ESTRICTAS:
-- TODOS los ${matchCount} enfrentamientos DEBEN aparecer escritos legiblemente con su hora real. Sin excepción.
+REGLAS ESTRICTAS (todo este texto DEBE aparecer impreso en la imagen final):
+- TODOS los ${matchCount} enfrentamientos escritos legiblemente con su hora (${matches.map((m: any) => `"${m.time}"`).join(", ")}) y su liga. Sin excepción, sin resumir, sin omitir.
+- Fecha "${dateShort}" visible en el encabezado o cartelera.
+- CTA OBLIGATORIO en banner/botón inferior: "${cta}".
 - Escudos de los equipos con acabado 3D/metálico visible.
 - Jugadores con uniformes reales de sus equipos.
 ${contactBlock}
 - Logo "${agencyName}" UNA VEZ. PROHÍBE logos duplicados o marcas de agua.
-- NUNCA escribas "HOY". Solo horas reales.
+- NUNCA escribas "HOY" ni "MAÑANA": usa la fecha "${dateShort}" y las horas reales.
 - Colores ${primaryColor}/${secondaryColor}. Fotorrealismo. ESPAÑOL.
-- Máximo 100 palabras.
+- Máximo 160 palabras.
 
-**caption** — AGENDA COMPLETA con TODOS los ${matchCount} partidos. Emojis por deporte. Hora y liga de cada uno. CTA urgente ("¡Recarga con tiempo!", "¡Apuesta ya!"). 3-5 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
+**caption** — AGENDA COMPLETA con TODOS los ${matchCount} partidos. Fecha ${dateLong}. Emojis por deporte. Hora y liga de cada uno. Incluye el CTA "${cta}". 3-5 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
 
@@ -293,10 +352,28 @@ Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryCo
 
 Transforma la idea en JSON con "imagePrompt" y "caption".
 
-**imagePrompt** — Máximo 100 palabras. ESPAÑOL. Fotorrealismo publicitario premium. Ultra-descriptivo y visual.
+**imagePrompt** — Máximo 140 palabras. ESPAÑOL. Fotorrealismo publicitario premium. Ultra-descriptivo y visual.
+
+═══════════════════════════════════════════════════════════════════
+ANTES DE DESCRIBIR NADA VISUAL, DEFINE EL TEXTO IMPRESO EN LA IMAGEN
+═══════════════════════════════════════════════════════════════════
+Empieza el imagePrompt con el siguiente bloque literal (instrucción al modelo de imagen para renderizar texto legible y perfectamente escrito):
+
+"TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (legible, sin letras deformadas, bien ortografiado):
+• TÍTULO / GANCHO principal en tipografía bold impactante (basado en el gancho de la idea).
+• FECHA visible como badge pequeño: '${dateShort}'
+• LLAMADA A LA ACCIÓN en banner/botón inferior destacado con color ${primaryColor}: '${cta}'
+• LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
+Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual."
+
+Luego describe la composición visual basada en la idea.
+
+REGLAS:
 - Logo de "${agencyName}" UNA SOLA VEZ, integrado profesionalmente. PROHÍBE logos duplicados.
+- CTA "${cta}" OBLIGATORIO visible en la imagen.
+- Fecha "${dateShort}" visible en la imagen.
 ${contactBlock}
-**caption** — Copy ESPAÑOL para redes, agresivo, emocional, CTA, 2-3 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
+**caption** — Copy ESPAÑOL para redes, agresivo, emocional. Incluye el CTA "${cta}" y la fecha ${dateLong}. 2-3 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
 
