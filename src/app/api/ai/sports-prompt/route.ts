@@ -48,9 +48,9 @@ F) Estadio Aéreo Nocturno: Toma aérea drone de un estadio lleno de noche, piro
 G) Colisión Épica: Dos balones o elementos deportivos chocando en el centro con onda expansiva dorada, fragmentos volando, fondo oscuro con destellos.
 H) Diseño Editorial Deportivo: Composición limpia tipo portada de revista deportiva premium, foto principal recortada con tipografía bold, marcos geométricos dorados.
 
-REGLAS: 
+REGLAS IMPORTANTES: 
 - Texto "${m.home} vs ${m.away}" y hora "${m.time}" UNA SOLA VEZ centrados. NUNCA escribas "HOY".
-- Logo "${agencyName}" UNA VEZ. Colores ${primaryColor}/${secondaryColor}.
+- Logo "${agencyName}" UNA VEZ. Ubícalo lógicamente en la composición. **PROHÍBE marcas de agua repetidas en las esquinas**. Colores ${primaryColor}/${secondaryColor}.
 - Máximo 80 palabras en el imagePrompt. Sé denso y visual, no repitas instrucciones.
 - Fotorrealismo premium. ESPAÑOL.
 
@@ -68,7 +68,7 @@ JSON: { "imagePrompt": "...", "caption": "..." }`;
         // Solo 2 partidos principales como texto en la imagen.
         // TODOS los partidos van en el caption.
 
-        const headlines = matches.slice(0, 2);
+        const headlines = matches.slice(0, 3);
         const headlineText = headlines
           .map((m: any) => `${m.home} vs ${m.away} (${m.time})`)
           .join(" | ");
@@ -81,23 +81,22 @@ JSON: { "imagePrompt": "...", "caption": "..." }`;
 
 Tienes ${matchCount} partidos. Genera JSON con "imagePrompt" y "caption".
 
-**imagePrompt** — CORTO (máximo 80 palabras). Solo muestra en la imagen: "${headlineText}"${matchCount > 2 ? ` + "${matchCount - 2} partidos más"` : ""}.
+**imagePrompt** — Este es un prompt para generar la imagen. CORTO (máximo 80 palabras).
+Indica explícitamente que los ÚNICOS textos legibles en la imagen deben ser:
+- Enfrentamientos principales: "${headlineText}"
+${matchCount > 3 ? `- Un texto extra abajo que diga: "Y MÁS PARTIDAZOS"` : ""}
 
-Escoge UNA opción al azar:
-A) Pantalla LED Deportiva: Estadio nocturno con pantalla LED gigante mostrando los partidos estelares. Atmósfera eléctrica, público en silueta.
-B) Collage Split-Screen: ${Math.min(matchCount, 4)} paneles con escenas deportivas, franja central dorada con los enfrentamientos estelares.
-C) Cartelera Cinematográfica: Póster estilo película de acción deportiva, jugadores en poses heroicas, título grande con los enfrentamientos.
-D) Mesa de Control TV: Layout tipo ESPN/DIRECTV con grid deportivo, partidos en recuadros organizados, estética broadcast profesional.
-E) Marquesina de Estadio: Exterior de estadio nocturno imponente, marquesinas LED luminosas con los partidos, reflejos en piso mojado.
-F) Portal de Energía: Dos jugadores emergiendo de portales de energía opuestos (dorado vs azul), enfrentamientos escritos en el centro.
-G) Banner Holográfico: Hologramas deportivos flotantes con los partidos principales, jugadores como proyecciones 3D, ambiente futurista premium.
-H) Tribuna Explosiva: Vista desde cancha hacia tribunas llenas, pirotecnia dorada, banners con enfrentamientos colgando del techo del estadio.
+Escoge el ENTORNO VISUAL al azar (IMPORTANTE: Estas son instrucciones de diseño, NO las escribas textualmente en la imagen):
+A) Estructura de pantalla LED brillante dentro de un estadio nocturno.
+B) Collage dividido en paneles verticales con una franja central dorada.
+C) Póster de película de acción con ambiente oscuro y heroico.
+D) Diseño estilo canal de televisión deportivo tipo transmisión oficial.
+E) Marquesina exterior luminosa en la fachada de un mega-estadio.
 
-REGLAS:
-- Máximo 80 PALABRAS en imagePrompt. Directo y visual.
-- Máximo 2-3 líneas de texto visible en la imagen (los partidos estelares).
-- Logo "${agencyName}" UNA VEZ. NUNCA escribas "HOY". Usa horas reales.
-- Fotorrealismo. ESPAÑOL.
+REGLAS IMPORTANTES:
+- TEXTO VISIBLE: Solo pon los enfrentamientos y la hora. **PROHÍBE** estrictamente escribir descriptores como "Cartelera", "Póster", "Pantalla LED" en el arte. ¡Cero textos descriptivos!
+- Logo "${agencyName}" UNA VEZ. **PROHÍBE logos duplicados o marcas de agua en las esquinas**. NUNCA escribas "HOY". Usa horas reales.
+- Colores ${primaryColor}/${secondaryColor}. Fotorrealismo. ESPAÑOL.
 
 **caption** — AGENDA COMPLETA con TODOS los ${matchCount} partidos. Formato organizado con emojis, hora y liga de cada uno. CTA agresiva. 3-5 hashtags.
 
@@ -114,6 +113,7 @@ Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryCo
 Transforma la idea en JSON con "imagePrompt" y "caption".
 
 **imagePrompt** — Máximo 80 palabras. ESPAÑOL. Fotorrealismo publicitario premium. Ultra-descriptivo y visual. Texto visible en ESPAÑOL.
+IMPORTANTE: Integra el logo de "${agencyName}" UNA SOLA VEZ. **PROHÍBE logos duplicados o diminutos en las esquinas**.
 **caption** — Copy ESPAÑOL para redes, agresivo, emocional, CTA, 2-3 hashtags.
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
