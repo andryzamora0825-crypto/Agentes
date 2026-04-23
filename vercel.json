@@ -1,8 +1,2 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/auto-publish-trigger",
-      "schedule": "0 14,18,23 * * *"
-    }
-  ]
 }

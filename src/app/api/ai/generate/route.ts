@@ -75,12 +75,7 @@ export async function POST(request: Request) {
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
       
-      const agencyContext = `
-[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
-Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
-A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca:
-- Contactos (añade creativamente a carteles/letreros si es orgánico): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.
-`;
+      const agencyContext = `Marca: "${aiSettings.agencyName || 'Sin Nombre'}". Contacto opcional: ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
       // --- SISTEMA MULTIPLATAFORMA (LOGOS ROBUSTOS ADMINISTRADOS POR ZAMTOOLS) ---
@@ -124,22 +119,14 @@ A menos que la petición del usuario indique estrictamente lo contrario, DEBES i
         const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings.primaryColor || '#FFDE00';
         const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings.secondaryColor || '#000000';
 
-        finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}. 
-ES OBLIGATORIO usar la siguiente paleta de colores para esta marca: 
-- Color Primario: ${pColor}
-- Color Secundario: ${sColor}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
+        finalPrompt += `\nMarca: ${formattedPlat}. Colores: Primario ${pColor}, Secundario ${sColor}. Incluye creativamente colores/logo. Escribe "${formattedPlat}" impecablemente.`;
         
         if (OFFICIAL_PLATFORMS[platKey]) {
           itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
         }
       } else {
         // Fallback to agency colors if no platform selected
-        finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
-- Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
-- Color Secundario: ${aiSettings.secondaryColor || '#000000'}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
+        finalPrompt += `\nColores obligatorios: Primario ${aiSettings.primaryColor || '#FFDE00'}, Secundario ${aiSettings.secondaryColor || '#000000'}.`;
       }
     }
 
@@ -197,11 +184,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     // Añadir personaje si se descargó
     if (characterResult) {
       referenceImages.push(characterResult);
-      finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada.`;
+      finalPrompt += `\nIncluye al personaje adjunto.`;
     }
 
     // Refuerzo vital del formato al final del prompt
-    finalPrompt += `\n\n[INSTRUCCIONES FINALES]: ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ EN SU PROMPT.`;
+    finalPrompt += `\nRespeta proporciones solicitadas.`;
 
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
@@ -224,10 +211,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     });
 
     try {
-      // Nano Banana Pro cuando hay imágenes de referencia (alta fidelidad, mejor edición)
-      // Nano Banana 2 para generación pura de texto (más rápido)
-      const model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
-
+      // ═══ OPTIMIZACIÓN CRÍTICA DE COSTOS ═══
+      // Antes, si había imágenes de referencia (el logo de Ecuabet, de agencia, etc.), 
+      // forzaba NANO_BANANA_PRO por defecto. Como siempre hay logos, SIEMPRE usaba PRO.
+      // Pro cuesta hasta 10x más que Flash. Flash 3.1 procesa imágenes a la perfección.
+      const model = NANO_BANANA_2;
       const contents: any[] = [{ text: finalPrompt }];
       for (const img of referenceImages) {
         if (img.label) {

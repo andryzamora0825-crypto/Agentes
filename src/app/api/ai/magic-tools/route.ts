@@ -72,8 +72,10 @@ export async function POST(request: Request) {
       ];
 
       // 5. Call Gemini with retries + model fallback
-      const PRIMARY_MODEL = "gemini-3-pro-image-preview";
-      const FALLBACK_MODEL = "gemini-3.1-flash-image-preview";
+      // ═══ OPTIMIZACIÓN CRÍTICA DE COSTOS ═══
+      // Usamos gemini-3.1-flash-image-preview para TODO. Pro es demasiado costoso (-90% token cost).
+      const PRIMARY_MODEL = "gemini-3.1-flash-image-preview";
+      const FALLBACK_MODEL = "gemini-3-pro-image-preview";
       const MAX_RETRIES = 2;
       let response;
       let lastErr: any = null;

@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import { currentUser, clerkClient } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { createPost } from "@/lib/services/social-posts.service";
 import OpenAI from "openai";
-import { GoogleGenAI } from "@google/genai";
 
 export const maxDuration = 120; // 2 min máximo para evitar Timeouts durante el Broadcasting
-
-const NANO_BANANA_2 = "gemini-3.1-flash-image-preview"; // FIX: Modelo correcto de imágenes
-const COST_PER_AGENCY = 150;
 
 export async function GET() {
   try {
@@ -60,111 +56,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tienes flujos de automatización configurados en tu cuenta." }, { status: 403 });
     }
 
-    // 2. Configurar APIs
-    if (!process.env.GEMINI_API_KEY || !process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "Faltan credenciales maestras del sistema." }, { status: 500 });
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const client = await clerkClient();
 
-    // 3. Procesar en Paralelo para cada Agencia para evitar Timeout
+    // 3. Procesar en Paralelo para cada Agencia
     const broadcastPromises = allSettings.map(async (adminSetting) => {
-      let deducted = false;
       const adminId = adminSetting.user_id;
 
       try {
-        // A. Consultar la cartera del Cliente Administrador (Clerk)
-        const adminUser = await client.users.getUser(adminId);
-        const adminCredits = Number(adminUser.publicMetadata?.credits || 0);
-        const aiSettings: any = adminUser.publicMetadata?.aiSettings || {};
-
-        if (adminCredits < COST_PER_AGENCY) {
-          throw new Error(`Créditos insuficientes para el Admin ID: ${adminId}`);
-        }
-
-        // B. Rebanada de Créditos Defensiva (Pagar por adelantado)
-        await client.users.updateUserMetadata(adminId, {
-          publicMetadata: { credits: adminCredits - COST_PER_AGENCY },
-        });
-        deducted = true; // Dinero ya descontado
-
-        // C. Construir el Prompt Individual de la Agencia
-        let finalPrompt = imagePrompt;
-        const contents: any[] = [];
+        const finalUrl = body.imageUrl; // Reutilizamos directamente la imagen del moderador
         
-        // Inyectar Personalidad de la Agencia si la tiene configurada
-        if (aiSettings.logoUrl) {
-          try {
-            const logoRes = await fetch(aiSettings.logoUrl);
-            if (!logoRes.ok) throw new Error("Error al descargar logo: HTTP " + logoRes.status);
-            const arrayBuffer = await logoRes.arrayBuffer();
-            const mimeType = logoRes.headers.get('content-type') || "image/png";
-            
-            // Verificación extra para evitar colapsar a Gemini con un logo que en realidad es HTML
-            if (mimeType.includes("image")) {
-              contents.push({
-                inlineData: {
-                  mimeType: mimeType,
-                  data: Buffer.from(arrayBuffer).toString("base64"),
-                },
-              });
-              finalPrompt += `\n[INSTRUCCIÓN VITAL]: Incluye de manera hiperrealista o natural este logotipo dentro de la composición gráfica.`;
-            }
-          } catch(e: any) { 
-            console.warn("Error leyendo logo de la agencia para broadcast", e.message); 
-          }
+        if (!finalUrl) {
+          throw new Error("No se proporcionó la URL de la imagen del moderador.");
         }
-
-        contents.unshift({ text: finalPrompt });
-
-        // D. Generar con Gemini usando AbortController fuerte anti-timeout
-        const abortController = new AbortController();
-        const geminiTimeout = setTimeout(() => abortController.abort(), 60_000); // 60s
-        let response;
-        try {
-          response = await ai.models.generateContent({
-            model: NANO_BANANA_2,
-            contents,
-            config: {
-              responseModalities: ["TEXT", "IMAGE"],
-            },
-          });
-        } finally {
-          clearTimeout(geminiTimeout);
-        }
-
-        // E. Extraer Imagen
-        let imageBase64 = null;
-        let imageMimeType = "image/png";
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if ((part as any).inlineData) {
-            imageBase64 = (part as any).inlineData.data;
-            imageMimeType = (part as any).inlineData.mimeType || "image/png";
-            break;
-          }
-        }
-
-        if (!imageBase64) {
-          throw new Error("El Modelo respondió con error de censura o fallo y no entregó una imagen.");
-        }
-
-        // F. Subir Imagen a Supabase (INMORTALIZAR)
-        const imageBuffer = Buffer.from(imageBase64, "base64");
-        const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
-        const fileName = `broadcast_${adminId}_${Date.now()}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("ai-generations") // Bucket asumido de tu sistema
-          .upload(fileName, imageBuffer, { contentType: imageMimeType });
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicUrlData } = supabase.storage
-          .from("ai-generations")
-          .getPublicUrl(fileName);
-        const finalUrl = publicUrlData.publicUrl;
 
         // G. Redactar el Copy Perfectamente Adaptado
         const voice = adminSetting.brand_voice || "dinámico y persuasivo";
@@ -194,21 +100,6 @@ No expliques nada, entrega sólo el copy final con 2-3 hashtags. Contexto de la 
 
       } catch (err: any) {
         console.error(`[Falló Broadcast para ${adminId}]:`, err.message);
-
-        // I. MECANISMO DE REEMBOLSO (SAFEGUARD DE CRÉDITOS)
-        if (deducted) {
-          try {
-            const adminUserRefund = await client.users.getUser(adminId);
-            const backCredits = Number(adminUserRefund.publicMetadata?.credits || 0) + COST_PER_AGENCY;
-            await client.users.updateUserMetadata(adminId, {
-              publicMetadata: { credits: backCredits },
-            });
-            console.log(`[REEMBOLSO EJECUTADO] Se devolvieron ${COST_PER_AGENCY} créditos al usuario ${adminId}.`);
-          } catch(refundErr) {
-             console.error("[¡ERROR CRÍTICO EN REEMBOLSO!]", refundErr);
-          }
-        }
-        
         return { success: false, adminId, error: err.message };
       }
     });

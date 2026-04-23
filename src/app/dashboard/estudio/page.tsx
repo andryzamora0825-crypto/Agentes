@@ -303,11 +303,11 @@ export default function EstudioIAPage() {
         setTimeout(() => fetchHistory(), 3000);
         
         // Disparar auto-publicación MASIVA si es moderador (Fire and forget silencioso)
-        if (isModerator) {
+        if (isModerator && data.imageUrl) {
           fetch("/api/social/auto-broadcast", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ imagePrompt: finalPrompt })
+            body: JSON.stringify({ imagePrompt: finalPrompt, imageUrl: data.imageUrl })
           })
           .then(async (response) => {
             const resultData = await response.json();
