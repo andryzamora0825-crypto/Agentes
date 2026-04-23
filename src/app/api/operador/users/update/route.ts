@@ -71,13 +71,31 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "creditsDelta inválido." }, { status: 400 });
       }
 
-      const targetCurrentCredits = Number(targetMeta?.credits) || 0;
+      const { earnCredits, spendCredits, getBalance, ensureSeeded } = await import("@/lib/credits");
+      
+      // Ensure target is seeded before modifying credits
+      await ensureSeeded(targetUserId, Number(targetMeta?.credits || 0));
+      
+      let targetCurrentCredits = 0;
+      try {
+        targetCurrentCredits = await getBalance(targetUserId);
+      } catch (e) {
+        targetCurrentCredits = Number(targetMeta?.credits) || 0;
+      }
 
       if (delta > 0) {
         // GIVING credits: operator must have enough
         if (inventory.credits < delta) {
           return NextResponse.json({ error: `Inventario insuficiente. Tienes ${inventory.credits} créditos, intentas dar ${delta}.` }, { status: 400 });
         }
+        
+        await earnCredits({
+          userId: targetUserId,
+          amount: delta,
+          relatedId: user.id,
+          note: `Asignado por Operador ${operatorMeta.affiliateCode}`
+        });
+
         targetUpdate.credits = targetCurrentCredits + delta;
         operatorUpdate.operatorInventory = {
           ...inventory,
@@ -88,8 +106,17 @@ export async function POST(request: Request) {
       } else {
         // REMOVING credits: reintegrate to operator inventory
         const absAmount = Math.abs(delta);
-        const newTargetCredits = Math.max(0, targetCurrentCredits - absAmount);
-        const actualRemoved = targetCurrentCredits - newTargetCredits;
+        const actualRemoved = Math.min(absAmount, targetCurrentCredits);
+        const newTargetCredits = targetCurrentCredits - actualRemoved;
+
+        if (actualRemoved > 0) {
+          await spendCredits({
+            userId: targetUserId,
+            amount: actualRemoved,
+            relatedId: user.id,
+            note: `Retirado por Operador ${operatorMeta.affiliateCode}`
+          });
+        }
 
         targetUpdate.credits = newTargetCredits;
         operatorUpdate.operatorInventory = {

@@ -85,6 +85,7 @@ export default function OperadorPage() {
       if (data.success) {
         setOperator((prev: any) => ({ ...prev, inventory: data.updatedInventory }));
         loadData();
+        window.dispatchEvent(new Event("credits_updated"));
       } else {
         alert(data.error);
       }
@@ -111,6 +112,7 @@ export default function OperadorPage() {
         setOperator((prev: any) => ({ ...prev, inventory: data.updatedInventory }));
         setCreditInput(prev => ({ ...prev, [targetId]: "" }));
         loadData();
+        window.dispatchEvent(new Event("credits_updated"));
       } else {
         alert(data.error);
       }
