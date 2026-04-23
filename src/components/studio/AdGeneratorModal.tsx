@@ -260,8 +260,15 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
   const toggleMatch = (id: number) => {
     setSelectedMatches(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        if (next.size >= 3) {
+          alert("Has alcanzado el límite máximo de 3 partidos por diseño.");
+          return prev;
+        }
+        next.add(id);
+      }
       return next;
     });
   };
