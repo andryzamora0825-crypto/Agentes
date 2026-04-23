@@ -60,10 +60,18 @@ export async function POST(request: Request) {
     let successMessage = "";
 
     if (promoCode.reward_type === "credits") {
-      const currentCredits = Number(currentMetadata?.credits) || 0;
-      updateToApply.credits = currentCredits + promoCode.reward_value;
+      // Ledger atómico + idempotente por code_id+user
+      const { earnCredits } = await import("@/lib/credits");
+      const r = await earnCredits({
+        userId: user.id,
+        amount: promoCode.reward_value,
+        relatedId: `promo_${promoCode.id}`,
+        idempotencyKey: `redeem_${promoCode.id}_${user.id}`,
+        note: `Promo code: ${promoCode.code || promoCode.id}`,
+      });
+      updateToApply.credits = r.newBalance;
       successMessage = `¡Felicidades! Has canjeado ${promoCode.reward_value} créditos exitosamente.`;
-    } 
+    }
     else if (promoCode.reward_type === "vip_days") {
       const currentPlan = currentMetadata?.plan || 'FREE';
       let currentExpiresAt = currentMetadata?.vipExpiresAt ? Number(currentMetadata.vipExpiresAt) : Date.now();
@@ -90,10 +98,19 @@ export async function POST(request: Request) {
       updateToApply.plan = 'VIP';
       updateToApply.vipExpiresAt = currentExpiresAt + msToAdd;
 
-      // Credits
+      // Credits (vía ledger atómico)
       const comboCredits = Number(promoCode.combo_credits) || 0;
-      const currentCredits = Number(currentMetadata?.credits) || 0;
-      updateToApply.credits = currentCredits + comboCredits;
+      if (comboCredits > 0) {
+        const { earnCredits } = await import("@/lib/credits");
+        const r = await earnCredits({
+          userId: user.id,
+          amount: comboCredits,
+          relatedId: `promo_${promoCode.id}`,
+          idempotencyKey: `redeem_combo_${promoCode.id}_${user.id}`,
+          note: `Promo combo: ${promoCode.code || promoCode.id}`,
+        });
+        updateToApply.credits = r.newBalance;
+      }
 
       successMessage = `¡Felicidades! Has activado ${promoCode.reward_value} días VIP + ${comboCredits} créditos.`;
     }

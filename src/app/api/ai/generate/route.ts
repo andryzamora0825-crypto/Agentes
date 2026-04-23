@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
+import { spendCredits, refundCredits, getBalance, logRefundFailure, InsufficientCreditsError } from "@/lib/credits";
 
 export const maxDuration = 300; // 5 minutos máximo (Soportado por Vercel Pro)
 
@@ -190,25 +191,40 @@ export async function POST(request: Request) {
     // Refuerzo vital del formato al final del prompt
     finalPrompt += `\nRespeta proporciones solicitadas.`;
 
-    // 1. Verificación Financiera
-    const currentCredits = Number(user.publicMetadata?.credits || 0);
+    // 1. Descuento atómico de créditos vía RPC (inmune a race conditions)
     const hasRefImages = referenceImages.length > 0;
     const cost = 150;
+    const idempotencyKey = request.headers.get("x-idempotency-key") || `gen_${user.id}_${Date.now()}`;
 
-    if (currentCredits < cost) {
-      return NextResponse.json({
-        error: "Créditos insuficientes",
-        credits: currentCredits,
-        cost,
-      }, { status: 402 });
+    let newBalance: number;
+    let ledgerId: string;
+    try {
+      const r = await spendCredits({
+        userId: user.id,
+        amount: cost,
+        relatedId: `ai_generate_${Date.now()}`,
+        idempotencyKey,
+        note: "AI image generation",
+      });
+      newBalance = r.newBalance;
+      ledgerId = r.ledgerId;
+    } catch (e: any) {
+      if (e instanceof InsufficientCreditsError) {
+        return NextResponse.json({
+          error: "Créditos insuficientes",
+          credits: e.have,
+          cost,
+        }, { status: 402 });
+      }
+      console.error("[credits] spend failed:", e);
+      return NextResponse.json({ error: "Error verificando créditos." }, { status: 500 });
     }
 
-    // 2. Descontar créditos (prematuramente para evitar abusos)
-    const newBalance = currentCredits - cost;
+    // Sincronizar cache en Clerk para que el sidebar refleje el saldo
     const client = await clerkClient();
-    await client.users.updateUserMetadata(user.id, {
+    client.users.updateUserMetadata(user.id, {
       publicMetadata: { credits: newBalance },
-    });
+    }).catch(() => { /* no-crítico — la verdad vive en Supabase */ });
 
     try {
       // ═══ OPTIMIZACIÓN CRÍTICA DE COSTOS ═══
@@ -359,15 +375,30 @@ export async function POST(request: Request) {
       });
 
     } catch (apiError: any) {
-      // Revertir pago si falló la generación
+      // Refund atómico vía RPC (idempotente, no sobrescribe saldos concurrentes)
       try {
-        await client.users.updateUserMetadata(user.id, {
-          publicMetadata: { credits: currentCredits },
+        const r = await refundCredits({
+          userId: user.id,
+          amount: cost,
+          relatedId: ledgerId,
+          idempotencyKey: `refund_${ledgerId}`,
+          note: `refund: ${String(apiError?.message || "gemini failure").slice(0, 120)}`,
         });
+        // Cache en Clerk
+        client.users.updateUserMetadata(user.id, {
+          publicMetadata: { credits: r.newBalance },
+        }).catch(() => {});
       } catch (refundErr) {
         console.error("⚠️ Error reembolsando créditos:", refundErr);
+        // Registrar para reconciliación manual
+        await logRefundFailure({
+          userId: user.id,
+          amount: cost,
+          relatedId: ledgerId,
+          error: String(refundErr),
+        });
       }
-      
+
       // Mensaje de error amigable
       let rawMsg = "";
       try {

@@ -8,7 +8,36 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const body = await request.json();
-    const { matches, mode, generatedIdea, sport } = body;
+    const { matches, mode, generatedIdea, sport, odds } = body;
+    type OddsEntry = {
+      fixtureId: number;
+      featured?: "home" | "draw" | "away" | "over25" | "under25" | "bttsYes" | "bttsNo";
+      bookmaker?: string | null;
+      home?: number | null; draw?: number | null; away?: number | null;
+      over25?: number | null; under25?: number | null;
+      bttsYes?: number | null; bttsNo?: number | null;
+    };
+    const oddsList: OddsEntry[] = Array.isArray(odds) ? odds : [];
+
+    // ── Formateador de cuotas por partido (para inyectar en el prompt) ──
+    function oddsBlockFor(matchObj: any): string {
+      const row = oddsList.find(o => o.fixtureId === matchObj.id);
+      if (!row) return "";
+      const featured = row.featured || "home";
+      const labels: Record<string, string> = {
+        home: `${matchObj.home.toUpperCase()} GANA`,
+        draw: `EMPATE`,
+        away: `${matchObj.away.toUpperCase()} GANA`,
+        over25: `MÁS DE 2.5 GOLES`,
+        under25: `MENOS DE 2.5 GOLES`,
+        bttsYes: `AMBOS ANOTAN`,
+        bttsNo: `NO AMBOS ANOTAN`,
+      };
+      const odd = (row as any)[featured];
+      if (odd === null || odd === undefined) return "";
+      return `\n🔥 CUOTA DESTACADA: "${labels[featured]} → ${odd.toFixed(2)}x"${row.bookmaker ? ` (casa: ${row.bookmaker})` : ""}`;
+    }
+    const oddsUpdated = oddsList.length > 0 ? new Date().toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" }) : "";
 
     // ═══ VOCABULARIO VISUAL POR DEPORTE ═══
     const SPORT_VOCAB: Record<string, { arena: string; action: string; ball: string; trophy: string; players: string; gear: string; celebration: string }> = {
@@ -209,10 +238,11 @@ Empieza el imagePrompt con el siguiente bloque literal (es una instrucción al m
 • TÍTULO CENTRAL del duelo en tipografía deportiva bold gigante: '${m.home.toUpperCase()} VS ${m.away.toUpperCase()}'
 • HORA DEL PARTIDO en badge/recuadro destacado con ícono de reloj, número grande bold color ${primaryColor} sobre fondo ${secondaryColor}: '${m.time}'
 • FECHA integrada junto a la hora (tarjeta pequeña o sub-línea): '${dateShort}'
-• LIGA/COMPETICIÓN como subtítulo elegante: '${m.league.toUpperCase()}'
+• LIGA/COMPETICIÓN como subtítulo elegante: '${m.league.toUpperCase()}'${oddsBlockFor(m) ? `
+• CUOTA DESTACADA en un badge premium con diseño de ficha/botón dorado, muy visible junto al enfrentamiento (es el gancho comercial clave del diseño):${oddsBlockFor(m)}${oddsUpdated ? `\n  ➜ Y DEBAJO en tipografía pequeña: 'Cuotas actualizadas ${oddsUpdated}'` : ""}` : ""}
 • LLAMADA A LA ACCIÓN en banner/botón inferior grande, con color ${primaryColor}, tipografía impactante, estilo botón premium: '${cta}'
 • LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
-Estos 6 elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si alguno falta o sale ilegible."
+Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si alguno falta o sale ilegible."
 
 Luego de ese bloque, describe la composición visual. Escoge UNA composición al azar:
 
@@ -249,7 +279,7 @@ O) CHOQUE FUEGO VS HIELO: Composición dual. Lado izquierdo: jugador de ${m.home
 P) PROMO APP MÓVIL: Un smartphone premium en el centro de la imagen mostrando el enfrentamiento en su pantalla. Saliendo de la pantalla emergen jugadores fotorrealistas de ambos equipos en acción, como si saltaran del teléfono a la realidad. Copa del torneo flotando sobre el teléfono. Escudos 3D a los lados. Fondo oscuro con destellos de la marca. Texto "¡Apuesta ya!" integrado con diseño moderno.
 
 REGLAS ESTRICTAS (el texto DEBE aparecer renderizado en la imagen final):
-- OBLIGATORIO VISIBLE: "${m.home.toUpperCase()} VS ${m.away.toUpperCase()}" (título), "${m.time}" (hora en badge), "${dateShort}" (fecha), "${m.league.toUpperCase()}" (liga), "${cta}" (CTA en botón/banner inferior).
+- OBLIGATORIO VISIBLE: "${m.home.toUpperCase()} VS ${m.away.toUpperCase()}" (título), "${m.time}" (hora en badge), "${dateShort}" (fecha), "${m.league.toUpperCase()}" (liga), "${cta}" (CTA en botón/banner inferior)${oddsBlockFor(m) ? `, la CUOTA DESTACADA arriba mencionada en badge prominente con el número grande y bold (es el dato más importante para captar al apostador)` : ""}.
 - NO omitas ninguno de esos textos. NO los resumas. NO uses abreviaciones distintas. Si la composición no da espacio, ajusta layout para que todos quepan legibles.
 - Escudos oficiales de AMBOS equipos DEBEN aparecer con acabado 3D o metálico premium.
 - Si la liga tiene copa/trofeo, INCLÚYELO en la composición.
@@ -299,10 +329,13 @@ Empieza el imagePrompt con el siguiente bloque literal (instrucción al modelo d
 "TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (todos los textos deben quedar perfectamente legibles, sin letras deformadas ni faltas de ortografía):
 • ENCABEZADO: 'CARTELERA ${dateShort}' en tipografía deportiva bold.
 • ${matchCount} FILAS DE PARTIDOS, cada una con su propia tarjeta/fila visible y legible:
-${matches.map((m: any, i: number) => `   ${i + 1}) '${m.home.toUpperCase()} VS ${m.away.toUpperCase()}' junto con hora '${m.time}' en badge destacado y liga '${m.league.toUpperCase()}' como subtítulo.`).join("\n")}
+${matches.map((m: any, i: number) => {
+  const odd = oddsBlockFor(m).replace(/^\n🔥 CUOTA DESTACADA:\s*/, "").trim();
+  return `   ${i + 1}) '${m.home.toUpperCase()} VS ${m.away.toUpperCase()}' junto con hora '${m.time}' en badge destacado y liga '${m.league.toUpperCase()}' como subtítulo${odd ? `. CUOTA DESTACADA en ficha dorada al lado: ${odd}` : ""}.`;
+}).join("\n")}${oddsUpdated ? `\n• SUB-LÍNEA pequeña: 'Cuotas actualizadas ${oddsUpdated}'` : ""}
 • LLAMADA A LA ACCIÓN en banner/botón inferior grande con color ${primaryColor}, tipografía impactante: '${cta}'
 • LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
-Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si falta algún partido, alguna hora o el CTA."
+Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si falta algún partido, alguna hora, alguna cuota destacada o el CTA."
 
 Luego de ese bloque, describe la composición visual. Escoge UNA composición (NO escribas el nombre de la opción en la imagen):
 

@@ -94,14 +94,24 @@ export async function POST(request: Request) {
 
     if (dbError) {
       console.error("Supabase DB Insert Error:", dbError);
-      return NextResponse.json({ error: "Error al registrar en la base de datos." }, { status: 500 });
+      // Exponer el detalle para que el usuario sepa qué falla
+      // (ej: tabla no existe, RLS bloqueando, unique violation, etc.)
+      return NextResponse.json({
+        error: "Error al registrar en la base de datos.",
+        detail: dbError.message,
+        code: dbError.code,
+        hint: dbError.hint,
+      }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data: scammerData });
 
   } catch (error: any) {
     console.error("Error global en carga de estafador:", error);
-    return NextResponse.json({ error: "Ocurrió un error interno durante el proceso." }, { status: 500 });
+    return NextResponse.json({
+      error: "Ocurrió un error interno durante el proceso.",
+      detail: error.message || String(error),
+    }, { status: 500 });
   }
 }
 

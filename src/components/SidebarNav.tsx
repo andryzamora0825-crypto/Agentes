@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2, Crown, LayoutGrid } from "lucide-react";
+import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2, Crown, LayoutGrid, Brain } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
@@ -37,7 +37,8 @@ export default function SidebarNav() {
 
   const navItems = [
     { name: "Notas de Retiro",     href: "/dashboard",              exact: true,  icon: FileText,      adminOnly: false, vipOnly: true,  requiresBot: false },
-    { name: "Panel Admin",         href: "/dashboard/admin",         exact: false, icon: ShieldCheck,   adminOnly: true,  vipOnly: false, requiresBot: false },
+    { name: "Panel Admin",         href: "/dashboard/admin",         exact: true,  icon: ShieldCheck,   adminOnly: true,  vipOnly: false, requiresBot: false },
+    { name: "Pronósticos IA",      href: "/dashboard/admin/pronosticos", exact: false, icon: Brain,       adminOnly: true,  vipOnly: false, requiresBot: false },
     { name: "Mi Agencia",           href: "/dashboard/operador",      exact: false, icon: Crown,         adminOnly: false, vipOnly: false, requiresBot: false, operatorOnly: true },
     { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Comunidad IA",        href: "/dashboard/comunidad",     exact: false, icon: LayoutGrid,    adminOnly: false, vipOnly: true,  requiresBot: false },

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
+import { spendCredits, refundCredits, logRefundFailure, InsufficientCreditsError } from "@/lib/credits";
 
 export const maxDuration = 300;
 
@@ -34,24 +35,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan datos requeridos." }, { status: 400 });
     }
 
-    // 1. Check credits
-    const currentCredits = Number(user.publicMetadata?.credits || 0);
+    // 1. Descuento atómico de créditos (inmune a race conditions)
     const cost = Math.min(Math.max(credits || 25, 25), 500); // Clamp 25-500
+    const idempotencyKey = request.headers.get("x-idempotency-key") || `magic_${user.id}_${toolId}_${Date.now()}`;
 
-    if (currentCredits < cost) {
-      return NextResponse.json({
-        error: `Créditos insuficientes. Necesitas ${cost} créditos. Tienes ${currentCredits}.`,
-        credits: currentCredits,
-        cost,
-      }, { status: 402 });
+    let newBalance: number;
+    let ledgerId: string;
+    try {
+      const r = await spendCredits({
+        userId: user.id,
+        amount: cost,
+        relatedId: `magic_${toolId}_${Date.now()}`,
+        idempotencyKey,
+        note: `Editor PRO: ${toolId}`,
+      });
+      newBalance = r.newBalance;
+      ledgerId = r.ledgerId;
+    } catch (e: any) {
+      if (e instanceof InsufficientCreditsError) {
+        return NextResponse.json({
+          error: `Créditos insuficientes. Necesitas ${cost} créditos. Tienes ${e.have}.`,
+          credits: e.have,
+          cost,
+        }, { status: 402 });
+      }
+      console.error("[credits] spend failed:", e);
+      return NextResponse.json({ error: "Error verificando créditos." }, { status: 500 });
     }
 
-    // 2. Deduct credits preemptively
-    const newBalance = currentCredits - cost;
     const client = await clerkClient();
-    await client.users.updateUserMetadata(user.id, {
+    client.users.updateUserMetadata(user.id, {
       publicMetadata: { credits: newBalance },
-    });
+    }).catch(() => {});
 
     try {
       // 3. Fetch the source image
@@ -167,13 +182,25 @@ export async function POST(request: Request) {
       });
 
     } catch (apiError: any) {
-      // Refund credits on failure
       try {
-        await client.users.updateUserMetadata(user.id, {
-          publicMetadata: { credits: currentCredits },
+        const r = await refundCredits({
+          userId: user.id,
+          amount: cost,
+          relatedId: ledgerId,
+          idempotencyKey: `refund_${ledgerId}`,
+          note: `refund: ${String(apiError?.message || "magic tool failure").slice(0, 120)}`,
         });
+        client.users.updateUserMetadata(user.id, {
+          publicMetadata: { credits: r.newBalance },
+        }).catch(() => {});
       } catch (refundErr) {
         console.error("⚠️ Error reembolsando créditos:", refundErr);
+        await logRefundFailure({
+          userId: user.id,
+          amount: cost,
+          relatedId: ledgerId,
+          error: String(refundErr),
+        });
       }
 
       const rawMsg = apiError?.message || String(apiError);

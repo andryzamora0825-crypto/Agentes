@@ -93,6 +93,8 @@ interface MatchResult {
   time: string;
   league: string;
   status: string;
+  homeId?: number;
+  awayId?: number;
 }
 
 // ── PARSERS POR DEPORTE ──
@@ -104,6 +106,8 @@ function parseFootball(data: any): MatchResult[] {
       id: f.fixture?.id || 0,
       home: f.teams?.home?.name || "???",
       away: f.teams?.away?.name || "???",
+      homeId: f.teams?.home?.id,
+      awayId: f.teams?.away?.id,
       time: formatTime(f.fixture?.date),
       league: f.league?.name || "",
       status: f.fixture?.status?.short || "NS",

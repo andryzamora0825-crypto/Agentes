@@ -1,16 +1,26 @@
 import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
+import { getBalance } from "@/lib/credits";
 
 export async function GET() {
   try {
     const user = await currentUser();
-    
+
     if (!user) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
 
-    // Revisar si ya tiene asignados los créditos en su metadata
-    const currentCredits = user.publicMetadata?.credits;
+    // Fuente de verdad: Supabase credit_balances (si existe). Fallback: publicMetadata.
+    let currentCredits: number | undefined = undefined;
+    try {
+      const bal = await getBalance(user.id);
+      if (typeof bal === "number") currentCredits = bal;
+    } catch {
+      // Si la tabla aún no existe, caer al metadata
+    }
+    if (typeof currentCredits !== "number") {
+      currentCredits = user.publicMetadata?.credits as number | undefined;
+    }
 
     // 2. Control de Rango (VIP / FREE) y Expiración
     let currentPlan = user.publicMetadata?.plan || 'FREE';

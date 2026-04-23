@@ -372,6 +372,20 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
   const [selectedMatches, setSelectedMatches] = useState<Set<number>>(new Set());
   const [matchSearch, setMatchSearch] = useState("");
 
+  // ── Cuotas por partido (fetch cuando se selecciona) ──
+  type OddsRow = {
+    fixtureId: number;
+    bookmaker: string | null;
+    home: number | null; draw: number | null; away: number | null;
+    over25: number | null; under25: number | null;
+    bttsYes: number | null; bttsNo: number | null;
+  };
+  const [oddsMap, setOddsMap] = useState<Record<number, OddsRow>>({});
+  const [oddsLoading, setOddsLoading] = useState(false);
+  // Por cada partido, qué mercado destacar en la imagen
+  type MarketKey = "home" | "draw" | "away" | "over25" | "under25" | "bttsYes" | "bttsNo";
+  const [featuredMarkets, setFeaturedMarkets] = useState<Record<number, MarketKey>>({});
+
   // ── Estado Global ──
   const [assembling, setAssembling] = useState(false);
 
@@ -443,6 +457,51 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
     });
   };
 
+  // ═══ Cargar cuotas al seleccionar partidos ═══
+  useEffect(() => {
+    if (!selectedSport || selectedMatches.size === 0) return;
+    const idsToFetch = [...selectedMatches].filter(id => !oddsMap[id]);
+    if (idsToFetch.length === 0) return;
+
+    setOddsLoading(true);
+    const params = new URLSearchParams({
+      sport: selectedSport,
+      fixtures: idsToFetch.join(","),
+    });
+    fetch(`/api/sports/odds?${params}`)
+      .then(res => res.json())
+      .then((data: { success: boolean; odds?: OddsRow[] }) => {
+        if (!data.success || !data.odds) return;
+        setOddsMap(prev => {
+          const next = { ...prev };
+          for (const row of data.odds!) {
+            next[row.fixtureId] = row;
+          }
+          return next;
+        });
+        // Mercado destacado default: el favorito (cuota más baja de 1X2)
+        setFeaturedMarkets(prev => {
+          const next = { ...prev };
+          for (const row of data.odds!) {
+            if (next[row.fixtureId]) continue;
+            const candidates: [MarketKey, number | null][] = [
+              ["home", row.home], ["draw", row.draw], ["away", row.away],
+            ];
+            const valid = candidates.filter(([, v]) => v !== null && v > 1) as [MarketKey, number][];
+            if (valid.length > 0) {
+              valid.sort((a, b) => a[1] - b[1]);
+              next[row.fixtureId] = valid[0][0];
+            } else {
+              next[row.fixtureId] = "home";
+            }
+          }
+          return next;
+        });
+      })
+      .catch(err => console.warn("[ODDS] Error cargando cuotas:", err))
+      .finally(() => setOddsLoading(false));
+  }, [selectedMatches, selectedSport, oddsMap]);
+
   // ═══ Ensamblar Prompt y Generar ═══
   const handleProceed = useCallback(async () => {
     if (step === 1) {
@@ -458,7 +517,18 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
         body = { mode: "creative", generatedIdea };
       } else if (activeTab === "sports" && selectedMatches.size > 0) {
         const chosen = matches.filter(m => selectedMatches.has(m.id));
-        body = { mode: "sports", matches: chosen, sport: selectedSport };
+        // Enviar odds + mercado destacado por partido
+        const oddsPayload = chosen.map(m => {
+          const o = oddsMap[m.id];
+          const featured = featuredMarkets[m.id];
+          return o ? { ...o, fixtureId: m.id, featured } : { fixtureId: m.id, featured };
+        });
+        body = {
+          mode: "sports",
+          matches: chosen,
+          sport: selectedSport,
+          odds: oddsPayload,
+        };
       }
 
       const res = await fetch("/api/ai/sports-prompt", {
@@ -482,7 +552,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
     } finally {
       setAssembling(false);
     }
-  }, [step, activeTab, generatedIdea, selectedMatches, matches, localFormat, localPlatform, onDirectGenerate, onResult]);
+  }, [step, activeTab, generatedIdea, selectedMatches, matches, oddsMap, featuredMarkets, selectedSport, localFormat, localPlatform, onDirectGenerate, onResult]);
 
   const canProceed =
     (activeTab === "creative" && generatedIdea !== null) ||
@@ -633,35 +703,96 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
                       {filtered.length}/{matches.length}
                     </p>
                   </div>
-                  <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
+                  <div className="space-y-1 max-h-[320px] overflow-y-auto pr-1">
                     {filtered.map(match => {
                       const isSelected = selectedMatches.has(match.id);
+                      const odds = oddsMap[match.id];
+                      const featured = featuredMarkets[match.id];
                       return (
-                        <button
-                          key={match.id}
-                          onClick={() => toggleMatch(match.id)}
-                          className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all border ${
-                            isSelected
-                              ? "bg-emerald-500/10 border-emerald-500/25"
-                              : "bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]"
-                          }`}
-                        >
-                          <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
-                            isSelected ? "bg-emerald-500 text-black" : "bg-white/[0.06] border border-white/[0.1]"
-                          }`}>
-                            {isSelected && <Check className="w-3 h-3" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-semibold truncate ${isSelected ? "text-white" : "text-white/70"}`}>
-                              {match.home} vs {match.away}
-                            </p>
-                            <p className="text-[10px] text-zinc-500 truncate">{match.league}</p>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Clock className="w-3 h-3 text-zinc-600" />
-                            <span className="text-[11px] font-mono text-zinc-400">{match.time}</span>
-                          </div>
-                        </button>
+                        <div key={match.id} className="space-y-1">
+                          <button
+                            onClick={() => toggleMatch(match.id)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all border ${
+                              isSelected
+                                ? "bg-emerald-500/10 border-emerald-500/25"
+                                : "bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]"
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected ? "bg-emerald-500 text-black" : "bg-white/[0.06] border border-white/[0.1]"
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-xs font-semibold truncate ${isSelected ? "text-white" : "text-white/70"}`}>
+                                {match.home} vs {match.away}
+                              </p>
+                              <p className="text-[10px] text-zinc-500 truncate">{match.league}</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Clock className="w-3 h-3 text-zinc-600" />
+                              <span className="text-[11px] font-mono text-zinc-400">{match.time}</span>
+                            </div>
+                          </button>
+
+                          {/* ── Panel de cuotas + mercado destacado (solo si el partido está seleccionado) ── */}
+                          {isSelected && (
+                            <div className="ml-8 p-2.5 rounded-lg bg-black/30 border border-emerald-500/10 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] uppercase tracking-widest font-bold text-emerald-400/70">
+                                  Cuotas {odds?.bookmaker ? `· ${odds.bookmaker}` : ""}
+                                </span>
+                                {!odds && oddsLoading && (
+                                  <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />
+                                )}
+                              </div>
+                              {odds ? (
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {([
+                                    { k: "home" as MarketKey, label: match.home.slice(0, 3).toUpperCase(), v: odds.home },
+                                    { k: "draw" as MarketKey, label: "EMP", v: odds.draw },
+                                    { k: "away" as MarketKey, label: match.away.slice(0, 3).toUpperCase(), v: odds.away },
+                                  ]).map(opt => {
+                                    const active = featured === opt.k;
+                                    const disabled = opt.v === null;
+                                    return (
+                                      <button
+                                        key={opt.k}
+                                        onClick={() => {
+                                          if (disabled) return;
+                                          setFeaturedMarkets(prev => ({ ...prev, [match.id]: opt.k }));
+                                        }}
+                                        disabled={disabled}
+                                        className={`flex flex-col items-center py-1.5 rounded-md border transition-all ${
+                                          active
+                                            ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                                            : disabled
+                                              ? "bg-white/[0.02] border-white/[0.04] text-zinc-700 cursor-not-allowed"
+                                              : "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-white hover:border-white/20"
+                                        }`}
+                                      >
+                                        <span className="text-[9px] font-bold tracking-wider">{opt.label}</span>
+                                        <span className="text-[11px] font-mono font-bold">
+                                          {opt.v !== null ? opt.v.toFixed(2) : "—"}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-zinc-600">
+                                  {oddsLoading ? "Cargando cuotas..." : "Sin cuotas disponibles para este partido."}
+                                </p>
+                              )}
+                              {odds && featured && (
+                                <p className="text-[9px] text-amber-300/60 flex items-center gap-1">
+                                  <Zap className="w-2.5 h-2.5" />
+                                  Se destacará en la imagen
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                     {filtered.length === 0 && (
