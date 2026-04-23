@@ -301,6 +301,7 @@ export default function EstudioIAPage() {
           }, ...prev]);
         }
         setTimeout(() => fetchHistory(), 3000);
+        window.dispatchEvent(new Event("credits_updated"));
         
         if (isModerator && data.imageUrl) {
           fetch("/api/social/auto-broadcast", {

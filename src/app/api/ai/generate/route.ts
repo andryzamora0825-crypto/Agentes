@@ -129,6 +129,8 @@ export async function POST(request: Request) {
         // Fallback to agency colors if no platform selected
         finalPrompt += `\nColores obligatorios: Primario ${aiSettings.primaryColor || '#FFDE00'}, Secundario ${aiSettings.secondaryColor || '#000000'}.`;
       }
+      
+      finalPrompt += `\n\nREGLA ANTI-ALUCINACIÓN: ESTÁ ESTRICTAMENTE PROHIBIDO escribir, dibujar o generar la palabra "Bet593" o "bet593" en cualquier parte de la imagen. NUNCA uses esa palabra.`;
     }
 
     // ═══ OPTIMIZACIÓN CLAVE: Lanzar fetch de imágenes + personaje + créditos TODO EN PARALELO ═══

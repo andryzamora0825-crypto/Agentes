@@ -38,16 +38,22 @@ export default function ConfiguracionPage() {
   };
 
   useEffect(() => {
-    fetch("/api/user/sync")
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setCredits(data.credits);
-          setPlan(data.plan || "FREE");
-          setDaysLeft(data.daysLeft || 0);
-        }
-      })
-      .catch(console.error);
+    const syncData = () => {
+      fetch("/api/user/sync")
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setCredits(data.credits);
+            setPlan(data.plan || "FREE");
+            setDaysLeft(data.daysLeft || 0);
+          }
+        })
+        .catch(console.error);
+    };
+    
+    syncData();
+    window.addEventListener("credits_updated", syncData);
+    return () => window.removeEventListener("credits_updated", syncData);
 
     // Check if already linked to an operator
     if (user?.publicMetadata) {

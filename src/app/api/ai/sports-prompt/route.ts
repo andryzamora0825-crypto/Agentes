@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     const vocab = SPORT_VOCAB[sportKey] || SPORT_VOCAB["football"];
 
     const aiSettings: any = user.publicMetadata?.aiSettings || {};
-    const agencyName = aiSettings.agencyName || "Ecuabet";
+    const agencyName = aiSettings.agencyName || "La Agencia";
     const agencyDesc = aiSettings.agencyDesc || "Casa de apuestas premium";
     const primaryColor = aiSettings.primaryColor || "#FFDE00";
     const secondaryColor = aiSettings.secondaryColor || "#000000";
@@ -415,10 +415,12 @@ JSON: { "imagePrompt": "...", "caption": "..." }`;
 - Visual: ${generatedIdea.visual}
 - Gancho: ${generatedIdea.hook}
 - Copy: ${generatedIdea.copy}`;
-
     } else {
       return NextResponse.json({ error: "Faltan datos. Envía matches (modo sports) o generatedIdea (modo creative)." }, { status: 400 });
     }
+
+    // Inject the anti-Bet593 rule regardless of mode
+    systemPrompt += `\n\nREGLA ANTI-ALUCINACIÓN CRÍTICA: ESTÁ ESTRICTAMENTE PROHIBIDO INCLUIR LAS PALABRAS "Bet593", "bet593" O "Ecuabet" EN LA IMAGEN. LA MARCA ES EXCLUSIVAMENTE "${agencyName}".`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",

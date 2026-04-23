@@ -19,18 +19,24 @@ export default function SidebarNav() {
   const isOperator = (user?.publicMetadata as any)?.role === "operator";
 
   useEffect(() => {
-    fetch("/api/user/sync")
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setCredits(data.credits);
-          setPlan(data.plan);
-          setDaysLeft(data.daysLeft);
-          setHasWhatsappBot(data.hasWhatsappBot || false);
-          setHasSocialMedia(data.hasSocialMedia || false);
-        }
-      })
-      .catch(console.error);
+    const syncData = () => {
+      fetch("/api/user/sync")
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setCredits(data.credits);
+            setPlan(data.plan);
+            setDaysLeft(data.daysLeft);
+            setHasWhatsappBot(data.hasWhatsappBot || false);
+            setHasSocialMedia(data.hasSocialMedia || false);
+          }
+        })
+        .catch(console.error);
+    };
+
+    syncData();
+    window.addEventListener("credits_updated", syncData);
+    return () => window.removeEventListener("credits_updated", syncData);
   }, []);
 
   const isVip = isAdmin || plan === 'VIP';
