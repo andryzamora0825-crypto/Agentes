@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown, Globe, Wand2 } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown, Globe, Wand2, Trophy } from "lucide-react";
+import AdGeneratorModal from "@/components/studio/AdGeneratorModal";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
@@ -54,6 +55,7 @@ export default function EstudioIAPage() {
   const [isModerator, setIsModerator] = useState(false);
   const [autoPublishing, setAutoPublishing] = useState<string | null>(null);
   const [editorImage, setEditorImage] = useState<any | null>(null);
+  const [showAdGenerator, setShowAdGenerator] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -238,33 +240,35 @@ export default function EstudioIAPage() {
     }
   };
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
+  const executeGeneration = async (
+    targetPrompt: string,
+    targetFormat: string,
+    targetPlatform: string
+  ) => {
+    if (!targetPrompt.trim()) return;
 
     setGenerating(true);
     setErrorMsg(null);
     setLastModel(null);
 
     const abortController = new AbortController();
-    const clientTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s (server tiene 60s por intento, max 2 intentos)
+    const clientTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s
 
     try {
       const fd = new FormData();
 
-      // Inject format into prompt if not auto
-      let finalPrompt = prompt;
-      if (selectedFormat !== 'auto') {
-        const fmt = FORMAT_OPTIONS.find(f => f.id === selectedFormat);
+      let finalPrompt = targetPrompt;
+      if (targetFormat !== 'auto') {
+        const fmt = FORMAT_OPTIONS.find(f => f.id === targetFormat);
         if (fmt && fmt.ratio) {
-          finalPrompt = `${prompt}\n\n[FORMATO OBLIGATORIO: Genera la imagen en proporción ${fmt.ratio} (${fmt.label} - ${fmt.desc}). Es CRÍTICO respetar esta proporción.]`;
+          finalPrompt = `${targetPrompt}\n\n[FORMATO OBLIGATORIO: Genera la imagen en proporción ${fmt.ratio} (${fmt.label} - ${fmt.desc}). Es CRÍTICO respetar esta proporción.]`;
         }
       }
 
       fd.append("prompt", finalPrompt);
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
       fd.append("useAgencyCharacter", String(useAgencyCharacter));
-      fd.append("targetPlatform", selectedPlatform);
+      fd.append("targetPlatform", targetPlatform);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
       const res = await fetch("/api/ai/generate", { 
@@ -277,7 +281,6 @@ export default function EstudioIAPage() {
       try {
         data = await res.json();
       } catch (jsonErr) {
-        // Si json() falla, suele ser un 504 de Vercel (Timeout) que devuelve HTML
         if (res.status === 504) {
           throw new Error("VercelTimeout");
         }
@@ -286,12 +289,10 @@ export default function EstudioIAPage() {
 
       if (res.ok) {
         setLastModel(data.model || null);
-        // ═══ OPTIMIZACIÓN: Inyectar localmente en vez de re-descargar TODO el historial ═══
-        // Esto elimina la espera de fetchHistory() que en WiFi lento puede tardar 5-15s extra
         if (data.imageUrl) {
           setImages(prev => [{
             id: `local_${Date.now()}`,
-            prompt,
+            prompt: targetPrompt,
             image_url: data.imageUrl,
             author_id: user?.primaryEmailAddress?.emailAddress || "",
             author_name: user?.fullName || user?.firstName || "Agente",
@@ -299,36 +300,21 @@ export default function EstudioIAPage() {
             created_at: new Date().toISOString(),
           }, ...prev]);
         }
-        // Sync completo en background (silencioso, no bloquea UI)
         setTimeout(() => fetchHistory(), 3000);
         
-        // Disparar auto-publicación MASIVA si es moderador (Fire and forget silencioso)
         if (isModerator && data.imageUrl) {
           fetch("/api/social/auto-broadcast", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ imagePrompt: finalPrompt, imageUrl: data.imageUrl })
-          })
-          .then(async (response) => {
-            const resultData = await response.json();
-            if (response.ok) {
-              console.log("🔥 [BROADCAST EXITOSO]", resultData);
-            } else {
-              console.error("⚠️ [BROADCAST FALLÓ]", resultData);
-              alert("Error en Broadcaster Masivo: " + (resultData.error || "Falla desconocida."));
-            }
-          })
-          .catch(err => {
+          }).catch(err => {
             console.error("Error crítico de fetch al broadcaster:", err);
-            alert("El broadcaster no pudo ser alcanzado.");
           });
         }
-
       } else {
         if (res.status === 402) {
           setErrorMsg(`No tienes suficientes créditos. Tienes ${data.credits} y necesitas ${data.cost || totalCost}. Recarga en la tienda.`);
         } else {
-          // SANITIZAR: Nunca mostrar JSON crudo al usuario
           let msg = data.error || "Error en la generación. Intenta de nuevo.";
           if (msg.startsWith("{") || msg.startsWith("[") || msg.includes('"code":')) {
             msg = "🔥 Los servidores de IA están saturados. Espera 2–3 minutos e intenta de nuevo. Tus créditos fueron reembolsados.";
@@ -339,7 +325,6 @@ export default function EstudioIAPage() {
     } catch (err: any) {
       if (err?.name === "AbortError" || err?.message === "VercelTimeout") {
         setErrorMsg("⏳ La generación está tardando más de lo esperado. Verificando si se completó...");
-        // El servidor puede seguir procesando aunque haya timeout
         setTimeout(async () => {
           try {
             const checkRes = await fetch("/api/ai/history");
@@ -363,6 +348,11 @@ export default function EstudioIAPage() {
       clearTimeout(clientTimeout);
       setGenerating(false);
     }
+  };
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    executeGeneration(prompt, selectedFormat, selectedPlatform);
   };
 
   const forceDownload = async (url: string, filename: string) => {
@@ -464,7 +454,39 @@ export default function EstudioIAPage() {
     }
   };
 
+  // Callback clásico cuando el generador producía solo el prompt
+  const handleAdGeneratorResult = (imagePrompt: string, caption: string) => {
+    setPrompt(imagePrompt);
+    setShowAdGenerator(false);
+    setTimeout(() => {
+      const textarea = document.getElementById("prompt-input") as HTMLTextAreaElement | null;
+      if (textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+        textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+        textarea.focus();
+      }
+    }, 150);
+    if (caption) {
+      navigator.clipboard.writeText(caption).catch(() => {});
+    }
+  };
 
+  // Nuevo callback: bypass directo a ejecución (sin pasar por la caja de texto)
+  const handleDirectGenerate = (imagePrompt: string, caption: string, formatId: string, platformId: string) => {
+    setPrompt(imagePrompt);
+    setSelectedFormat(formatId);
+    if (platformId) setSelectedPlatform(platformId);
+    setShowAdGenerator(false);
+    
+    if (caption) {
+      navigator.clipboard.writeText(caption).catch(() => {});
+    }
+    
+    // Iniciar el spinner de generación en la pantalla principal Inmediatamente
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    executeGeneration(imagePrompt, formatId, platformId);
+  };
 
   if (!isLoaded) return null;
 
@@ -476,6 +498,26 @@ export default function EstudioIAPage() {
         <div className="animate-slide-down">
           <h1 className="text-lg font-semibold text-white/90 tracking-tight">Estudio IA</h1>
           <p className="text-sm text-white/30 mt-1">Escribe tu idea y la IA la pintará en segundos.</p>
+        </div>
+
+        {/* Ad Generator Section */}
+        <div className="animate-slide-up">
+          {!showAdGenerator ? (
+            <button
+              onClick={() => setShowAdGenerator(true)}
+              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-gradient-to-r from-amber-500/[0.06] to-orange-500/[0.06] border border-amber-500/15 text-amber-300/80 hover:text-amber-200 text-sm font-medium hover:from-amber-500/10 hover:to-orange-500/10 transition-all"
+            >
+              <Trophy className="w-4 h-4" />
+              Generador de Publicidad
+            </button>
+          ) : (
+            <AdGeneratorModal
+              onResult={handleAdGeneratorResult}
+              onDirectGenerate={handleDirectGenerate}
+              onClose={() => setShowAdGenerator(false)}
+              availablePlatforms={availablePlatforms}
+            />
+          )}
         </div>
 
         {/* Generation Panel */}

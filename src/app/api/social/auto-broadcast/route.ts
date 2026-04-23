@@ -61,30 +61,36 @@ export async function POST(request: Request) {
     }
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    // 3. Procesar en Paralelo para cada Agencia
+    // 3. OPTIMIZACIÓN: Generación Bulk de Copies (Evitar N peticiones)
+    const uniqueVoices = [...new Set(allSettings.map(s => s.brand_voice || "dinámico y persuasivo"))];
+    
+    let generatedCopies: Record<string, string> = {};
+    try {
+      const copyInstruction = `Eres social media manager experto. Se requiere un copy extremadamente persuasivo pero corto (con 2-3 hashtags) para una campaña. Contexto: "${imagePrompt}". 
+Devuelve un JSON estricto donde las llaves sean exactamente los siguientes tonos, y el valor sea el copy generado para ese tono. TONOS REQUIERIDOS: ${uniqueVoices.map(v => `"${v}"`).join(", ")}`;
+
+      const copyCompletion = await openai.chat.completions.create({
+        messages: [{ role: "system", content: copyInstruction }],
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        temperature: 0.8,
+      });
+
+      generatedCopies = JSON.parse(copyCompletion.choices[0]?.message?.content || "{}");
+    } catch (e) {
+      console.error("[BROADCAST] Falló generación bulk JSON, se usará default:", e);
+    }
+
+    // 4. Procesar en Paralelo para cada Agencia usando los copies en Caché
     const broadcastPromises = allSettings.map(async (adminSetting) => {
       const adminId = adminSetting.user_id;
 
       try {
         const finalUrl = body.imageUrl; // Reutilizamos directamente la imagen del moderador
-        
-        if (!finalUrl) {
-          throw new Error("No se proporcionó la URL de la imagen del moderador.");
-        }
+        if (!finalUrl) throw new Error("No se proporcionó la URL de la imagen del moderador.");
 
-        // G. Redactar el Copy Perfectamente Adaptado
         const voice = adminSetting.brand_voice || "dinámico y persuasivo";
-        const copyInstruction = `Eres social media manager experto. Escribe un copy extremadamente persuasivo pero corto para esta campaña usando un tono: "${voice}". 
-No expliques nada, entrega sólo el copy final con 2-3 hashtags. Contexto de la imagen generada: "${imagePrompt}"`;
-
-        const copyCompletion = await openai.chat.completions.create({
-          messages: [{ role: "system", content: copyInstruction }],
-          model: "gpt-4o-mini",
-          temperature: 0.8,
-          max_tokens: 300,
-        });
-
-        const generatedCaption = copyCompletion.choices[0]?.message?.content?.trim() || "¡Nueva imagen increíble!";
+        const generatedCaption = generatedCopies[voice] || "¡Aprovecha esta gran oportunidad en nuestra plataforma! 🔥🎉";
 
         // H. PUBLICAR A LA COLA
         await createPost({

@@ -283,16 +283,25 @@ export async function POST(request: Request) {
         try {
           const audioRes = await fetch(downloadUrl);
           const audioBuffer = await audioRes.arrayBuffer();
-          // Transformamos nativo para la API de Whisper
-          const audioFile = await toFile(audioBuffer, "audio.ogg", { type: "audio/ogg" });
-          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-          const transcription = await openai.audio.transcriptions.create({
-            file: audioFile as any, // Bypass TS as ReadStream compatibility
-            model: "whisper-1",
-            language: "es",
-          });
-          messageText = `[NOTA_DE_VOZ_RECIBIDA: "${transcription.text}"]`;
-          console.log(`[WEBHOOK] 🎤 Audio Transcrito con éxito: ${transcription.text}`);
+          
+          // ── OPTIMIZACIÓN: LÍMITE DE AUDIO (Whisper cobra por segundo) ──
+          // WhatsApp OGG Opus pesa ~15KB por cada 10 segs. 
+          // 400KB son aprox. 3-4 minutos. Bloqueamos audios gigantes.
+          if (audioBuffer.byteLength > 400 * 1024) {
+            console.log(`[WEBHOOK] 🛑 Audio gigante bloqueado (${(audioBuffer.byteLength / 1024).toFixed(1)} KB)`);
+            messageText = "[NOTA_DE_VOZ_RECIBIDA: Audio excesivamente largo. Pídele amablemente que envíe mensajes de voz más cortos o que escriba su petición.]";
+          } else {
+            // Transformamos nativo para la API de Whisper
+            const audioFile = await toFile(audioBuffer, "audio.ogg", { type: "audio/ogg" });
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const transcription = await openai.audio.transcriptions.create({
+              file: audioFile as any, // Bypass TS as ReadStream compatibility
+              model: "whisper-1",
+              language: "es",
+            });
+            messageText = `[NOTA_DE_VOZ_RECIBIDA: "${transcription.text}"]`;
+            console.log(`[WEBHOOK] 🎤 Audio Transcrito con éxito: ${transcription.text}`);
+          }
         } catch (e: any) {
           console.error("[WEBHOOK/WHISPER] Falla procesando audio:", e.message);
           messageText = "[NOTA_DE_VOZ_RECIBIDA: Audio ininteligible, pídele que lo escriba]";
@@ -381,12 +390,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── HISTORIAL DE CONVERSACIÓN RAPIDO (últimas 24h solamente) ──
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // ── OPTIMIZACIÓN DE COSTOS: HISTORIAL DE CONVERSACIÓN CORTO ──
+    // Antes traíamos 40 mensajes. Eso leía +3,000 tokens innecesarios por cada respuesta.
+    // 8 mensajes (4 envíos del cliente, 4 del bot) son más que suficientes para retener contexto en ventas.
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: rawHistory } = await supabase.from("whatsapp_chats")
       .select("role, content").eq("owner_id", uid).eq("phone_number", sender)
-      .gte("created_at", twentyFourHoursAgo)
-      .order("created_at", { ascending: true }).limit(40);
+      .gte("created_at", sixHoursAgo)
+      .order("created_at", { ascending: true }).limit(8);
 
     const history = rawHistory || [];
 

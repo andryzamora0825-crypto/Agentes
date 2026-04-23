@@ -133,7 +133,9 @@ export default function ClientSidebarWrapper({
         {/* User Account Footer */}
         <div className="shrink-0 p-4 lg:p-4 border-t border-white/[0.06] bg-white/[0.02]">
           <div className="flex items-center gap-3">
-            {userButton}
+            <div className="shrink-0 flex items-center justify-center min-w-[32px] min-h-[32px]">
+              {userButton}
+            </div>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-xs text-white/50 truncate">Mi Cuenta</span>
             </div>
