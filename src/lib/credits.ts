@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabaseAdmin as supabase } from "./supabase";
 
 export class InsufficientCreditsError extends Error {
   have: number;

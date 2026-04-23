@@ -23,8 +23,38 @@ export async function GET() {
     } catch {
       // Si la tabla aún no existe, caer al metadata
     }
+
     if (typeof currentCredits !== "number") {
       currentCredits = clerkCredits;
+    } else if (clerkCredits > currentCredits) {
+      // 🚨 LEDGER HEALING: Clerk has more credits than Supabase.
+      // This happens if an Operator assigned credits before Supabase integration
+      // or if someone manually edited Clerk metadata. We honor Clerk and add the difference.
+      const discrepancy = clerkCredits - currentCredits;
+      const { earnCredits } = await import("@/lib/credits");
+      try {
+        await earnCredits({
+          userId: user.id,
+          amount: discrepancy,
+          relatedId: "ledger_heal",
+          note: `Ledger heal: Clerk had ${clerkCredits}, Supabase had ${currentCredits}`
+        });
+        currentCredits = clerkCredits;
+      } catch (e) {
+        console.error("Failed to heal ledger:", e);
+      }
+    } else if (currentCredits > clerkCredits) {
+      // 🚨 LEDGER HEALING: Supabase has more credits than Clerk.
+      // This happens if Clerk metadata update failed previously.
+      // We update Clerk to match the source of truth (Supabase).
+      try {
+        const client = await clerkClient();
+        await client.users.updateUserMetadata(user.id, {
+          publicMetadata: { credits: currentCredits }
+        });
+      } catch (e) {
+        console.error("Failed to heal clerk metadata:", e);
+      }
     }
 
     // 2. Control de Rango (VIP / FREE) y Expiración
