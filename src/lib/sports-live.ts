@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseAdmin } from "./supabase";
 
 // Ligas priorizadas (reutilizadas del modal)
 const TOP_FOOTBALL_LEAGUES = new Set([
@@ -122,7 +122,8 @@ export async function syncLiveFixtures(source: "cron" | "manual"): Promise<SyncR
   }
 
   const updatedAt = new Date().toISOString();
-  const { error: upsertErr } = await supabase
+  // USAMOS supabaseAdmin PARA ESQUIVAR EL RLS Y PODER GUARDAR LA DATA
+  const { error: upsertErr } = await supabaseAdmin
     .from("live_fixtures_cache")
     .upsert({
       id: 1,
