@@ -53,16 +53,17 @@ export default function ConfiguracionPage() {
     
     syncData();
     window.addEventListener("credits_updated", syncData);
-    return () => window.removeEventListener("credits_updated", syncData);
 
     // Check if already linked to an operator
-    if (user?.publicMetadata) {
+    if (user && user.publicMetadata) {
       const meta = user.publicMetadata as any;
       if (meta.linkedOperatorId) {
         setLinkedOperatorId(meta.linkedOperatorId);
         setLinkedOperatorName(meta.linkedOperatorName || 'Agencia Vinculada');
       }
     }
+    
+    return () => window.removeEventListener("credits_updated", syncData);
   }, [user]);
 
   const handleSignOut = async () => {
