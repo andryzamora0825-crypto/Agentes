@@ -103,3 +103,36 @@ export async function logRefundFailure(opts: {
     console.error("[credits] No se pudo registrar refund failure:", e);
   }
 }
+
+/**
+ * Siembra el saldo inicial desde Clerk publicMetadata.credits a Supabase
+ * la PRIMERA vez que un usuario interactúa tras la migración al ledger.
+ *
+ * Es idempotente: usa idempotency_key `seed_<userId>` — solo se aplica una vez.
+ * Si ya hay balance > 0 en Supabase, no hace nada (evita trabajo).
+ *
+ * Llamar ANTES de spendCredits para garantizar que el saldo esté disponible.
+ */
+export async function ensureSeeded(userId: string, clerkCredits: number): Promise<void> {
+  if (!userId || clerkCredits <= 0) return;
+
+  try {
+    const current = await getBalance(userId);
+    if (current > 0) return; // ya sembrado o con actividad
+  } catch {
+    // Si la tabla no existe aún, no podemos hacer nada útil
+    return;
+  }
+
+  try {
+    await earnCredits({
+      userId,
+      amount: clerkCredits,
+      relatedId: `clerk_migration`,
+      idempotencyKey: `seed_${userId}`,
+      note: `Migración inicial desde Clerk publicMetadata (${clerkCredits} créditos)`,
+    });
+  } catch (e) {
+    console.warn("[credits] ensureSeeded falló (no crítico):", e);
+  }
+}

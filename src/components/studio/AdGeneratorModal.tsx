@@ -400,6 +400,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
     });
   }, []);
 
+
   // ═══ Reemplazar una sola tarjeta (swipe) sin repetir el valor actual ═══
   const replaceField = useCallback((key: IdeaField) => {
     setGeneratedIdea(prev => {

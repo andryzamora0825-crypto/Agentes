@@ -124,22 +124,62 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Se requiere un número de teléfono para la búsqueda." }, { status: 400 });
     }
 
+    // Canonizar: últimos 10 dígitos para matchear todas las variantes (+593..., 0...)
+    const digitsOnly = phone.replace(/\D/g, "");
+    const last10 = digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+    // 1) Intentar con la vista agregada (si la migración scammers_community.sql fue aplicada)
+    const { data: summary, error: summaryError } = await supabase
+      .from("scammer_summary")
+      .select("*")
+      .eq("phone_canonical", last10)
+      .maybeSingle();
+
+    if (!summaryError && summary) {
+      return NextResponse.json({
+        found: true,
+        data: {
+          phone_number: summary.phone_number,
+          name: (summary.aliases || []).filter(Boolean).join(" / ") || null,
+          description: (summary.descriptions || []).filter(Boolean).join("\n\n") || null,
+          photo_url: (summary.photos || [])[0] || null,
+          proof_urls: [],
+          report_count: summary.report_count,
+          reporters: summary.reporters || [],
+          first_reported_at: summary.first_reported_at,
+          last_reported_at: summary.last_reported_at,
+        },
+      });
+    }
+
+    // 2) Fallback: buscar en la tabla base por múltiples variantes del teléfono
+    const variants = Array.from(new Set([
+      phone,
+      last10,
+      `0${last10}`,
+      `593${last10}`,
+      `+593${last10}`,
+      `+${digitsOnly}`,
+    ]));
+
     const { data, error } = await supabase
       .from('scammers')
       .select('*')
-      .eq('phone_number', phone)
-      .single();
+      .in('phone_number', variants)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (error) {
-      if (error.code === 'PGRST116') { // Not found in Supabase return
-         return NextResponse.json({ found: false });
-      }
-      throw error;
+    if (error && error.code !== 'PGRST116') {
+      console.error("Error buscando estafador:", error);
+      return NextResponse.json({ error: "Error interno en el servidor.", detail: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ found: true, data });
+    if (!data) return NextResponse.json({ found: false });
+
+    return NextResponse.json({ found: true, data: { ...data, report_count: 1 } });
   } catch (error: any) {
     console.error("Error al buscar estafador:", error);
-    return NextResponse.json({ error: "Error interno en el servidor." }, { status: 500 });
+    return NextResponse.json({ error: "Error interno en el servidor.", detail: error.message }, { status: 500 });
   }
 }

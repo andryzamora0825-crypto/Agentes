@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
-import { spendCredits, refundCredits, getBalance, logRefundFailure, InsufficientCreditsError } from "@/lib/credits";
+import { spendCredits, refundCredits, ensureSeeded, logRefundFailure, InsufficientCreditsError } from "@/lib/credits";
 
 export const maxDuration = 300; // 5 minutos máximo (Soportado por Vercel Pro)
 
@@ -195,6 +195,9 @@ export async function POST(request: Request) {
     const hasRefImages = referenceImages.length > 0;
     const cost = 150;
     const idempotencyKey = request.headers.get("x-idempotency-key") || `gen_${user.id}_${Date.now()}`;
+
+    // Siembra el saldo inicial desde Clerk metadata si aún no existe en Supabase (one-time por usuario).
+    await ensureSeeded(user.id, Number(user.publicMetadata?.credits || 0));
 
     let newBalance: number;
     let ledgerId: string;

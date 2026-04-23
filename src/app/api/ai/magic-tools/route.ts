@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
-import { spendCredits, refundCredits, logRefundFailure, InsufficientCreditsError } from "@/lib/credits";
+import { spendCredits, refundCredits, ensureSeeded, logRefundFailure, InsufficientCreditsError } from "@/lib/credits";
 
 export const maxDuration = 300;
 
@@ -38,6 +38,9 @@ export async function POST(request: Request) {
     // 1. Descuento atómico de créditos (inmune a race conditions)
     const cost = Math.min(Math.max(credits || 25, 25), 500); // Clamp 25-500
     const idempotencyKey = request.headers.get("x-idempotency-key") || `magic_${user.id}_${toolId}_${Date.now()}`;
+
+    // Siembra one-time desde Clerk metadata para usuarios existentes
+    await ensureSeeded(user.id, Number(user.publicMetadata?.credits || 0));
 
     let newBalance: number;
     let ledgerId: string;

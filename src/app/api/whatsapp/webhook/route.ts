@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import OpenAI, { toFile } from "openai";
+import { GoogleGenAI } from "@google/genai";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +10,7 @@ export const maxDuration = 45; // Previene caída prematura en Vercel si el plan
 
 const PAUSE_HUMAN_MINUTES = 10;    // Auto-pausa por intervención del agente humano
 const ESCALATION_PAUSE_MIN = 10;   // Pausa cuando el bot escala a humano (antes estaba en 30)
+const MAX_REPLIES_PER_MINUTE = 5;  // Rate limit anti-loop por número
 
 // =====================================================
 // HELPER: ENVIAR MENSAJE DE TEXTO SIMPLE VÍA GREEN-API
@@ -187,6 +189,131 @@ async function executeTool(
 }
 
 // =====================================================
+// VERIFICACIÓN DE COMPROBANTES CON GEMINI VISION
+// =====================================================
+// Valida que una imagen recibida sea un comprobante REAL de transferencia
+// y extrae monto, banco, fecha, referencia, titular para auto-verificar recargas.
+async function checkReceiptWithVision(params: {
+  downloadUrl: string;
+  ownerId: string;
+  phoneNumber: string;
+  chatMsgId: string;
+}): Promise<{
+  isValid: boolean;
+  bank?: string;
+  amount?: number;
+  date?: string;
+  reference?: string;
+  titular?: string;
+  raw: string;
+}> {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    return { isValid: false, raw: "no_gemini_key" };
+  }
+
+  try {
+    // Descargar la imagen
+    const imgRes = await fetch(params.downloadUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!imgRes.ok) return { isValid: false, raw: `fetch_image_failed_${imgRes.status}` };
+    const imgBuf = await imgRes.arrayBuffer();
+    if (imgBuf.byteLength > 5 * 1024 * 1024) {
+      return { isValid: false, raw: "image_too_large" };
+    }
+    const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
+    const base64 = Buffer.from(imgBuf).toString("base64");
+
+    // Llamar a Gemini Vision con prompt estructurado
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const prompt = `Eres un verificador de comprobantes de transferencia bancaria ecuatorianos.
+Analiza la imagen y responde EXCLUSIVAMENTE con JSON válido (sin texto extra):
+{
+  "is_valid_receipt": true/false,
+  "bank": "nombre del banco origen (o null)",
+  "amount": número con 2 decimales (o null),
+  "date": "DD/MM/YYYY o DD/MM (o null)",
+  "reference": "número de referencia/transacción (o null)",
+  "titular": "nombre del titular que transfirió (o null)"
+}
+Criterios para is_valid_receipt=true: debe mostrar claramente un movimiento bancario (transferencia, depósito o pago) con monto, fecha y algún identificador. Capturas de conversaciones, memes, selfies o documentos genéricos → false.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash-exp",
+      contents: [
+        { text: prompt },
+        { inlineData: { mimeType, data: base64 } },
+      ],
+    });
+
+    const text = response.candidates?.[0]?.content?.parts
+      ?.map((p: any) => p.text || "")
+      .join("") || "";
+
+    // Extraer JSON (a veces viene con fences markdown)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { isValid: false, raw: text.slice(0, 300) };
+
+    let parsed: any;
+    try { parsed = JSON.parse(jsonMatch[0]); }
+    catch { return { isValid: false, raw: text.slice(0, 300) }; }
+
+    // Guardar auditoría (best-effort)
+    supabase.from("whatsapp_receipt_checks").insert({
+      owner_id: params.ownerId,
+      phone_number: params.phoneNumber,
+      chat_msg_id: params.chatMsgId,
+      is_valid_receipt: !!parsed.is_valid_receipt,
+      detected_bank: parsed.bank || null,
+      detected_amount: typeof parsed.amount === "number" ? parsed.amount : null,
+      detected_date: parsed.date || null,
+      detected_reference: parsed.reference || null,
+      detected_titular: parsed.titular || null,
+      raw_response: text.slice(0, 500),
+    }).then(() => {});
+
+    return {
+      isValid: !!parsed.is_valid_receipt,
+      bank: parsed.bank || undefined,
+      amount: typeof parsed.amount === "number" ? parsed.amount : undefined,
+      date: parsed.date || undefined,
+      reference: parsed.reference || undefined,
+      titular: parsed.titular || undefined,
+      raw: text.slice(0, 300),
+    };
+  } catch (e: any) {
+    console.warn("[VISION] Error verificando comprobante:", e.message);
+    return { isValid: false, raw: `error: ${e.message}` };
+  }
+}
+
+// =====================================================
+// SHORTCUTS TEMPLATED (evitan llamada a LLM para casos triviales)
+// =====================================================
+function tryTemplatedShortcut(text: string, hasHistory: boolean, greetingMenu: string | null): string | null {
+  const t = text.toLowerCase().trim();
+
+  // Saludo puro sin contexto y sin historial → menú de bienvenida
+  if (!hasHistory && /^(hola|buenas|buen d[ií]a|buenas tardes|buenas noches|hi|hello|ola)\s*[.!¡]*$/i.test(t)) {
+    return greetingMenu || null;
+  }
+
+  // Preguntas de disponibilidad
+  if (/^(est[aá]s? activo|est[aá]n trabajando|hay l[ií]nea|atienden|est[aá]n ah[ií])\s*[?¿.!]*$/i.test(t)) {
+    return "¡Sí, 100% operativos! 🚀 ¿En qué te ayudo?";
+  }
+
+  // Gracias y despedidas
+  if (/^(gracias|muchas gracias|ok gracias|mil gracias)\s*[.!]*$/i.test(t)) {
+    return "¡A ti! Cualquier cosa me escribes. 👋";
+  }
+  if (/^(chao|adi[oó]s|bye|hasta luego|nos vemos)\s*[.!]*$/i.test(t)) {
+    return "¡Hasta pronto! Éxitos con tus apuestas. 🍀";
+  }
+
+  return null;
+}
+
+// =====================================================
 // WEBHOOK PRINCIPAL (LATENCIA ULTRA-BAJA)
 // =====================================================
 export async function POST(request: Request) {
@@ -275,7 +402,32 @@ export async function POST(request: Request) {
       messageText = phone ? `[CONTACTO_REENVIADO] Nombre: ${displayName}, Teléfono: ${phone}` : `[CONTACTO_REENVIADO] Nombre: ${displayName}`;
     }
     else if (['imageMessage', 'documentMessage'].includes(typeMessage)) {
-      messageText = "[COMPROBANTE_ENVIADO]";
+      // Verificar con Gemini Vision si es comprobante real y extraer datos
+      const downloadUrl = payload.messageData?.fileMessageData?.downloadUrl
+        || payload.messageData?.imageMessage?.downloadUrl
+        || payload.messageData?.documentMessage?.downloadUrl;
+
+      if (downloadUrl && process.env.GEMINI_API_KEY) {
+        const verify = await checkReceiptWithVision({
+          downloadUrl,
+          ownerId: uid,
+          phoneNumber: payload.senderData?.sender || "",
+          chatMsgId: payload.idMessage || "",
+        });
+        if (verify.isValid) {
+          const parts: string[] = ["[COMPROBANTE_ENVIADO_VERIFICADO]"];
+          if (verify.amount !== undefined) parts.push(`monto=$${verify.amount.toFixed(2)}`);
+          if (verify.bank) parts.push(`banco=${verify.bank}`);
+          if (verify.date) parts.push(`fecha=${verify.date}`);
+          if (verify.reference) parts.push(`ref=${verify.reference}`);
+          if (verify.titular) parts.push(`titular=${verify.titular}`);
+          messageText = parts.join(" | ");
+        } else {
+          messageText = "[COMPROBANTE_INVALIDO: La imagen enviada NO parece un comprobante de transferencia real (quizás es una captura distinta). Responde amablemente y pídele que envíe el comprobante real de la transferencia bancaria.]";
+        }
+      } else {
+        messageText = "[COMPROBANTE_ENVIADO]";
+      }
     }
     else if (typeMessage === 'audioMessage') {
       const downloadUrl = payload.messageData?.fileMessageData?.downloadUrl;
@@ -326,6 +478,24 @@ export async function POST(request: Request) {
       .eq("owner_id", uid).in("phone_number", ["GLOBAL", sender]);
     if (pauses?.some(p => new Date(p.paused_until) > new Date())) {
       return NextResponse.json({ success: true, ignored: true, reason: "Pausado" });
+    }
+
+    // ── RATE LIMIT POR NÚMERO (anti-loop / anti-abuso) ──
+    // Si este número ya recibió >= MAX_REPLIES_PER_MINUTE respuestas del bot en el último minuto,
+    // pausamos 10 min y escalamos (algo está mal — bucle, cliente insistente, bot del otro lado).
+    const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
+    const { count: recentReplies } = await supabase.from("whatsapp_rate_log")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", uid)
+      .eq("phone_number", sender)
+      .gte("sent_at", oneMinuteAgo);
+
+    if ((recentReplies || 0) >= MAX_REPLIES_PER_MINUTE) {
+      console.warn(`[WEBHOOK] 🚨 Rate limit alcanzado para ${sender} (${recentReplies} respuestas/min). Pausando 10 min.`);
+      const pauseUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await supabase.from("whatsapp_pauses").delete().eq("owner_id", uid).eq("phone_number", sender);
+      await supabase.from("whatsapp_pauses").insert({ owner_id: uid, phone_number: sender, paused_until: pauseUntil });
+      return NextResponse.json({ success: true, ignored: true, reason: "rate_limited" });
     }
 
     const senderName = payload.senderData?.senderName || "Cliente";
@@ -401,6 +571,21 @@ export async function POST(request: Request) {
 
     const history = rawHistory || [];
 
+    // ── SHORTCUT TEMPLATED: si el mensaje es trivial (saludo puro, gracias, despedida)
+    // respondemos sin llamar al LLM. Ahorra ~800 tokens/msg y baja latencia 2s.
+    const hasHistory = history.length > 1;
+    const shortcut = tryTemplatedShortcut(messageText, hasHistory, greetingMenu || null);
+    if (shortcut && typeMessage === "textMessage") {
+      const sent = await send(shortcut);
+      if (sent) {
+        await supabase.from("whatsapp_chats").insert({
+          owner_id: uid, phone_number: sender, role: "model", content: shortcut,
+        });
+        await supabase.from("whatsapp_rate_log").insert({ owner_id: uid, phone_number: sender });
+      }
+      return NextResponse.json({ success: true, shortcut: true });
+    }
+
     // ── OBTENER TAGS DEL CLIENTE PARA CONTEXTO ──
     const { data: userTags } = await supabase.from("whatsapp_contact_tags")
       .select("tag").eq("owner_id", uid).eq("phone_number", sender);
@@ -422,6 +607,8 @@ REGLAS VITALES Y ESTRICTAS DE COMPORTAMIENTO:
 11. IDENTIDAD: Bajo ninguna circunstancia digas que eres una Inteligencia Artificial o un Bot.
 12. PREGUNTAS DE DISPONIBILIDAD: Si el cliente pregunta cosas como "estás activo?", "¿están trabajando?", "¿hay línea?", responde SIEMPRE con mucho entusiasmo que SÍ, que están 100% operativos.
 13. PREGUNTAS FUERA DE LUGAR (OFF-TOPIC): Si el cliente te hace preguntas de conocimiento general, historia, geografía (ej. "¿cuál es el río más largo?", "¿quién descubrió América?"), ciencia, o cualquier tema que no tenga relación con la plataforma de apuestas, DEBES negarte amablemente a responder. Indícale que eres un asesor de atención al cliente y que solo puedes ayudarle con servicios de la plataforma, saldos y retiros. ¡NUNCA respondas a la pregunta real!
+14. COMPROBANTES VERIFICADOS CON IA: Si recibes "[COMPROBANTE_ENVIADO_VERIFICADO] monto=$X.XX banco=Y ...", significa que un sistema automático ya validó que la imagen ES un comprobante real y extrajo los datos. Úsalos: confirma amablemente el depósito usando esos datos concretos (ej: "Confirmado tu depósito de $10.00 del Banco Pichincha"). Si el monto extraído NO coincide con lo que el cliente dijo al inicio, PREGUNTA (sin acusar) cuál es el correcto. Si el titular extraído es diferente al cliente, recuérdale amablemente la regla de titularidad.
+15. COMPROBANTES INVÁLIDOS: Si recibes "[COMPROBANTE_INVALIDO: ...]", la imagen NO es un comprobante real (puede ser una captura de chat, meme, selfie, documento genérico). Pídele cordialmente que envíe el comprobante oficial de la transferencia bancaria. NO uses palabras como "fraude" o "mentira" — simplemente "la imagen no se ve correctamente, ¿me la puede reenviar?".
 
 ===== SOPORTE Y RESOLUCIÓN DE PROBLEMAS (ECUABET) =====
 ACTUACIÓN: Si el usuario pide ayuda técnica, usa frases como "me ayuda con un problema", "necesito ayuda", "tengo un problema" (o sinónimos), ATIÉNDELO usando ESTA información oficial. NO lo escales inmediatamente.
@@ -580,6 +767,8 @@ TAGS DEL CLIENTE: ${clientTags || "Ninguno (Cliente Nuevo)"}`;
     // Solo guardar en DB si el mensaje se envió correctamente
     if (sent) {
       await supabase.from("whatsapp_chats").insert({ owner_id: uid, phone_number: sender, role: "model", content: aiResponse });
+      // Rate-limit log (best-effort)
+      supabase.from("whatsapp_rate_log").insert({ owner_id: uid, phone_number: sender }).then(() => {});
     } else {
       console.warn(`[WEBHOOK] ⚠️ Mensaje NO enviado a ${sender}, no se guarda en historial.`);
     }

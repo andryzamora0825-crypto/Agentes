@@ -4,6 +4,16 @@ import OpenAI from "openai";
 
 const ADMIN_EMAIL = "andryzamora0825@gmail.com";
 
+function isVipOrAdmin(user: any): boolean {
+  const email = user?.primaryEmailAddress?.emailAddress || "";
+  if (email === ADMIN_EMAIL) return true;
+  const plan = (user?.publicMetadata as any)?.plan || "FREE";
+  const expiresAt = (user?.publicMetadata as any)?.vipExpiresAt as number | undefined | null;
+  if (plan !== "VIP") return false;
+  if (!expiresAt) return true;
+  return Date.now() <= Number(expiresAt);
+}
+
 // ── Base URLs API-Sports por deporte ──
 const SPORT_BASE: Record<string, string> = {
   football: "https://v3.football.api-sports.io",
@@ -65,9 +75,8 @@ export async function POST(request: Request) {
     const user = await currentUser();
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    const email = user.primaryEmailAddress?.emailAddress || "";
-    if (email !== ADMIN_EMAIL) {
-      return NextResponse.json({ error: "Solo admin." }, { status: 403 });
+    if (!isVipOrAdmin(user)) {
+      return NextResponse.json({ error: "Función disponible solo para agentes VIP." }, { status: 403 });
     }
 
     const apiKey = process.env.API_SPORTS_KEY;

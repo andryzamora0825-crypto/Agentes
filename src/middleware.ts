@@ -4,6 +4,7 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/invite(.*)',               // Landing de invitaciones VIP debe ser pública
   '/api/whatsapp/webhook(.*)',  // Green-API necesita acceder sin autenticación
+  '/api/cron(.*)',              // Crons de Vercel — protegidos vía CRON_SECRET dentro del route
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/sso-callback(.*)',          // Clerk OAuth redirect callbacks

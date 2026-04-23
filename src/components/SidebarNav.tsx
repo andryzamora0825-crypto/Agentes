@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2, Crown, LayoutGrid, Brain } from "lucide-react";
+import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2, Crown, LayoutGrid, Brain, Radio } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
@@ -41,6 +41,7 @@ export default function SidebarNav() {
     { name: "Pronósticos IA",      href: "/dashboard/admin/pronosticos", exact: false, icon: Brain,       adminOnly: true,  vipOnly: false, requiresBot: false },
     { name: "Mi Agencia",           href: "/dashboard/operador",      exact: false, icon: Crown,         adminOnly: false, vipOnly: false, requiresBot: false, operatorOnly: true },
     { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Partidos EN VIVO",    href: "/dashboard/live",          exact: false, icon: Radio,         adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Comunidad IA",        href: "/dashboard/comunidad",     exact: false, icon: LayoutGrid,    adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Social Media",        href: "/dashboard/social",        exact: false, icon: Share2,        adminOnly: false, vipOnly: false, requiresBot: false, requiresSocial: true },
     { name: "Bot WhatsApp",        href: "/dashboard/whatsapp",      exact: false, icon: MessageSquare, adminOnly: false, vipOnly: true,  requiresBot: false },
