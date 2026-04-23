@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload, Star } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload, Star, ImageIcon, Clock } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -96,6 +96,11 @@ export default function AdminPanelPage() {
   // Estados para Modal de Activity Logs y Entradas Dinámicas de Economía
   const [customCreditInput, setCustomCreditInput] = useState<Record<string, string>>({});
   const [modalViewingLogs, setModalViewingLogs] = useState<any | null>(null);
+
+  // Estado para Obras Recientes
+  const [recentImages, setRecentImages] = useState<any[]>([]);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [lightboxRecentUrl, setLightboxRecentUrl] = useState<string | null>(null);
 
   // Sincronizar el formulario cuando abrimos el modal
   useEffect(() => {
@@ -595,14 +600,52 @@ export default function AdminPanelPage() {
 
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
-    const matchesPlan = planFilter === "ALL" ? true : u.plan === planFilter;
+    let matchesPlan = true;
+    if (planFilter === 'ALL') {
+      matchesPlan = true;
+    } else if (planFilter === 'VENCIDOS') {
+      matchesPlan = u.plan === 'VIP' && u.vipExpiresAt && u.vipExpiresAt < Date.now();
+    } else {
+      matchesPlan = u.plan === planFilter;
+    }
     return matchesSearch && matchesPlan;
   });
+
+  const totalExpired = users.filter(u => u.plan === 'VIP' && u.vipExpiresAt && u.vipExpiresAt < Date.now()).length;
+
+  // Cargar obras recientes
+  const loadRecentImages = async () => {
+    setLoadingImages(true);
+    try {
+      const res = await fetch('/api/admin/images');
+      const data = await res.json();
+      if (data.success) setRecentImages(data.images || []);
+    } catch (e) {
+      console.error('Error cargando imágenes recientes:', e);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) loadRecentImages();
+  }, [isAdmin]);
 
   if (!isAdmin) return null;
 
   const totalAgents = users.length;
   const totalVips = users.filter(u => u.plan === 'VIP').length;
+
+  const timeAgo = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Ahora';
+    if (mins < 60) return `Hace ${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Hace ${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    return `Hace ${days}d`;
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-8">
@@ -866,17 +909,22 @@ export default function AdminPanelPage() {
         <div className="flex flex-col sm:flex-row items-center gap-2 w-full xl:w-auto">
           {/* Selector de Plan */}
           <div className="flex bg-[#141414] border border-white/[0.06] p-1 rounded-lg w-full sm:w-auto overflow-x-auto min-w-max">
-            {['ALL', 'VIP', 'FREE'].map((plan) => (
+            {['ALL', 'VIP', 'FREE', 'VENCIDOS'].map((plan) => (
               <button
                 key={plan}
                 onClick={() => setPlanFilter(plan)}
                 className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
                   planFilter === plan 
-                    ? plan === 'VIP' ? 'bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.3)]' : 'bg-white/20 text-white'
+                    ? plan === 'VIP' ? 'bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.3)]'
+                    : plan === 'VENCIDOS' ? 'bg-red-500/20 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
+                    : 'bg-white/20 text-white'
                     : 'text-white/40 hover:text-white/80'
                 }`}
               >
                 {plan === 'ALL' ? 'TODOS' : plan}
+                {plan === 'VENCIDOS' && totalExpired > 0 && (
+                  <span className="ml-1.5 bg-red-500/30 text-red-300 text-[9px] px-1.5 py-0.5 rounded-full">{totalExpired}</span>
+                )}
               </button>
             ))}
           </div>
@@ -1614,6 +1662,72 @@ export default function AdminPanelPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ═══ OBRAS GENERADAS RECIENTEMENTE ═══ */}
+      <div className="bg-[#141414] border border-white/[0.06] rounded-xl overflow-hidden">
+        <div className="p-5 border-b border-white/[0.06] flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white/90 flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-purple-400" />
+            Obras Generadas Recientemente
+          </h2>
+          <button
+            onClick={loadRecentImages}
+            disabled={loadingImages}
+            className="text-xs text-white/40 hover:text-white/70 transition-colors flex items-center gap-1"
+          >
+            <Loader2 className={`w-3 h-3 ${loadingImages ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
+        </div>
+
+        {loadingImages ? (
+          <div className="flex justify-center py-16">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        ) : recentImages.length === 0 ? (
+          <div className="text-center py-16 text-white/30 text-sm">
+            No hay obras generadas aún.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1 p-2">
+            {recentImages.map((img: any) => (
+              <div key={img.id} className="group relative aspect-square bg-black/40 rounded-lg overflow-hidden border border-white/[0.04] hover:border-purple-500/30 transition-all cursor-pointer"
+                onClick={() => setLightboxRecentUrl(img.image_url)}
+              >
+                <img
+                  src={img.image_url}
+                  alt="Obra generada"
+                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                  loading="lazy"
+                />
+                {/* Overlay con info del autor */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                  <div className="flex items-center gap-1.5">
+                    {img.author_avatar_url && (
+                      <img src={img.author_avatar_url} alt="" className="w-5 h-5 rounded-full border border-white/20 shrink-0" />
+                    )}
+                    <span className="text-[10px] font-bold text-white truncate">{img.author_name || 'Desconocido'}</span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Clock className="w-2.5 h-2.5 text-white/50" />
+                    <span className="text-[9px] text-white/50">{img.created_at ? timeAgo(img.created_at) : '—'}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox para Obras Recientes */}
+      {lightboxRecentUrl && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setLightboxRecentUrl(null)}>
+          <button className="absolute top-6 right-6 text-white/60 hover:text-white z-10" onClick={() => setLightboxRecentUrl(null)}>
+            <X className="w-8 h-8" />
+          </button>
+          <img src={lightboxRecentUrl} alt="Obra" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
         </div>
       )}
 
