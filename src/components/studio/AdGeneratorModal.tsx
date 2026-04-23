@@ -220,6 +220,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState<string | null>(null);
   const [selectedMatches, setSelectedMatches] = useState<Set<number>>(new Set());
+  const [matchSearch, setMatchSearch] = useState("");
 
   // ── Estado Global ──
   const [assembling, setAssembling] = useState(false);
@@ -241,6 +242,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
     setMatches([]);
     setSelectedMatches(new Set());
     setMatchesError(null);
+    setMatchSearch("");
     setMatchesLoading(true);
     try {
       const res = await fetch(`/api/sports/matches?sport=${sportId}`);
@@ -404,22 +406,21 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
         {step === 1 && activeTab === "sports" && (
           <div className="space-y-4">
             {/* Menú de deportes */}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {SPORTS.map(sport => (
                 <button
                   key={sport.id}
                   onClick={() => loadMatches(sport.id)}
                   disabled={!sport.active}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
+                  className={`flex items-center justify-center px-2 py-2.5 rounded-lg text-[11px] font-semibold transition-all border text-center ${
                     selectedSport === sport.id
-                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
                       : sport.active
-                        ? "bg-white/[0.03] border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.06]"
+                        ? "bg-white/[0.03] border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.06] hover:border-white/[0.12]"
                         : "bg-white/[0.02] border-white/[0.04] text-zinc-700 cursor-not-allowed"
                   }`}
                 >
-                  <span className="text-sm">{sport.emoji}</span>
-                  <span className="hidden sm:inline">{sport.label}</span>
+                  {sport.label}
                 </button>
               ))}
             </div>
@@ -440,44 +441,68 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
               </div>
             )}
 
-            {/* Lista de partidos */}
-            {!matchesLoading && matches.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 mb-2">
-                  {matches.length} partido{matches.length !== 1 ? "s" : ""} encontrado{matches.length !== 1 ? "s" : ""} hoy
-                </p>
-                {matches.map(match => {
-                  const isSelected = selectedMatches.has(match.id);
-                  return (
-                    <button
-                      key={match.id}
-                      onClick={() => toggleMatch(match.id)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all border ${
-                        isSelected
-                          ? "bg-emerald-500/10 border-emerald-500/25"
-                          : "bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected ? "bg-emerald-500 text-black" : "bg-white/[0.06] border border-white/[0.1]"
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-semibold truncate ${isSelected ? "text-white" : "text-white/70"}`}>
-                          {match.home} vs {match.away}
-                        </p>
-                        <p className="text-[10px] text-zinc-500 truncate">{match.league}</p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Clock className="w-3 h-3 text-zinc-600" />
-                        <span className="text-[11px] font-mono text-zinc-400">{match.time}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Barra de búsqueda + Lista de partidos */}
+            {!matchesLoading && matches.length > 0 && (() => {
+              const q = matchSearch.toLowerCase().trim();
+              const filtered = q
+                ? matches.filter(m =>
+                    m.home.toLowerCase().includes(q) ||
+                    m.away.toLowerCase().includes(q) ||
+                    m.league.toLowerCase().includes(q)
+                  )
+                : matches;
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Buscar equipo o liga..."
+                      value={matchSearch}
+                      onChange={e => setMatchSearch(e.target.value)}
+                      className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40 transition-colors"
+                    />
+                    <p className="text-[10px] text-zinc-500 shrink-0 font-medium">
+                      {filtered.length}/{matches.length}
+                    </p>
+                  </div>
+                  <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
+                    {filtered.map(match => {
+                      const isSelected = selectedMatches.has(match.id);
+                      return (
+                        <button
+                          key={match.id}
+                          onClick={() => toggleMatch(match.id)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all border ${
+                            isSelected
+                              ? "bg-emerald-500/10 border-emerald-500/25"
+                              : "bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]"
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected ? "bg-emerald-500 text-black" : "bg-white/[0.06] border border-white/[0.1]"
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-semibold truncate ${isSelected ? "text-white" : "text-white/70"}`}>
+                              {match.home} vs {match.away}
+                            </p>
+                            <p className="text-[10px] text-zinc-500 truncate">{match.league}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Clock className="w-3 h-3 text-zinc-600" />
+                            <span className="text-[11px] font-mono text-zinc-400">{match.time}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {filtered.length === 0 && (
+                      <p className="text-center text-xs text-zinc-600 py-4">No se encontraron partidos con "{matchSearch}"</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Sin deporte seleccionado */}
             {!selectedSport && !matchesLoading && (
