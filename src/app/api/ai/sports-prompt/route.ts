@@ -9,9 +9,6 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { matches, mode, generatedIdea } = body;
-    // matches: [{ home: "...", away: "...", time: "...", league: "..." }]
-    // mode: "sports" | "creative"
-    // generatedIdea: { protagonist, visual, hook, copy } (solo en mode=creative)
 
     const aiSettings: any = user.publicMetadata?.aiSettings || {};
     const agencyName = aiSettings.agencyName || "Ecuabet";
@@ -29,59 +26,103 @@ export async function POST(request: Request) {
     let userContent = "";
 
     if (mode === "sports" && matches?.length > 0) {
-      // ── MODO DEPORTIVO: Partidos Reales ──
-      const matchList = matches
-        .map((m: any) => `• ${m.home} vs ${m.away} (${m.time}) — ${m.league}`)
-        .join("\n");
+      const matchCount = matches.length;
 
-      systemPrompt = `Eres un director creativo experto en publicidad de apuestas deportivas. 
-Contexto de la marca:
-- Nombre: ${agencyName}
-- Descripción: ${agencyDesc}
-- Colores primarios: ${primaryColor} y ${secondaryColor}
+      if (matchCount === 1) {
+        // ═══════════════════════════════════════════════════
+        // UN SOLO PARTIDO — Duelo épico con 8 opciones
+        // ═══════════════════════════════════════════════════
+        const m = matches[0];
 
-Tu trabajo es generar DOS cosas basadas en los partidos del día:
+        systemPrompt = `Eres un director creativo TOP de publicidad deportiva. Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
 
-1. **imagePrompt**: Un prompt en ESPAÑOL, ultra-descriptivo y visual para generar una imagen publicitaria fotorrealista de alta calidad. 
-DEBE elegir creativamente UNA de estas CINCO estructuras visuales (escoge al azar para dar mucha variedad):
-- OPCIÓN A (Cara a Cara Clásico): Composición dividida izquierda/derecha, un jugador fotorrealista por lado en actitud competitiva.
-- OPCIÓN B (Acción Dinámica): Un jugador principal en plena acción deportiva (pateando el balón, tirando al aro) con la cancha de fondo.
-- OPCIÓN C (Cinemática a nivel de cancha): Cámara muy baja (low angle) desde el piso mirando rígidamente hacia arriba a los jugadores en disputa.
-- OPCIÓN D (Estadio Inmersivo POV): Vista desde la grada o túnel de vestuarios mirando al campo iluminado de noche, muy épico.
-- OPCIÓN E (Retrato Publicitario de Estudio): Jugadores posando heroicamente con iluminación dramática de estudio de fotografía deportiva.
+Genera un JSON con "imagePrompt" y "caption" para: ${m.home} vs ${m.away} a las ${m.time}.
 
-REGLAS ESTRICTAS ANTI-DUPLICACIÓN (¡MUY IMPORTANTE!):
-- TEXTO ÚNICO Y CENTRAL: Exige explícitamente en tu prompt que el texto "Equipo A vs Equipo B" y la HORA REAL del partido (ej: "19:00", "21:30") se escriban UNA SOLA VEZ, preferiblemente centrado. **PROHÍBE** estrictamente a la IA de imágenes que duplique o espejee los textos a la izquierda y derecha. NUNCA pongas la palabra "HOY", pon la hora exacta del partido.
-- UN SOLO LOGO: Incorpora lógicamente el cartel o logo de "${agencyName}" asegurando que resalte. Especifica explícitamente que debe aparecer **UNA SOLA VEZ**, no dos. Usa paletas de color con ${primaryColor} y ${secondaryColor}.
-NO uses estilos bizarros ni caricaturas. Solo fotorrealismo publicitario de alto impacto (premium). TODO el texto en ESPAÑOL.
+**imagePrompt** — Prompt en ESPAÑOL, ultra-descriptivo, fotorrealista. Escoge UNA opción al azar:
+A) Cara a Cara: Composición dividida, un jugador por lado en actitud competitiva, iluminación dramática lateral, chispas en el centro.
+B) Acción Dinámica: Jugador estrella ejecutando una jugada espectacular (tiro, regate, mate) con explosiones de energía cinética dorada.
+C) Cámara Baja Cinemática: Ángulo contrapicado desde el césped, dos jugadores disputando el balón, cielo épico de atardecer detrás.
+D) Túnel de Vestuarios: Jugadores emergiendo del túnel oscuro hacia la cancha iluminada, perspectiva profunda, humo dramático.
+E) Retrato de Estudio: Primer plano cinematográfico de un jugador con iluminación Rembrandt, gotas de sudor congeladas, fondo desenfocado con colores de la marca.
+F) Estadio Aéreo Nocturno: Toma aérea drone de un estadio lleno de noche, pirotecnia y bengalas de colores, la cancha brillando como una joya.
+G) Colisión Épica: Dos balones o elementos deportivos chocando en el centro con onda expansiva dorada, fragmentos volando, fondo oscuro con destellos.
+H) Diseño Editorial Deportivo: Composición limpia tipo portada de revista deportiva premium, foto principal recortada con tipografía bold, marcos geométricos dorados.
 
-2. **caption**: Un copy en ESPAÑOL para publicar en redes sociales (Facebook/Instagram). Agresivo, emocional, con llamada a la acción y 2-3 hashtags relevantes.
+REGLAS: 
+- Texto "${m.home} vs ${m.away}" y hora "${m.time}" UNA SOLA VEZ centrados. NUNCA escribas "HOY".
+- Logo "${agencyName}" UNA VEZ. Colores ${primaryColor}/${secondaryColor}.
+- Máximo 80 palabras en el imagePrompt. Sé denso y visual, no repitas instrucciones.
+- Fotorrealismo premium. ESPAÑOL.
 
-Responde ESTRICTAMENTE en JSON: { "imagePrompt": "...", "caption": "..." }`;
+**caption** — Copy agresivo en ESPAÑOL para redes. Menciona equipos, hora, liga. Emojis. CTA. 2-3 hashtags.
 
-      userContent = `Genera publicidad para estos partidos de hoy. USA LA HORA EXACTA de cada partido (no escribas "HOY", escribe la hora real como "19:00"):\n${matchList}`;
+JSON: { "imagePrompt": "...", "caption": "..." }`;
+
+        userContent = `Partido: ${m.home} vs ${m.away} | ${m.time} | ${m.league}`;
+
+      } else {
+        // ═══════════════════════════════════════════════════
+        // MÚLTIPLES PARTIDOS — Imagen épica + agenda en caption
+        // ═══════════════════════════════════════════════════
+        // ESTRATEGIA: El prompt de imagen es CORTO y visual.
+        // Solo 2 partidos principales como texto en la imagen.
+        // TODOS los partidos van en el caption.
+
+        const headlines = matches.slice(0, 2);
+        const headlineText = headlines
+          .map((m: any) => `${m.home} vs ${m.away} (${m.time})`)
+          .join(" | ");
+
+        const fullMatchList = matches
+          .map((m: any) => `⚡ ${m.home} vs ${m.away} — ${m.time} (${m.league})`)
+          .join("\n");
+
+        systemPrompt = `Eres un director creativo TOP de publicidad deportiva. Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
+
+Tienes ${matchCount} partidos. Genera JSON con "imagePrompt" y "caption".
+
+**imagePrompt** — CORTO (máximo 80 palabras). Solo muestra en la imagen: "${headlineText}"${matchCount > 2 ? ` + "${matchCount - 2} partidos más"` : ""}.
+
+Escoge UNA opción al azar:
+A) Pantalla LED Deportiva: Estadio nocturno con pantalla LED gigante mostrando los partidos estelares. Atmósfera eléctrica, público en silueta.
+B) Collage Split-Screen: ${Math.min(matchCount, 4)} paneles con escenas deportivas, franja central dorada con los enfrentamientos estelares.
+C) Cartelera Cinematográfica: Póster estilo película de acción deportiva, jugadores en poses heroicas, título grande con los enfrentamientos.
+D) Mesa de Control TV: Layout tipo ESPN/DIRECTV con grid deportivo, partidos en recuadros organizados, estética broadcast profesional.
+E) Marquesina de Estadio: Exterior de estadio nocturno imponente, marquesinas LED luminosas con los partidos, reflejos en piso mojado.
+F) Portal de Energía: Dos jugadores emergiendo de portales de energía opuestos (dorado vs azul), enfrentamientos escritos en el centro.
+G) Banner Holográfico: Hologramas deportivos flotantes con los partidos principales, jugadores como proyecciones 3D, ambiente futurista premium.
+H) Tribuna Explosiva: Vista desde cancha hacia tribunas llenas, pirotecnia dorada, banners con enfrentamientos colgando del techo del estadio.
+
+REGLAS:
+- Máximo 80 PALABRAS en imagePrompt. Directo y visual.
+- Máximo 2-3 líneas de texto visible en la imagen (los partidos estelares).
+- Logo "${agencyName}" UNA VEZ. NUNCA escribas "HOY". Usa horas reales.
+- Fotorrealismo. ESPAÑOL.
+
+**caption** — AGENDA COMPLETA con TODOS los ${matchCount} partidos. Formato organizado con emojis, hora y liga de cada uno. CTA agresiva. 3-5 hashtags.
+
+JSON: { "imagePrompt": "...", "caption": "..." }`;
+
+        userContent = `${matchCount} partidos para la cartelera:\n${fullMatchList}`;
+      }
 
     } else if (mode === "creative" && generatedIdea) {
       // ── MODO CREATIVO: Idea Combinada ──
       systemPrompt = `Eres un director creativo experto en publicidad de apuestas deportivas y casino.
-Contexto de la marca:
-- Nombre: ${agencyName}
-- Descripción: ${agencyDesc}
-- Colores primarios: ${primaryColor} y ${secondaryColor}
+Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
 
-Se te dará una idea creativa pre-generada con 4 componentes. Tu trabajo es:
+Transforma la idea en JSON con "imagePrompt" y "caption".
 
-1. **imagePrompt**: Transformar esos 4 elementos en un prompt en ESPAÑOL, ultra-descriptivo y visual para generar una imagen publicitaria fotorrealista premium. NO uses estilos artísticos bizarros. Solo fotorrealismo publicitario. TODO el texto visible en la imagen debe estar en ESPAÑOL.
+**imagePrompt** — Máximo 80 palabras. ESPAÑOL. Fotorrealismo publicitario premium. Ultra-descriptivo y visual. Texto visible en ESPAÑOL.
+**caption** — Copy ESPAÑOL para redes, agresivo, emocional, CTA, 2-3 hashtags.
 
-2. **caption**: Un copy en ESPAÑOL para redes sociales, agresivo, emocional, con llamada a la acción y 2-3 hashtags.
+JSON: { "imagePrompt": "...", "caption": "..." }`;
 
-Responde ESTRICTAMENTE en JSON: { "imagePrompt": "...", "caption": "..." }`;
-
-      userContent = `Idea creativa a transformar:
+      userContent = `Idea:
 - Protagonista: ${generatedIdea.protagonist}
-- Concepto Visual: ${generatedIdea.visual}
-- Gancho Promocional: ${generatedIdea.hook}
-- Copy Base: ${generatedIdea.copy}`;
+- Visual: ${generatedIdea.visual}
+- Gancho: ${generatedIdea.hook}
+- Copy: ${generatedIdea.copy}`;
 
     } else {
       return NextResponse.json({ error: "Faltan datos. Envía matches (modo sports) o generatedIdea (modo creative)." }, { status: 400 });
@@ -94,7 +135,8 @@ Responde ESTRICTAMENTE en JSON: { "imagePrompt": "...", "caption": "..." }`;
         { role: "user", content: userContent },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.8,
+      temperature: 0.9,
+      max_tokens: 600,
     });
 
     const raw = completion.choices[0]?.message?.content || "{}";
