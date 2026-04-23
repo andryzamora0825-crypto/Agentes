@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
       
-      const agencyContext = `Marca: "${aiSettings.agencyName || 'Sin Nombre'}". Contacto opcional: ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
+      const agencyContext = `Marca: "${aiSettings.agencyName || 'Sin Nombre'}". INFORMACIÓN DE CONTACTO OBLIGATORIA (Debe aparecer textualmente en el diseño): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
       // --- SISTEMA MULTIPLATAFORMA (LOGOS ROBUSTOS ADMINISTRADOS POR ZAMTOOLS) ---
