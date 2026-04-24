@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 export const dynamic = 'force-dynamic';
 
@@ -267,42 +270,119 @@ export async function GET(request: Request) {
     }
 
     const today = getTodayDate();
-    // NOTA: No podemos enviar parámetros extra como _cb a api-sports.io porque rechazan parámetros desconocidos
     const url = `${config.baseUrl}${config.endpoint}?${config.dateParam}=${today}`;
 
-    console.log(`[SPORTS] Fetching ${sport}: ${url}`);
+    // ── PROTECCIÓN ANTI-BAN EXTREMA (FS Cache + Memory Cache + Coalescing + Rate Limiting) ──
+    const globalStore = globalThis as any;
+    if (!globalStore._sportsCache) globalStore._sportsCache = {};
+    if (!globalStore._sportsPromises) globalStore._sportsPromises = {};
+    if (!globalStore._sportsLastFetch) globalStore._sportsLastFetch = 0;
 
-    // ── CACHÉ: 6 horas (21600s) ──
-    // Se renovará automáticamente por el cambio de URL (_cb), pero igual bajamos el TTL a 6h.
-    // Consumo máximo por deporte: 4 reqs/día. Total 9 deportes = 36 reqs/día (Límite 100).
-    const res = await fetch(url, {
-      headers: { "x-apisports-key": apiKey },
-      next: { revalidate: 21600, tags: ["sports-matches"] },
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[SPORTS] API error (${res.status}):`, errText);
-      return NextResponse.json({ error: "Error consultando API-Sports.", detail: errText }, { status: 502 });
-    }
-
-    const json = await res.json();
+    const cacheKey = `${sport}`;
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
     
-    // API-Sports devuelve 200 OK incluso si hay errores de rate-limit
-    if (json.errors && Object.keys(json.errors).length > 0) {
-      console.error(`[SPORTS] API-Sports Errors:`, json.errors);
-      return NextResponse.json({ 
-        error: "Error desde el proveedor de deportes.", 
-        detail: JSON.stringify(json.errors) 
-      }, { status: 502 });
+    // Función auxiliar para caché en disco (Sobrevive reinicios de servidor y Vercel cold starts)
+    const getFsCachePath = () => path.join(os.tmpdir(), `sports_cache_${sport}.json`);
+    
+    let cachedEntry = globalStore._sportsCache[cacheKey];
+
+    // 1. Verificar Caché en Memoria
+    if (cachedEntry && cachedEntry.date === today && (Date.now() - cachedEntry.timestamp < SIX_HOURS_MS)) {
+      console.log(`[SPORTS] Retornando ${sport} desde caché RAM (Anti-Ban).`);
+      return NextResponse.json({ success: true, sport, date: today, matches: cachedEntry.data, source: "memory_cache" });
     }
 
-    const matches = config.parser(json);
+    // 2. Verificar Caché en Disco Físico (Fallback si la RAM se limpió)
+    try {
+      const fsPath = getFsCachePath();
+      if (fs.existsSync(fsPath)) {
+        const fsData = JSON.parse(fs.readFileSync(fsPath, 'utf8'));
+        if (fsData.date === today && (Date.now() - fsData.timestamp < SIX_HOURS_MS)) {
+          console.log(`[SPORTS] Retornando ${sport} desde caché de DISCO (Anti-Ban).`);
+          // Restaurar a la RAM para la próxima vez
+          globalStore._sportsCache[cacheKey] = fsData;
+          cachedEntry = fsData;
+          return NextResponse.json({ success: true, sport, date: today, matches: fsData.data, source: "disk_cache" });
+        } else {
+          // Guardar caché vieja por si falla la API (Stale-While-Revalidate)
+          cachedEntry = fsData; 
+        }
+      }
+    } catch (e) {
+      console.log(`[SPORTS] Ignorando error de disco físico:`, e);
+    }
 
-    // Ordenar por hora
-    matches.sort((a, b) => a.time.localeCompare(b.time));
+    // 3. Promise Coalescing (Evitar Cache Stampede). Si ya hay un fetch en curso, esperamos ese.
+    if (globalStore._sportsPromises[cacheKey]) {
+      console.log(`[SPORTS] Esperando petición en vuelo para ${sport}...`);
+      try {
+        const matches = await globalStore._sportsPromises[cacheKey];
+        return NextResponse.json({ success: true, sport, date: today, matches, source: "memory_cache_coalesced" });
+      } catch (e) {
+        // Si la petición en vuelo falla, continuamos e intentamos de nuevo
+      }
+    }
 
-    return NextResponse.json({ success: true, sport, date: today, matches });
+    // 3. Rate Limiting Básico Global (Max 1 request cada 2 segundos)
+    const timeSinceLastFetch = Date.now() - globalStore._sportsLastFetch;
+    if (timeSinceLastFetch < 2000) {
+      await new Promise(resolve => setTimeout(resolve, 2000 - timeSinceLastFetch));
+    }
+
+    console.log(`[SPORTS] Fetching ${sport} externo: ${url}`);
+    globalStore._sportsLastFetch = Date.now();
+
+    // 4. Iniciar Fetch y guardarlo globalmente
+    const fetchPromise = (async () => {
+      const res = await fetch(url, {
+        headers: { "x-apisports-key": apiKey },
+        next: { revalidate: 21600, tags: ["sports-matches"] },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const json = await res.json();
+      if (json.errors && Object.keys(json.errors).length > 0) {
+        throw new Error(JSON.stringify(json.errors));
+      }
+      const matches = config.parser(json);
+      matches.sort((a: any, b: any) => a.time.localeCompare(b.time));
+      return matches;
+    })();
+
+    globalStore._sportsPromises[cacheKey] = fetchPromise;
+
+    try {
+      const matches = await fetchPromise;
+      
+      const cacheData = {
+        timestamp: Date.now(),
+        date: today,
+        data: matches
+      };
+
+      // Guardar en la caché local RAM
+      globalStore._sportsCache[cacheKey] = cacheData;
+      
+      // Guardar en caché Física (Disco)
+      try {
+        fs.writeFileSync(getFsCachePath(), JSON.stringify(cacheData), 'utf8');
+      } catch (e) {
+        // Ignorar errores de escritura
+      }
+
+      delete globalStore._sportsPromises[cacheKey];
+      return NextResponse.json({ success: true, sport, date: today, matches, source: "api" });
+    } catch (error: any) {
+      delete globalStore._sportsPromises[cacheKey];
+      console.error(`[SPORTS] Error fetching ${sport}:`, error.message);
+      
+      // 5. STALE-WHILE-REVALIDATE: Si la API falla (ej. Rate Limit) pero tenemos caché vieja, devolvemos la vieja para no romper la app!
+      if (cachedEntry) {
+         console.warn(`[SPORTS] API falló. Devolviendo caché STALE para ${sport}.`);
+         return NextResponse.json({ success: true, sport, date: today, matches: cachedEntry.data, source: "stale_memory_cache_fallback", warning: error.message });
+      }
+
+      return NextResponse.json({ error: "Error desde el proveedor de deportes.", detail: error.message }, { status: 502 });
+    }
   } catch (error: any) {
     console.error("[SPORTS] Error general:", error);
     return NextResponse.json({ error: error.message || "Error interno." }, { status: 500 });

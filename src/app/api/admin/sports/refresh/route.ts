@@ -14,6 +14,29 @@ export async function POST(request: Request) {
     // Revalidar el tag global de partidos (Next.js 16 requiere un perfil de cacheLife)
     revalidateTag("sports-matches", "max");
 
+    // Limpiar también la caché en memoria (Protección Anti-Ban)
+    const globalStore = globalThis as any;
+    if (globalStore._sportsCache) {
+      globalStore._sportsCache = {};
+    }
+
+    // Limpiar caché en disco físico (si existe)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const tmpDir = os.tmpdir();
+      
+      const files = fs.readdirSync(tmpDir);
+      for (const file of files) {
+        if (file.startsWith('sports_cache_') && file.endsWith('.json')) {
+          fs.unlinkSync(path.join(tmpDir, file));
+        }
+      }
+    } catch (e) {
+      console.error("[ADMIN_SPORTS_REFRESH] Error limpiando FS cache:", e);
+    }
+
     return NextResponse.json({ success: true, message: "Caché de partidos revalidada con éxito." });
   } catch (error: any) {
     console.error("[ADMIN_SPORTS_REFRESH] Error:", error);
