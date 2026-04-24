@@ -434,7 +434,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
           setMatchesError("No hay partidos programados para hoy en este deporte.");
         }
       } else {
-        setMatchesError(data.error || "Error cargando partidos.");
+        setMatchesError(data.detail ? `${data.error} Detalle: ${data.detail}` : data.error || "Error cargando partidos.");
       }
     } catch (e: any) {
       setMatchesError("Error de conexión al servidor.");
