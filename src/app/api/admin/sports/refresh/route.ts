@@ -11,8 +11,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado." }, { status: 401 });
     }
 
-    // Revalidar el tag global de partidos
-    revalidateTag("sports-matches");
+    // Revalidar el tag global de partidos (Next.js 16 requiere un perfil de cacheLife)
+    revalidateTag("sports-matches", "max");
 
     return NextResponse.json({ success: true, message: "Caché de partidos revalidada con éxito." });
   } catch (error: any) {
