@@ -76,7 +76,8 @@ export async function POST(request: Request) {
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
       
-      const agencyContext = `Marca: "${aiSettings.agencyName || 'Sin Nombre'}". INFORMACIÓN DE CONTACTO OBLIGATORIA (Debe aparecer textualmente en el diseño): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
+      const contactParts = [aiSettings.contactNumber, aiSettings.extraContact].filter(Boolean).join(' / ');
+      const agencyContext = `Marca: "${aiSettings.agencyName || 'Sin Nombre'}".${contactParts ? ` En la parte inferior de la imagen, dibuja una franja elegante que muestre SOLO el número o dirección: "${contactParts}". NO escribas las palabras "contacto", "obligatorio", ni "información". Dibuja ÚNICAMENTE el dato textual indicado entre comillas.` : ''}`;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
       // --- SISTEMA MULTIPLATAFORMA (LOGOS ROBUSTOS ADMINISTRADOS POR ZAMTOOLS) ---

@@ -193,7 +193,7 @@ export async function POST(request: Request) {
 
     // Construir bloque de contacto solo si hay datos
     const contactBlock = contactNumber
-      ? `- DATOS DE CONTACTO: Añade una franja elegante en la parte inferior con color ${primaryColor} que muestre exactamente el texto "${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""}. Añade un icono sutil de WhatsApp. IMPORTANTE: NO escribas la palabra "contacto" ni "obligatorio", dibuja ÚNICAMENTE los números o la dirección web indicada.`
+      ? `- FRANJA INFERIOR: Dibuja una franja elegante en la parte inferior con color ${primaryColor} que muestre SOLO el texto "${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""}. Añade un icono sutil de WhatsApp al lado. PROHIBIDO escribir las palabras "contacto", "obligatorio", "información" o cualquier etiqueta. Dibuja ÚNICAMENTE los números/dirección indicados.`
       : "";
 
     if (!process.env.OPENAI_API_KEY) {
@@ -234,7 +234,7 @@ ANTES DE DESCRIBIR NADA VISUAL, DEFINE EL TEXTO IMPRESO EN LA IMAGEN
 ═══════════════════════════════════════════════════════════════════
 Empieza el imagePrompt con el siguiente bloque literal (es una instrucción al modelo de imagen para que renderice texto legible y perfectamente escrito, NO son etiquetas ni metadatos):
 
-"TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (todos los textos deben quedar perfectamente legibles, sin letras deformadas, bien ortografiados):
+"TEXTO QUE DEBE DIBUJARSE EN LA IMAGEN (legible, sin letras deformadas, bien ortografiado):
 • TÍTULO CENTRAL del duelo en tipografía deportiva bold gigante: '${m.home.toUpperCase()} VS ${m.away.toUpperCase()}'
 • HORA DEL PARTIDO en badge/recuadro destacado con ícono de reloj, número grande bold color ${primaryColor} sobre fondo ${secondaryColor}: '${m.time}'
 • FECHA integrada junto a la hora (tarjeta pequeña o sub-línea): '${dateShort}'
@@ -279,7 +279,7 @@ O) CHOQUE FUEGO VS HIELO: Composición dual. Lado izquierdo: jugador de ${m.home
 P) PROMO APP MÓVIL: Un smartphone premium en el centro de la imagen mostrando el enfrentamiento en su pantalla. Saliendo de la pantalla emergen jugadores fotorrealistas de ambos equipos en acción, como si saltaran del teléfono a la realidad. Copa del torneo flotando sobre el teléfono. Escudos 3D a los lados. Fondo oscuro con destellos de la marca. Texto "¡Apuesta ya!" integrado con diseño moderno.
 
 REGLAS ESTRICTAS (el texto DEBE aparecer renderizado en la imagen final):
-- OBLIGATORIO VISIBLE: "${m.home.toUpperCase()} VS ${m.away.toUpperCase()}" (título), "${m.time}" (hora en badge), "${dateShort}" (fecha), "${m.league.toUpperCase()}" (liga), "${cta}" (CTA en botón/banner inferior)${oddsBlockFor(m) ? `, la CUOTA DESTACADA arriba mencionada en badge prominente con el número grande y bold (es el dato más importante para captar al apostador)` : ""}.
+- DEBE VERSE IMPRESO: "${m.home.toUpperCase()} VS ${m.away.toUpperCase()}" (título), "${m.time}" (hora en badge), "${dateShort}" (fecha), "${m.league.toUpperCase()}" (liga), "${cta}" (CTA en botón/banner inferior)${oddsBlockFor(m) ? `, la CUOTA DESTACADA arriba mencionada en badge prominente con el número grande y bold (es el dato más importante para captar al apostador)` : ""}.
 - NO omitas ninguno de esos textos. NO los resumas. NO uses abreviaciones distintas. Si la composición no da espacio, ajusta layout para que todos quepan legibles.
 - Escudos oficiales de AMBOS equipos DEBEN aparecer con acabado 3D o metálico premium.
 - Si la liga tiene copa/trofeo, INCLÚYELO en la composición.
@@ -326,7 +326,7 @@ ANTES DE DESCRIBIR NADA VISUAL, DEFINE EL TEXTO IMPRESO EN LA IMAGEN
 ═══════════════════════════════════════════════════════════════════
 Empieza el imagePrompt con el siguiente bloque literal (instrucción al modelo de imagen para renderizar texto legible y perfectamente escrito):
 
-"TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (todos los textos deben quedar perfectamente legibles, sin letras deformadas ni faltas de ortografía):
+"TEXTO QUE DEBE DIBUJARSE EN LA IMAGEN (legible, sin letras deformadas, bien ortografiado):
 • ENCABEZADO: 'CARTELERA ${dateShort}' en tipografía deportiva bold.
 • ${matchCount} FILAS DE PARTIDOS, cada una con su propia tarjeta/fila visible y legible:
 ${matches.map((m: any, i: number) => {
@@ -362,7 +362,7 @@ J) GRID MÓVIL APP: Un smartphone premium gigante en el centro de la composició
 REGLAS ESTRICTAS (todo este texto DEBE aparecer impreso en la imagen final):
 - TODOS los ${matchCount} enfrentamientos escritos legiblemente con su hora (${matches.map((m: any) => `"${m.time}"`).join(", ")}) y su liga. Sin excepción, sin resumir, sin omitir.
 - Fecha "${dateShort}" visible en el encabezado o cartelera.
-- CTA OBLIGATORIO en banner/botón inferior: "${cta}".
+- CTA en banner/botón inferior: "${cta}".
 - Escudos de los equipos con acabado 3D/metálico visible.
 - Jugadores con uniformes reales de sus equipos.
 ${contactBlock}
@@ -392,7 +392,7 @@ ANTES DE DESCRIBIR NADA VISUAL, DEFINE EL TEXTO IMPRESO EN LA IMAGEN
 ═══════════════════════════════════════════════════════════════════
 Empieza el imagePrompt con el siguiente bloque literal (instrucción al modelo de imagen para renderizar texto legible y perfectamente escrito):
 
-"TEXTO OBLIGATORIO IMPRESO EN LA IMAGEN (legible, sin letras deformadas, bien ortografiado):
+"TEXTO QUE DEBE DIBUJARSE EN LA IMAGEN (legible, sin letras deformadas, bien ortografiado):
 • TÍTULO / GANCHO principal en tipografía bold impactante (basado en el gancho de la idea).
 • FECHA visible como badge pequeño: '${dateShort}'
 • LLAMADA A LA ACCIÓN en banner/botón inferior destacado con color ${primaryColor}: '${cta}'
@@ -403,7 +403,7 @@ Luego describe la composición visual basada en la idea.
 
 REGLAS:
 - Logo de "${agencyName}" UNA SOLA VEZ, integrado profesionalmente. PROHÍBE logos duplicados.
-- CTA "${cta}" OBLIGATORIO visible en la imagen.
+- CTA "${cta}" visible en la imagen.
 - Fecha "${dateShort}" visible en la imagen.
 ${contactBlock}
 **caption** — Copy ESPAÑOL para redes, agresivo, emocional. Incluye el CTA "${cta}" y la fecha ${dateLong}. 2-3 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}

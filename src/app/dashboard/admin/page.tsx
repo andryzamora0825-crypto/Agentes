@@ -37,6 +37,76 @@ const VipCountdown = ({ expiresAt }: { expiresAt: number }) => {
   );
 };
 
+const SportsRefreshCard = () => {
+  const [timeLeft, setTimeLeft] = useState<string>("Calculando...");
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    const updateTime = () => {
+      // Calcular la próxima 6:00 AM (Ecuador UTC-5)
+      const now = new Date();
+      // UTC absoluto
+      const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+      // Hora Ecuador
+      const ecDate = new Date(utcMs - (5 * 60 * 60 * 1000));
+      
+      const next6AM = new Date(ecDate);
+      next6AM.setHours(6, 0, 0, 0);
+      
+      if (ecDate.getHours() >= 6) {
+        next6AM.setDate(next6AM.getDate() + 1);
+      }
+      
+      const diffMs = next6AM.getTime() - ecDate.getTime();
+      const h = Math.floor(diffMs / (1000 * 60 * 60));
+      const m = Math.floor((diffMs / (1000 * 60)) % 60);
+      const s = Math.floor((diffMs / 1000) % 60);
+      
+      setTimeLeft(`${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRefresh = async () => {
+    if (!confirm("¿Forzar actualización de partidos? (Esto descargará la cartelera actual inmediatamente)")) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/admin/sports/refresh", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        alert("¡Cartelera de partidos IA actualizada con éxito!");
+      } else {
+        alert("Error: " + data.error);
+      }
+    } catch (e) {
+      alert("Error de red");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg flex flex-col justify-between min-w-[150px]">
+      <div>
+        <p className="text-[10px] text-white/30 uppercase tracking-widest font-medium mb-1 flex items-center justify-center gap-1.5">
+          <Clock className="w-3 h-3" /> Próximo Refresco IA
+        </p>
+        <p className="text-xl font-bold font-mono text-cyan-400 text-center">{timeLeft}</p>
+      </div>
+      <button 
+        onClick={handleRefresh}
+        disabled={refreshing}
+        className="mt-3 w-full bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] text-xs font-semibold py-1.5 rounded flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+      >
+        {refreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3 text-cyan-400" />}
+        Forzar Update
+      </button>
+    </div>
+  );
+};
+
 export default function AdminPanelPage() {
   const { user } = useUser();
   const router = useRouter();
@@ -667,13 +737,14 @@ export default function AdminPanelPage() {
            </button>
          </div>
 
-         {/* Stats Rápidas */}
-         <div className="flex items-center gap-4 z-10 relative">
-            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[120px]">
+         {/* Stats Rápidas y Controles IA */}
+         <div className="flex items-center gap-4 z-10 relative flex-wrap sm:flex-nowrap justify-center sm:justify-end">
+            <SportsRefreshCard />
+            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[100px] sm:min-w-[120px]">
                <div className="text-2xl font-bold">{totalAgents}</div>
                <div className="text-[10px] text-white/30 uppercase tracking-widest font-medium mt-1">Agentes</div>
             </div>
-            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[120px]">
+            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[100px] sm:min-w-[120px]">
                <div className="text-2xl font-bold text-[#FFDE00]">{totalVips}</div>
                <div className="text-[10px] text-[#FFDE00]/30 uppercase tracking-widest font-medium mt-1">VIPs</div>
             </div>

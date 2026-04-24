@@ -261,7 +261,7 @@ export default function EstudioIAPage() {
       if (targetFormat !== 'auto') {
         const fmt = FORMAT_OPTIONS.find(f => f.id === targetFormat);
         if (fmt && fmt.ratio) {
-          finalPrompt = `${targetPrompt}\n\n[FORMATO OBLIGATORIO: Genera la imagen en proporción ${fmt.ratio} (${fmt.label} - ${fmt.desc}). Es CRÍTICO respetar esta proporción.]`;
+          finalPrompt = `${targetPrompt}\n\n[REGLA DE FORMATO: Genera la imagen en proporción ${fmt.ratio} (${fmt.label} - ${fmt.desc}). Es CRÍTICO respetar esta proporción.]`;
         }
       }
 

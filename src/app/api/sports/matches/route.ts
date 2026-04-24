@@ -240,6 +240,15 @@ function getTodayDate(): string {
   return `${y}-${m}-${d}`;
 }
 
+// Genera un bloque que cambia cada 6 horas (Ecuador time).
+// Esto asegura que a las 6:00 AM exactas, el parámetro _cb cambie,
+// forzando un refresco total de la cartelera sin romper el límite de 100 req/día.
+function getCacheWindow(): string {
+  const now = new Date();
+  const ecDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Guayaquil" }));
+  return Math.floor(ecDate.getHours() / 6).toString();
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -256,16 +265,18 @@ export async function GET(request: Request) {
     }
 
     const today = getTodayDate();
-    const url = `${config.baseUrl}${config.endpoint}?${config.dateParam}=${today}`;
+    const cacheBlock = getCacheWindow();
+    // Añadimos _cb para que Next.js vea una URL distinta cada 6 horas (00:00, 06:00, 12:00, 18:00)
+    const url = `${config.baseUrl}${config.endpoint}?${config.dateParam}=${today}&_cb=${cacheBlock}`;
 
     console.log(`[SPORTS] Fetching ${sport}: ${url}`);
 
-    // ── CACHÉ EXTREMA: 12 horas (43200s) ──
-    // Esto protege nuestro límite gratuito de 100 req/día.
-    // Todas las peticiones globales de todos los usuarios se sirven desde caché.
+    // ── CACHÉ: 6 horas (21600s) ──
+    // Se renovará automáticamente por el cambio de URL (_cb), pero igual bajamos el TTL a 6h.
+    // Consumo máximo por deporte: 4 reqs/día. Total 9 deportes = 36 reqs/día (Límite 100).
     const res = await fetch(url, {
       headers: { "x-apisports-key": apiKey },
-      next: { revalidate: 43200 },
+      next: { revalidate: 21600, tags: ["sports-matches"] },
     });
 
     if (!res.ok) {

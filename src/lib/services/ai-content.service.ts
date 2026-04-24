@@ -104,10 +104,10 @@ export async function generateImage(
 
   // Format instructions (same as Estudio IA)
   const FORMAT_MAP: Record<string, string> = {
-    square: "OBLIGATORIO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles.",
-    vertical: "OBLIGATORIO: La imagen DEBE ser VERTICAL (9:16), como 768x1365 píxeles. Formato Stories/Reels.",
-    horizontal: "OBLIGATORIO: La imagen DEBE ser HORIZONTAL (16:9), como 1365x768 píxeles.",
-    portrait: "OBLIGATORIO: La imagen DEBE ser VERTICAL tipo RETRATO (4:5), como 819x1024 píxeles.",
+    square: "REGLA DE FORMATO: La imagen DEBE ser CUADRADA (1:1), como 1024x1024 píxeles.",
+    vertical: "REGLA DE FORMATO: La imagen DEBE ser VERTICAL (9:16), como 768x1365 píxeles. Formato Stories/Reels.",
+    horizontal: "REGLA DE FORMATO: La imagen DEBE ser HORIZONTAL (16:9), como 1365x768 píxeles.",
+    portrait: "REGLA DE FORMATO: La imagen DEBE ser VERTICAL tipo RETRATO (4:5), como 819x1024 píxeles.",
   };
   const formatInstruction = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
 
@@ -189,18 +189,18 @@ REGLAS PARA EL PERSONAJE:
     const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings?.secondaryColor || '#000000';
 
     finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}. 
-ES OBLIGATORIO usar la siguiente paleta de colores para esta marca: 
+Usa la siguiente paleta de colores para esta marca: 
 - Color Primario: ${pColor}
 - Color Secundario: ${sColor}
 Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
+ALERTA DE ORTOGRAFÍA: Escribe el nombre exactamente como "${formattedPlat}", letra por letra. Usa creativamente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
     
     if (OFFICIAL_PLATFORMS[platKey]) {
       itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
     }
   } else if (useAgencyIdentity && aiSettings) {
     // Fallback to agency colors if no platform selected
-    finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
+    finalPrompt += `\n\n[COLORES DE LA MARCA]: Usa los colores de la agencia:
 - Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
 - Color Secundario: ${aiSettings.secondaryColor || '#000000'}
 Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
