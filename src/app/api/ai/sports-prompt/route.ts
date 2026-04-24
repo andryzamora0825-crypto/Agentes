@@ -214,7 +214,27 @@ export async function POST(request: Request) {
         // ═══════════════════════════════════════════════════
         const m = matches[0];
 
-        systemPrompt = `Eres un director creativo TOP de publicidad deportiva de apuestas para Latinoamérica. Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
+    const SINGLE_COMPOSITIONS = [
+      `DUELO CARA A CARA CON TROFEO: Composición dividida. Izquierda: un jugador estrella de ${m.home} con su uniforme oficial posando desafiante. Derecha: un jugador estrella de ${m.away} con su uniforme oficial en posición de combate. Entre ambos: el trofeo/copa de la ${m.league} brillando con luz dorada. Los escudos oficiales de ambos equipos flotan sobre cada lado. Fondo de estadio nocturno con reflectores épicos.`,
+      `ACCIÓN DINÁMICA CON ESCUDOS: Un jugador estrella de uno de los equipos ejecutando una jugada espectacular (tiro, regate, chilena) con explosión de energía cinética. Los escudos de ${m.home} y ${m.away} están integrados a los lados con efecto de cristal/metal 3D. El trofeo de la ${m.league} se ve al fondo con resplandor dorado. Partículas de fuego y energía emanan del jugador.`,
+      `PANORÁMICA DE ESTADIO CON JUGADORES: Vista amplia de un estadio repleto de noche con pirotecnia. En primer plano, dos jugadores enfrentados (uno de cada equipo con sus uniformes reales). Los escudos de los equipos están en las esquinas superiores con efecto holográfico. La copa de la competición brilla en el centro superior de la imagen.`,
+      `POSTER CINEMATOGRÁFICO: Estilo póster de película de acción. Un jugador de cada equipo en pose heroica con iluminación dramática de estudio. Los escudos tallados en metal dorado a los costados. Copa del torneo integrada en la parte superior como corona. Fondo oscuro con destellos y humo. Tipografía moderna para los nombres de los equipos.`,
+      `CÁMARA BAJA ÉPICA: Ángulo contrapicado desde el césped. Dos jugadores (uno de cada equipo con sus camisetas) disputando un balón en el aire. Cielo dramático de atardecer/nocturno detrás. Escudos en las esquinas. Copa de la competición reflejada en el césped mojado.`,
+      `CAMPO DE BATALLA: Los jugadores de ambos equipos caminando uno hacia el otro como gladiadores desde extremos opuestos del túnel del estadio. Sus escudos de equipo se proyectan como sombras gigantes en las paredes. La copa del torneo brilla al final del túnel como el premio. Humo, luces volumétricas y tensión máxima.`,
+      `PRESENTACIÓN TV DEPORTIVA: Diseño limpio tipo transmisión oficial de ESPN/FOX. Recuadro central con jugadores de ambos equipos. Escudos en alta resolución a los lados con efecto 3D. Barra inferior de información con el horario. Gráficos limpios, profesionales y modernos.`,
+      `RETRATO DOBLE DE ESTUDIO: Dos retratos side-by-side de jugadores estrella de cada equipo con iluminación Rembrandt. Uniformes oficiales. Gotas de sudor congeladas. Escudos incrustados en marcos metálicos elegantes. Copa flotando sutilmente entre ambos retratos.`,
+      `ARENA DE GLADIADORES: Estadio transformado en coliseo romano moderno. Dos jugadores estrella (uno de ${m.home}, otro de ${m.away}) con sus uniformes reales parados en extremos opuestos de la cancha como gladiadores. Copa de la ${m.league} elevándose desde el centro con rayos de luz dorada. Escudos de los equipos grabados en pilares de piedra a los costados. Público rugiendo en penumbra.`,
+      `SPOTLIGHT DEL TROFEO: Fondo completamente negro. En el centro, la copa/trofeo de la ${m.league} iluminada por un único spotlight cenital dorado. Los escudos de ${m.home} y ${m.away} reflejados en la superficie pulida del trofeo. A los lados, siluetas recortadas de jugadores estrella de cada equipo con sus uniformes. Partículas doradas flotando en el aire.`,
+      `DIAGONAL EXPLOSIVA: Composición dividida en diagonal. Mitad superior-izquierda: jugador de ${m.home} con su camiseta real atacando hacia el frente. Mitad inferior-derecha: jugador de ${m.away} defendiendo con intensidad. La diagonal central es una explosión de energía dorada con el texto del enfrentamiento. Escudos 3D en las esquinas opuestas. Copa de la competición detrás de la explosión.`,
+      `CELEBRACIÓN ÉPICA: Un deportista estrella ${vocab.celebration}, corriendo/moviéndose hacia la cámara con expresión de euforia. Detrás de él, el ${vocab.arena} entero en éxtasis con papel picado y bengalas. Los escudos de ${m.home} y ${m.away} integrados como banderas ondeando en la tribuna. ${vocab.trophy} resplandeciendo en el cielo como constelación.`,
+      `TENSIÓN DE CAMERINO: Vista interior de un vestuario/vestidor de lujo. Un deportista de ${m.home} preparándose con su ${vocab.gear}, mirada de determinación. En reflejo del espejo se ve un deportista de ${m.away} haciendo lo mismo. Los escudos de ambos equipos colgados en las paredes. ${vocab.trophy} visible al fondo del pasillo. Iluminación dramática cálida.`,
+      `GALERÍA DE CAMPEONES: Pasillo oscuro tipo museo con cuadros dorados enmarcados. En dos cuadros centrales: retratos fotorrealistas de jugadores estrella de cada equipo con sus uniformes. Entre los cuadros, la copa de la ${m.league} sobre un pedestal iluminado. Los escudos de los equipos tallados en los marcos dorados. Piso de mármol oscuro con reflejos.`,
+      `CHOQUE FUEGO VS HIELO: Composición dual. Lado izquierdo: jugador de ${m.home} envuelto en llamas y energía roja/dorada. Lado derecho: jugador de ${m.away} envuelto en energía azul/eléctrica y escarcha. El choque de ambas energías en el centro crea una onda expansiva donde flota la copa del torneo. Escudos de los equipos brillando con sus respectivos elementos.`,
+      `PROMO APP MÓVIL: Un smartphone premium en el centro de la imagen mostrando el enfrentamiento en su pantalla. Saliendo de la pantalla emergen jugadores fotorrealistas de ambos equipos en acción, como si saltaran del teléfono a la realidad. Copa del torneo flotando sobre el teléfono. Escudos 3D a los lados. Fondo oscuro con destellos de la marca. Texto "¡Apuesta ya!" integrado con diseño moderno.`
+    ];
+    const selectedSingleComp = SINGLE_COMPOSITIONS[Math.floor(Math.random() * SINGLE_COMPOSITIONS.length)];
+
+systemPrompt = `Eres un director creativo TOP de publicidad deportiva de apuestas para Latinoamérica. Marca: "${agencyName}" (${agencyDesc}). Colores: ${primaryColor} y ${secondaryColor}.
 
 DEPORTE: El deporte es ${sportKey.toUpperCase()}. Usa EXCLUSIVAMENTE esta ambientación:
 - Escenario: ${vocab.arena}
@@ -244,39 +264,9 @@ Empieza el imagePrompt con el siguiente bloque literal (es una instrucción al m
 • LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
 Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si alguno falta o sale ilegible."
 
-Luego de ese bloque, describe la composición visual. Escoge UNA composición al azar:
+Luego de ese bloque, describe la composición visual. EXCLUSIVAMENTE usa la siguiente composición para este render:
 
-A) DUELO CARA A CARA CON TROFEO: Composición dividida. Izquierda: un jugador estrella de ${m.home} con su uniforme oficial posando desafiante. Derecha: un jugador estrella de ${m.away} con su uniforme oficial en posición de combate. Entre ambos: el trofeo/copa de la ${m.league} brillando con luz dorada. Los escudos oficiales de ambos equipos flotan sobre cada lado. Fondo de estadio nocturno con reflectores épicos.
-
-B) ACCIÓN DINÁMICA CON ESCUDOS: Un jugador estrella de uno de los equipos ejecutando una jugada espectacular (tiro, regate, chilena) con explosión de energía cinética. Los escudos de ${m.home} y ${m.away} están integrados a los lados con efecto de cristal/metal 3D. El trofeo de la ${m.league} se ve al fondo con resplandor dorado. Partículas de fuego y energía emanan del jugador.
-
-C) PANORÁMICA DE ESTADIO CON JUGADORES: Vista amplia de un estadio repleto de noche con pirotecnia. En primer plano, dos jugadores enfrentados (uno de cada equipo con sus uniformes reales). Los escudos de los equipos están en las esquinas superiores con efecto holográfico. La copa de la competición brilla en el centro superior de la imagen.
-
-D) POSTER CINEMATOGRÁFICO: Estilo póster de película de acción. Un jugador de cada equipo en pose heroica con iluminación dramática de estudio. Los escudos tallados en metal dorado a los costados. Copa del torneo integrada en la parte superior como corona. Fondo oscuro con destellos y humo. Tipografía moderna para los nombres de los equipos.
-
-E) CÁMARA BAJA ÉPICA: Ángulo contrapicado desde el césped. Dos jugadores (uno de cada equipo con sus camisetas) disputando un balón en el aire. Cielo dramático de atardecer/nocturno detrás. Escudos en las esquinas. Copa de la competición reflejada en el césped mojado.
-
-F) CAMPO DE BATALLA: Los jugadores de ambos equipos caminando uno hacia el otro como gladiadores desde extremos opuestos del túnel del estadio. Sus escudos de equipo se proyectan como sombras gigantes en las paredes. La copa del torneo brilla al final del túnel como el premio. Humo, luces volumétricas y tensión máxima.
-
-G) PRESENTACIÓN TV DEPORTIVA: Diseño limpio tipo transmisión oficial de ESPN/FOX. Recuadro central con jugadores de ambos equipos. Escudos en alta resolución a los lados con efecto 3D. Barra inferior de información con el horario. Gráficos limpios, profesionales y modernos.
-
-H) RETRATO DOBLE DE ESTUDIO: Dos retratos side-by-side de jugadores estrella de cada equipo con iluminación Rembrandt. Uniformes oficiales. Gotas de sudor congeladas. Escudos incrustados en marcos metálicos elegantes. Copa flotando sutilmente entre ambos retratos.
-
-I) ARENA DE GLADIADORES: Estadio transformado en coliseo romano moderno. Dos jugadores estrella (uno de ${m.home}, otro de ${m.away}) con sus uniformes reales parados en extremos opuestos de la cancha como gladiadores. Copa de la ${m.league} elevándose desde el centro con rayos de luz dorada. Escudos de los equipos grabados en pilares de piedra a los costados. Público rugiendo en penumbra.
-
-J) SPOTLIGHT DEL TROFEO: Fondo completamente negro. En el centro, la copa/trofeo de la ${m.league} iluminada por un único spotlight cenital dorado. Los escudos de ${m.home} y ${m.away} reflejados en la superficie pulida del trofeo. A los lados, siluetas recortadas de jugadores estrella de cada equipo con sus uniformes. Partículas doradas flotando en el aire.
-
-K) DIAGONAL EXPLOSIVA: Composición dividida en diagonal. Mitad superior-izquierda: jugador de ${m.home} con su camiseta real atacando hacia el frente. Mitad inferior-derecha: jugador de ${m.away} defendiendo con intensidad. La diagonal central es una explosión de energía dorada con el texto del enfrentamiento. Escudos 3D en las esquinas opuestas. Copa de la competición detrás de la explosión.
-
-L) CELEBRACIÓN ÉPICA: Un deportista estrella ${vocab.celebration}, corriendo/moviéndose hacia la cámara con expresión de euforia. Detrás de él, el ${vocab.arena} entero en éxtasis con papel picado y bengalas. Los escudos de ${m.home} y ${m.away} integrados como banderas ondeando en la tribuna. ${vocab.trophy} resplandeciendo en el cielo como constelación.
-
-M) TENSIÓN DE CAMERINO: Vista interior de un vestuario/vestidor de lujo. Un deportista de ${m.home} preparándose con su ${vocab.gear}, mirada de determinación. En reflejo del espejo se ve un deportista de ${m.away} haciendo lo mismo. Los escudos de ambos equipos colgados en las paredes. ${vocab.trophy} visible al fondo del pasillo. Iluminación dramática cálida.
-
-N) GALERÍA DE CAMPEONES: Pasillo oscuro tipo museo con cuadros dorados enmarcados. En dos cuadros centrales: retratos fotorrealistas de jugadores estrella de cada equipo con sus uniformes. Entre los cuadros, la copa de la ${m.league} sobre un pedestal iluminado. Los escudos de los equipos tallados en los marcos dorados. Piso de mármol oscuro con reflejos.
-
-O) CHOQUE FUEGO VS HIELO: Composición dual. Lado izquierdo: jugador de ${m.home} envuelto en llamas y energía roja/dorada. Lado derecho: jugador de ${m.away} envuelto en energía azul/eléctrica y escarcha. El choque de ambas energías en el centro crea una onda expansiva donde flota la copa del torneo. Escudos de los equipos brillando con sus respectivos elementos.
-
-P) PROMO APP MÓVIL: Un smartphone premium en el centro de la imagen mostrando el enfrentamiento en su pantalla. Saliendo de la pantalla emergen jugadores fotorrealistas de ambos equipos en acción, como si saltaran del teléfono a la realidad. Copa del torneo flotando sobre el teléfono. Escudos 3D a los lados. Fondo oscuro con destellos de la marca. Texto "¡Apuesta ya!" integrado con diseño moderno.
+${selectedSingleComp}
 
 REGLAS ESTRICTAS (el texto DEBE aparecer renderizado en la imagen final):
 - DEBE VERSE IMPRESO: "${m.home.toUpperCase()} VS ${m.away.toUpperCase()}" (título), "${m.time}" (hora en badge), "${dateShort}" (fecha), "${m.league.toUpperCase()}" (liga), "${cta}" (CTA en botón/banner inferior)${oddsBlockFor(m) ? `, la CUOTA DESTACADA arriba mencionada en badge prominente con el número grande y bold (es el dato más importante para captar al apostador)` : ""}.
@@ -337,27 +327,23 @@ ${matches.map((m: any, i: number) => {
 • LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
 Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si falta algún partido, alguna hora, alguna cuota destacada o el CTA."
 
-Luego de ese bloque, describe la composición visual. Escoge UNA composición (NO escribas el nombre de la opción en la imagen):
+    const MULTI_COMPOSITIONS = [
+      `PANELES DIVIDIDOS: Imagen dividida en ${matchCount} paneles horizontales. Cada panel muestra un jugador en acción del partido correspondiente con los escudos de ambos equipos y la hora. Franja central vertical dorada con el logo de "${agencyName}". Fondo de estadio nocturno por detrás.`,
+      `CARTELERA ESTADIO NOCTURNO: Interior de un estadio épico de noche con el campo iluminado. Una pantalla/tablero electrónico gigante en el centro muestra los ${matchCount} enfrentamientos organizados con sus horas. Jugadores de los partidos principales en silueta heroica en primer plano. Escudos de los equipos flotando con efecto holográfico.`,
+      `PÓSTER DE JORNADA DEPORTIVA: Diseño oscuro premium con layout vertical. Cada partido tiene su fila: escudos de ambos equipos enfrentados, "vs" en el centro, hora a la derecha. Fondo con textura de estadio/cancha desenfocada. Un jugador destacado de uno de los partidos en pose heroica ocupa la parte superior.`,
+      `TRANSMISIÓN TV MULTI-EVENTO: Layout tipo canal deportivo premium. Grid organizado con ${matchCount} recuadros, cada uno mostrando los escudos de los equipos, el "vs" y la hora. Barra superior con logo de "${agencyName}". Estética broadcast profesional con gráficos limpios tipo ESPN/FOX.`,
+      `COLLAGE ÉPICO: Composición dinámica con jugadores de diferentes partidos emergiendo desde los bordes de la imagen. Los enfrentamientos escritos en tipografía bold moderna en el centro. Escudos de los equipos con efecto metálico. Explosiones de energía y color entre los jugadores. Copa/trofeo brillando en la parte superior.`,
+      `ARENA MULTI-COMBATE: Coliseo deportivo moderno con ${matchCount} arenas/zonas de combate visibles. En cada zona, dos jugadores de los equipos correspondientes enfrentados con sus uniformes reales. Los escudos de cada par flotan sobre su zona. En el centro del coliseo, las copas de las competiciones brillan. Perspectiva aérea angular con iluminación dorada épica.`,
+      `PASILLO DE TROFEOS: Corredor oscuro de museo deportivo con vitrinas iluminadas a los lados. Cada vitrina contiene los escudos enfrentados de un partido con su hora y un mini-trofeo. Al final del pasillo, la copa principal de la competición sobre pedestal dorado. Jugadores en silueta heroica caminando por el pasillo. Piso de mármol con reflejos.`,
+      `ENERGÍA DIAGONAL MÚLTIPLE: Composición con ${matchCount} franjas diagonales energéticas. Cada franja contiene los escudos de un enfrentamiento con su hora, separadas por líneas de energía dorada/eléctrica. Un jugador destacado de cada partido integrado en su franja. Fondo de estadio nocturno. Logo de "${agencyName}" en la esquina inferior con diseño integrado.`,
+      `SALA VIP CON PANTALLAS: Interior de un lounge VIP de apuestas ultra-premium. Múltiples pantallas de TV gigantes en la pared, cada una mostrando un enfrentamiento con los escudos y hora. Mesa de apuestas en primer plano con fichas doradas. Iluminación cálida de bar exclusivo. Los jugadores de los partidos principales aparecen como hologramas emergiendo de las pantallas.`,
+      `GRID MÓVIL APP: Un smartphone premium gigante en el centro de la composición. En su pantalla se muestra un grid organizado con los ${matchCount} partidos: escudos enfrentados, "vs" y hora de cada uno. Desde el teléfono salen rayos de energía y jugadores fotorrealistas emergiendo en 3D. Fondo oscuro con partículas doradas flotantes. Logo de "${agencyName}" integrado en la app.`
+    ];
+    const selectedMultiComp = MULTI_COMPOSITIONS[Math.floor(Math.random() * MULTI_COMPOSITIONS.length)];
 
-A) PANELES DIVIDIDOS: Imagen dividida en ${matchCount} paneles horizontales. Cada panel muestra un jugador en acción del partido correspondiente con los escudos de ambos equipos y la hora. Franja central vertical dorada con el logo de "${agencyName}". Fondo de estadio nocturno por detrás.
+Luego de ese bloque, describe la composición visual. EXCLUSIVAMENTE usa la siguiente composición para este render:
 
-B) CARTELERA ESTADIO NOCTURNO: Interior de un estadio épico de noche con el campo iluminado. Una pantalla/tablero electrónico gigante en el centro muestra los ${matchCount} enfrentamientos organizados con sus horas. Jugadores de los partidos principales en silueta heroica en primer plano. Escudos de los equipos flotando con efecto holográfico.
-
-C) PÓSTER DE JORNADA DEPORTIVA: Diseño oscuro premium con layout vertical. Cada partido tiene su fila: escudos de ambos equipos enfrentados, "vs" en el centro, hora a la derecha. Fondo con textura de estadio/cancha desenfocada. Un jugador destacado de uno de los partidos en pose heroica ocupa la parte superior.
-
-D) TRANSMISIÓN TV MULTI-EVENTO: Layout tipo canal deportivo premium. Grid organizado con ${matchCount} recuadros, cada uno mostrando los escudos de los equipos, el "vs" y la hora. Barra superior con logo de "${agencyName}". Estética broadcast profesional con gráficos limpios tipo ESPN/FOX.
-
-E) COLLAGE ÉPICO: Composición dinámica con jugadores de diferentes partidos emergiendo desde los bordes de la imagen. Los enfrentamientos escritos en tipografía bold moderna en el centro. Escudos de los equipos con efecto metálico. Explosiones de energía y color entre los jugadores. Copa/trofeo brillando en la parte superior.
-
-F) ARENA MULTI-COMBATE: Coliseo deportivo moderno con ${matchCount} arenas/zonas de combate visibles. En cada zona, dos jugadores de los equipos correspondientes enfrentados con sus uniformes reales. Los escudos de cada par flotan sobre su zona. En el centro del coliseo, las copas de las competiciones brillan. Perspectiva aérea angular con iluminación dorada épica.
-
-G) PASILLO DE TROFEOS: Corredor oscuro de museo deportivo con vitrinas iluminadas a los lados. Cada vitrina contiene los escudos enfrentados de un partido con su hora y un mini-trofeo. Al final del pasillo, la copa principal de la competición sobre pedestal dorado. Jugadores en silueta heroica caminando por el pasillo. Piso de mármol con reflejos.
-
-H) ENERGÍA DIAGONAL MÚLTIPLE: Composición con ${matchCount} franjas diagonales energéticas. Cada franja contiene los escudos de un enfrentamiento con su hora, separadas por líneas de energía dorada/eléctrica. Un jugador destacado de cada partido integrado en su franja. Fondo de estadio nocturno. Logo de "${agencyName}" en la esquina inferior con diseño integrado.
-
-I) SALA VIP CON PANTALLAS: Interior de un lounge VIP de apuestas ultra-premium. Múltiples pantallas de TV gigantes en la pared, cada una mostrando un enfrentamiento con los escudos y hora. Mesa de apuestas en primer plano con fichas doradas. Iluminación cálida de bar exclusivo. Los jugadores de los partidos principales aparecen como hologramas emergiendo de las pantallas.
-
-J) GRID MÓVIL APP: Un smartphone premium gigante en el centro de la composición. En su pantalla se muestra un grid organizado con los ${matchCount} partidos: escudos enfrentados, "vs" y hora de cada uno. Desde el teléfono salen rayos de energía y jugadores fotorrealistas emergiendo en 3D. Fondo oscuro con partículas doradas flotantes. Logo de "${agencyName}" integrado en la app.
+${selectedMultiComp}
 
 REGLAS ESTRICTAS (todo este texto DEBE aparecer impreso en la imagen final):
 - TODOS los ${matchCount} enfrentamientos escritos legiblemente con su hora (${matches.map((m: any) => `"${m.time}"`).join(", ")}) y su liga. Sin excepción, sin resumir, sin omitir.
@@ -419,8 +405,8 @@ JSON: { "imagePrompt": "...", "caption": "..." }`;
       return NextResponse.json({ error: "Faltan datos. Envía matches (modo sports) o generatedIdea (modo creative)." }, { status: 400 });
     }
 
-    // Inject the anti-Bet593 rule regardless of mode
-    systemPrompt += `\n\nREGLA ANTI-ALUCINACIÓN CRÍTICA: ESTÁ ESTRICTAMENTE PROHIBIDO INCLUIR LAS PALABRAS "Bet593", "bet593" O "Ecuabet" EN LA IMAGEN. LA MARCA ES EXCLUSIVAMENTE "${agencyName}".`;
+    // Refuerzo positivo sobre la marca para evitar alucinaciones
+    systemPrompt += `\n\nIMPORTANTE: LA ÚNICA MARCA QUE EXISTE ES "${agencyName}".`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",

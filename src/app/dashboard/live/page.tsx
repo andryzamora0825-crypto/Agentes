@@ -54,6 +54,7 @@ export default function LiveMatchesPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
   const [ticker, setTicker] = useState(0); // fuerza re-render para "hace X segs"
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadLive = useCallback(async () => {
     try {
@@ -111,6 +112,18 @@ export default function LiveMatchesPage() {
   }, [refreshing, loadLive]);
 
   const fixtures = data?.fixtures || [];
+  
+  // Filtrar por la barra de búsqueda
+  const filteredFixtures = fixtures.filter(f => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      f.home.toLowerCase().includes(q) ||
+      f.away.toLowerCase().includes(q) ||
+      f.league.toLowerCase().includes(q)
+    );
+  });
+
   // Para mostrar edad en tiempo real, recalculamos basándonos en updated_at
   const liveAgeSec = data?.updated_at
     ? Math.max(0, Math.round((Date.now() - new Date(data.updated_at).getTime()) / 1000))
@@ -146,17 +159,28 @@ export default function LiveMatchesPage() {
           </div>
         </div>
 
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 hover:bg-white/[0.07] hover:border-white/[0.15] transition-all disabled:opacity-50 text-sm font-semibold"
-        >
-          {refreshing
-            ? <Loader2 className="w-4 h-4 animate-spin" />
-            : <RefreshCw className="w-4 h-4" />}
-          {refreshing ? "Actualizando..." : "Actualizar"}
-        </button>
-      </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-64">
+              <input
+                type="text"
+                placeholder="Buscar equipo o liga..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-red-500/40 transition-colors"
+              />
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 hover:bg-white/[0.07] hover:border-white/[0.15] transition-all disabled:opacity-50 text-sm font-semibold shrink-0"
+            >
+              {refreshing
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <RefreshCw className="w-4 h-4" />}
+              {refreshing ? "Actualizando..." : "Actualizar"}
+            </button>
+          </div>
+        </div>
 
       {refreshMsg && (
         <div className="px-4 py-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-200 text-xs">
@@ -198,9 +222,16 @@ export default function LiveMatchesPage() {
         </div>
       )}
 
-      {!loading && fixtures.length > 0 && (
+      {!loading && !error && fixtures.length > 0 && filteredFixtures.length === 0 && (
+        <div className="text-center py-20">
+          <Trophy className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+          <p className="text-sm text-zinc-500">No se encontraron partidos para "{searchQuery}".</p>
+        </div>
+      )}
+
+      {!loading && filteredFixtures.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {fixtures.map(f => {
+          {filteredFixtures.map(f => {
             const minute = f.elapsed !== null ? `${f.elapsed}'` : "—";
             const status = STATUS_LABEL[f.statusShort] || f.statusShort;
             const isHalftime = f.statusShort === "HT" || f.statusShort === "BT";
