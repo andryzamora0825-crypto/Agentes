@@ -198,7 +198,7 @@ export async function POST(request: Request) {
 
     // Construir bloque de contacto solo si hay datos
     const contactBlock = contactNumber
-      ? `- FRANJA INFERIOR: Dibuja una franja elegante en la parte inferior con color ${primaryColor} que muestre SOLO el texto "${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""}. Añade un icono sutil de WhatsApp al lado. PROHIBIDO escribir las palabras "contacto", "obligatorio", "información" o cualquier etiqueta. Dibuja ÚNICAMENTE los números/dirección indicados.`
+      ? `- FRANJA INFERIOR: Dibuja una franja elegante en la parte inferior con color ${primaryColor} que muestre el texto "Contacto: ${contactNumber}"${extraContact ? ` y "${extraContact}"` : ""}. Añade un icono sutil de WhatsApp al lado. El texto "Contacto:" DEBE aparecer escrito de forma legible antes del número.`
       : "";
 
     if (!process.env.OPENAI_API_KEY) {
@@ -285,7 +285,7 @@ ${contactBlock}
 - NUNCA escribas "HOY" ni "MAÑANA": usa la hora "${m.time}" y fecha "${dateShort}" tal cual.
 - Máximo 140 palabras. Fotorrealismo publicitario premium. ESPAÑOL.
 
-**caption** — Copy agresivo en ESPAÑOL para redes sociales. Menciona ambos equipos, hora, fecha (${dateShort}), liga y competición. Incluye el CTA "${cta}". Emojis. 2-3 hashtags.${contactNumber ? ` Al final incluye: "📲 Contáctanos: ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
+**caption** — Copy agresivo en ESPAÑOL para redes sociales. Menciona ambos equipos, hora, fecha (${dateShort}), liga y competición. Incluye el CTA "${cta}". Emojis. 2-3 hashtags.${contactNumber ? ` Al final incluye: "📲 Contacto: ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
 
@@ -364,7 +364,7 @@ ${contactBlock}
 - Colores ${primaryColor}/${secondaryColor}. Fotorrealismo. ESPAÑOL.
 - Máximo 160 palabras.
 
-**caption** — AGENDA COMPLETA con TODOS los ${matchCount} partidos. Fecha ${dateLong}. Emojis por deporte. Hora y liga de cada uno. Incluye el CTA "${cta}". 3-5 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
+**caption** — AGENDA COMPLETA con TODOS los ${matchCount} partidos. Fecha ${dateLong}. Emojis por deporte. Hora y liga de cada uno. Incluye el CTA "${cta}". 3-5 hashtags.${contactNumber ? ` Al final: "📲 Contacto: ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
 
@@ -399,7 +399,7 @@ REGLAS:
 - CTA "${cta}" visible en la imagen.
 - Fecha "${dateShort}" visible en la imagen.
 ${contactBlock}
-**caption** — Copy ESPAÑOL para redes, agresivo, emocional. Incluye el CTA "${cta}" y la fecha ${dateLong}. 2-3 hashtags.${contactNumber ? ` Al final: "📲 ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
+**caption** — Copy ESPAÑOL para redes, agresivo, emocional. Incluye el CTA "${cta}" y la fecha ${dateLong}. 2-3 hashtags.${contactNumber ? ` Al final: "📲 Contacto: ${contactNumber}${extraContact ? ` / ${extraContact}` : ""}"` : ""}
 
 JSON: { "imagePrompt": "...", "caption": "..." }`;
 
