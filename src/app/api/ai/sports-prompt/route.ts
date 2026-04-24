@@ -325,7 +325,7 @@ ${matches.map((m: any, i: number) => {
 }).join("\n")}${oddsUpdated ? `\n• SUB-LÍNEA pequeña: 'Cuotas actualizadas ${oddsUpdated}'` : ""}
 • LLAMADA A LA ACCIÓN en banner/botón inferior grande con color ${primaryColor}, tipografía impactante: '${cta}'
 • LOGO DE MARCA una sola vez en esquina: '${agencyName.toUpperCase()}'
-Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si falta algún partido, alguna hora, alguna cuota destacada o el CTA."
+Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La imagen es INÚTIL si falta algún partido, alguna hora, alguna cuota destacada o el CTA."`;
 
     const MULTI_COMPOSITIONS = [
       `PANELES DIVIDIDOS: Imagen dividida en ${matchCount} paneles horizontales. Cada panel muestra un jugador en acción del partido correspondiente con los escudos de ambos equipos y la hora. Franja central vertical dorada con el logo de "${agencyName}". Fondo de estadio nocturno por detrás.`,
@@ -340,6 +340,8 @@ Estos elementos textuales son MÁS IMPORTANTES que cualquier efecto visual. La i
       `GRID MÓVIL APP: Un smartphone premium gigante en el centro de la composición. En su pantalla se muestra un grid organizado con los ${matchCount} partidos: escudos enfrentados, "vs" y hora de cada uno. Desde el teléfono salen rayos de energía y jugadores fotorrealistas emergiendo en 3D. Fondo oscuro con partículas doradas flotantes. Logo de "${agencyName}" integrado en la app.`
     ];
     const selectedMultiComp = MULTI_COMPOSITIONS[Math.floor(Math.random() * MULTI_COMPOSITIONS.length)];
+
+systemPrompt += `
 
 Luego de ese bloque, describe la composición visual. EXCLUSIVAMENTE usa la siguiente composición para este render:
 
