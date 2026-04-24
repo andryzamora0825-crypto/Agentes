@@ -267,9 +267,8 @@ export async function GET(request: Request) {
     }
 
     const today = getTodayDate();
-    const cacheBlock = getCacheWindow();
-    // Añadimos _cb para que Next.js vea una URL distinta cada 6 horas (00:00, 06:00, 12:00, 18:00)
-    const url = `${config.baseUrl}${config.endpoint}?${config.dateParam}=${today}&_cb=${cacheBlock}`;
+    // NOTA: No podemos enviar parámetros extra como _cb a api-sports.io porque rechazan parámetros desconocidos
+    const url = `${config.baseUrl}${config.endpoint}?${config.dateParam}=${today}`;
 
     console.log(`[SPORTS] Fetching ${sport}: ${url}`);
 
@@ -288,6 +287,16 @@ export async function GET(request: Request) {
     }
 
     const json = await res.json();
+    
+    // API-Sports devuelve 200 OK incluso si hay errores de rate-limit
+    if (json.errors && Object.keys(json.errors).length > 0) {
+      console.error(`[SPORTS] API-Sports Errors:`, json.errors);
+      return NextResponse.json({ 
+        error: "Error desde el proveedor de deportes.", 
+        detail: JSON.stringify(json.errors) 
+      }, { status: 502 });
+    }
+
     const matches = config.parser(json);
 
     // Ordenar por hora
