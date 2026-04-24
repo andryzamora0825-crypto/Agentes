@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
 // ── CONFIGURACIÓN DE DEPORTES Y LIGAS ──
 // Cada deporte tiene su propia URL base en api-sports.io
 const SPORT_CONFIG: Record<string, {
