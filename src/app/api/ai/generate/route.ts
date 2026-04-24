@@ -103,7 +103,6 @@ export async function POST(request: Request) {
         doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
         masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
         databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
-        saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" },
         astrobet: { primary: "Azul Intenso (#1A3A6B)", secondary: "Rojo Vibrante (#E8253A)" }
       };
 
@@ -114,7 +113,6 @@ export async function POST(request: Request) {
         else if(platKey==='doradobet') formattedPlat = 'DoradoBet';
         else if(platKey==='databet') formattedPlat = 'DataBet';
         else if(platKey==='ecuabet') formattedPlat = 'Ecuabet';
-        else if(platKey==='saborabet') formattedPlat = 'Saborabet';
         else if(platKey==='astrobet') formattedPlat = 'AstroBet';
         else formattedPlat = platKey.toUpperCase();
 
@@ -122,7 +120,7 @@ export async function POST(request: Request) {
         const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings.secondaryColor || '#000000';
 
         finalPrompt += `\nMarca: ${formattedPlat}. Colores: Primario ${pColor}, Secundario ${sColor}. Incluye creativamente colores/logo. Escribe "${formattedPlat}" con ortografía PERFECTA.`;
-        
+
         finalPrompt += `\nREGLA ORTOGRÁFICA CRÍTICA: Escribe EXACTAMENTE "${formattedPlat}". PROHIBIDO añadir, omitir o cambiar letras. REVISA CUIDADOSAMENTE LETRA POR LETRA: ${formattedPlat.split('').join('-')}.`;
 
         if (platKey === 'ecuabet') {
@@ -136,6 +134,11 @@ export async function POST(request: Request) {
         // Fallback to agency colors if no platform selected
         finalPrompt += `\nColores obligatorios: Primario ${aiSettings.primaryColor || '#FFDE00'}, Secundario ${aiSettings.secondaryColor || '#000000'}.`;
       }
+
+      // ── ANTI-ALUCINACIÓN DE MARCAS COMPETIDORAS ──
+      // El modelo tiende a estampar marcas locales conocidas (especialmente "Bet593") en
+      // carteles de cuotas o esquinas. Las prohibimos explícitamente en cada render.
+      finalPrompt += `\nPROHIBIDO ABSOLUTO: NO escribas, dibujes ni insinúes ninguna marca de casa de apuestas distinta a la indicada. En particular, NO renderices "Bet593", "bet593", "Bet365", "Pinnacle", "1xBet", "Betfair", "William Hill", "Betsson", "Codere", "Stake", "Bwin", "Caliente", "Rivalo", "Betano", "Betcris" ni "Betway" en ninguna parte de la imagen (ni en el cartel de cuotas, ni en banners, ni en esquinas, ni en logotipos secundarios).`;
     }
 
     // ═══ OPTIMIZACIÓN CLAVE: Lanzar fetch de imágenes + personaje + créditos TODO EN PARALELO ═══

@@ -29,6 +29,21 @@ interface OddsResult {
   // Ambos anotan
   bttsYes: number | null;
   bttsNo: number | null;
+  // Doble oportunidad
+  dc1X: number | null;   // Local o Empate
+  dc12: number | null;   // Local o Visitante (no empate)
+  dcX2: number | null;   // Empate o Visitante
+  // Corners totales (línea más común: 9.5)
+  cornersOver: number | null;
+  cornersUnder: number | null;
+  cornersLine: number | null;
+  // Tarjetas totales (línea más común: 3.5 / 4.5)
+  cardsOver: number | null;
+  cardsUnder: number | null;
+  cardsLine: number | null;
+  // Primera mitad Over/Under 0.5 (mercado de goles tempraneros)
+  firstHalfOver05: number | null;
+  firstHalfUnder05: number | null;
   updatedAt: string;
 }
 
@@ -39,6 +54,10 @@ function emptyOdds(fixtureId: number): OddsResult {
     home: null, draw: null, away: null,
     over25: null, under25: null,
     bttsYes: null, bttsNo: null,
+    dc1X: null, dc12: null, dcX2: null,
+    cornersOver: null, cornersUnder: null, cornersLine: null,
+    cardsOver: null, cardsUnder: null, cardsLine: null,
+    firstHalfOver05: null, firstHalfUnder05: null,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -62,6 +81,12 @@ function parseFootballOdds(fixtureId: number, json: any): OddsResult {
   const result: OddsResult = emptyOdds(fixtureId);
   result.bookmaker = chosen.name || null;
 
+  // Helpers para mercados con línea variable (escogemos la línea más cercana al estándar)
+  // Guarda { line, over, under } para luego decidir cuál guardamos como la línea "destacada".
+  type LineMarket = { line: number; over: number | null; under: number | null };
+  const cornerLines: LineMarket[] = [];
+  const cardLines: LineMarket[] = [];
+
   for (const bet of chosen.bets || []) {
     const betName = (bet.name || "").toLowerCase();
     const values: any[] = bet.values || [];
@@ -75,7 +100,16 @@ function parseFootballOdds(fixtureId: number, json: any): OddsResult {
         else if (label === "draw" || label === "x") result.draw = odd;
         else if (label === "away" || label === "2") result.away = odd;
       }
-    } else if (betName.includes("goals over/under") || betName.includes("over/under")) {
+    } else if (betName.includes("double chance")) {
+      for (const v of values) {
+        const label = (v.value || "").toLowerCase().replace(/\s+/g, "");
+        const odd = parseFloat(v.odd);
+        if (isNaN(odd)) continue;
+        if (label.includes("home/draw") || label === "1x") result.dc1X = odd;
+        else if (label.includes("home/away") || label === "12") result.dc12 = odd;
+        else if (label.includes("draw/away") || label === "x2") result.dcX2 = odd;
+      }
+    } else if (betName.includes("goals over/under") || (betName.includes("over/under") && !betName.includes("corner") && !betName.includes("card") && !betName.includes("half"))) {
       for (const v of values) {
         const label = (v.value || "").toLowerCase();
         const odd = parseFloat(v.odd);
@@ -91,7 +125,66 @@ function parseFootballOdds(fixtureId: number, json: any): OddsResult {
         if (label.includes("yes")) result.bttsYes = odd;
         else if (label.includes("no")) result.bttsNo = odd;
       }
+    } else if (betName.includes("corner") && (betName.includes("over") || betName.includes("under") || betName.includes("total"))) {
+      // Agrupar por línea
+      const byLine = new Map<number, LineMarket>();
+      for (const v of values) {
+        const label = (v.value || "").toLowerCase();
+        const odd = parseFloat(v.odd);
+        if (isNaN(odd)) continue;
+        const lineMatch = label.match(/([0-9]+(?:\.[0-9]+)?)/);
+        if (!lineMatch) continue;
+        const line = parseFloat(lineMatch[1]);
+        const existing = byLine.get(line) || { line, over: null, under: null };
+        if (label.includes("over")) existing.over = odd;
+        else if (label.includes("under")) existing.under = odd;
+        byLine.set(line, existing);
+      }
+      for (const m of byLine.values()) cornerLines.push(m);
+    } else if ((betName.includes("card") || betName.includes("booking")) && (betName.includes("over") || betName.includes("under") || betName.includes("total"))) {
+      const byLine = new Map<number, LineMarket>();
+      for (const v of values) {
+        const label = (v.value || "").toLowerCase();
+        const odd = parseFloat(v.odd);
+        if (isNaN(odd)) continue;
+        const lineMatch = label.match(/([0-9]+(?:\.[0-9]+)?)/);
+        if (!lineMatch) continue;
+        const line = parseFloat(lineMatch[1]);
+        const existing = byLine.get(line) || { line, over: null, under: null };
+        if (label.includes("over")) existing.over = odd;
+        else if (label.includes("under")) existing.under = odd;
+        byLine.set(line, existing);
+      }
+      for (const m of byLine.values()) cardLines.push(m);
+    } else if ((betName.includes("first half") || betName.includes("1st half")) && (betName.includes("over") || betName.includes("under") || betName.includes("goals"))) {
+      for (const v of values) {
+        const label = (v.value || "").toLowerCase();
+        const odd = parseFloat(v.odd);
+        if (isNaN(odd)) continue;
+        if (label.includes("over") && label.includes("0.5")) result.firstHalfOver05 = odd;
+        else if (label.includes("under") && label.includes("0.5")) result.firstHalfUnder05 = odd;
+      }
     }
+  }
+
+  // Escoger la línea más cercana al estándar (corners 9.5, cards 3.5) con over+under presentes
+  function pickLine(markets: LineMarket[], preferred: number): LineMarket | null {
+    const valid = markets.filter(m => m.over !== null && m.under !== null);
+    if (valid.length === 0) return null;
+    valid.sort((a, b) => Math.abs(a.line - preferred) - Math.abs(b.line - preferred));
+    return valid[0];
+  }
+  const corner = pickLine(cornerLines, 9.5);
+  if (corner) {
+    result.cornersOver = corner.over;
+    result.cornersUnder = corner.under;
+    result.cornersLine = corner.line;
+  }
+  const card = pickLine(cardLines, 3.5);
+  if (card) {
+    result.cardsOver = card.over;
+    result.cardsUnder = card.under;
+    result.cardsLine = card.line;
   }
 
   return result;

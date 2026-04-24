@@ -388,6 +388,8 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
 
   // ── Estado Global ──
   const [assembling, setAssembling] = useState(false);
+  // ── Mostrar u ocultar el cartel de cuotas en la imagen final ──
+  const [showOdds, setShowOdds] = useState(true);
 
   // ═══ Modo Creativo: Generar idea aleatoria ═══
   const generateCreativeIdea = useCallback(() => {
@@ -519,17 +521,20 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
         body = { mode: "creative", generatedIdea };
       } else if (activeTab === "sports" && selectedMatches.size > 0) {
         const chosen = matches.filter(m => selectedMatches.has(m.id));
-        // Enviar odds + mercado destacado por partido
-        const oddsPayload = chosen.map(m => {
-          const o = oddsMap[m.id];
-          const featured = featuredMarkets[m.id];
-          return o ? { ...o, fixtureId: m.id, featured } : { fixtureId: m.id, featured };
-        });
+        // Enviar odds + mercado destacado por partido SOLO si el usuario pidió mostrarlas
+        const oddsPayload = showOdds
+          ? chosen.map(m => {
+              const o = oddsMap[m.id];
+              const featured = featuredMarkets[m.id];
+              return o ? { ...o, fixtureId: m.id, featured } : { fixtureId: m.id, featured };
+            })
+          : [];
         body = {
           mode: "sports",
           matches: chosen,
           sport: selectedSport,
           odds: oddsPayload,
+          showOdds,
         };
       }
 
@@ -554,7 +559,7 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
     } finally {
       setAssembling(false);
     }
-  }, [step, activeTab, generatedIdea, selectedMatches, matches, oddsMap, featuredMarkets, selectedSport, localFormat, localPlatform, onDirectGenerate, onResult]);
+  }, [step, activeTab, generatedIdea, selectedMatches, matches, oddsMap, featuredMarkets, selectedSport, localFormat, localPlatform, showOdds, onDirectGenerate, onResult]);
 
   const canProceed =
     (activeTab === "creative" && generatedIdea !== null) ||
@@ -881,6 +886,46 @@ export default function AdGeneratorModal({ onResult, onDirectGenerate, available
                 ))}
               </div>
             </div>
+
+            {/* Switch de cuotas — solo en modo deportivo */}
+            {activeTab === 'sports' && (
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-widest font-bold text-zinc-400">3. Cartel de Cuotas</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={showOdds}
+                  onClick={() => setShowOdds(v => !v)}
+                  className={`w-full flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl border text-left transition-all ${
+                    showOdds
+                      ? 'bg-emerald-500/[0.06] border-emerald-500/25'
+                      : 'bg-white/[0.02] border-white/[0.06]'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-xs font-semibold ${showOdds ? 'text-emerald-300' : 'text-zinc-300'}`}>
+                      {showOdds ? 'Mostrar cuotas en la imagen' : 'Sin cuotas en la imagen'}
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                      {showOdds
+                        ? 'El diseño incluirá la cuota destacada seleccionada por partido.'
+                        : 'La imagen solo mostrará el enfrentamiento, hora y liga, sin números de cuota.'}
+                    </div>
+                  </div>
+                  <span
+                    className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${
+                      showOdds ? 'bg-emerald-500' : 'bg-white/[0.12]'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                        showOdds ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

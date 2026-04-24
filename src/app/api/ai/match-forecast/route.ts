@@ -40,7 +40,7 @@ async function fetchLastFixtures(sport: string, teamId: number, apiKey: string, 
   }
 }
 
-// Fetch estadísticas del equipo (corners, tarjetas, posesión, etc.) desde API-Sports
+// Fetch estadísticas del equipo (goles, limpias, falla en anotar, tarjetas…) temporada actual
 async function fetchTeamStatistics(teamId: number, leagueId: number | undefined, apiKey: string): Promise<any> {
   if (!leagueId) return null;
   try {
@@ -53,6 +53,110 @@ async function fetchTeamStatistics(teamId: number, leagueId: number | undefined,
     if (!res.ok) return null;
     const data = await res.json();
     return data?.response || null;
+  } catch {
+    return null;
+  }
+}
+
+// Normaliza las estadísticas de temporada a un resumen compacto para el prompt
+type SeasonSummary = {
+  played: { home: number; away: number; total: number };
+  record: { home: string; away: string; total: string }; // "V-E-D"
+  goalsFor: { home: number; away: number; total: number; avgHome: string; avgAway: string; avgTotal: string };
+  goalsAgainst: { home: number; away: number; total: number; avgHome: string; avgAway: string; avgTotal: string };
+  cleanSheets: { home: number; away: number; total: number };
+  failedToScore: { home: number; away: number; total: number };
+  biggestStreak: { wins: number; draws: number; loses: number };
+  mostFrequentScore: string;
+  lateGoalsShare: number | null; // % de goles anotados después del 76'
+  earlyGoalsShare: number | null; // % goles en primer 30'
+  secondHalfShare: number | null; // % goles en segunda mitad
+  yellowAvg: number | null;
+  redAvg: number | null;
+  form: string | null; // "WDLWW" cadena de últimos partidos de la temporada según API
+};
+
+function summarizeSeasonStats(raw: any): SeasonSummary | null {
+  if (!raw) return null;
+  try {
+    const f = raw.fixtures || {};
+    const g = raw.goals || {};
+    const cs = raw.clean_sheet || {};
+    const fts = raw.failed_to_score || {};
+    const big = raw.biggest || {};
+    const cards = raw.cards || {};
+
+    const homeWins = f.wins?.home || 0, homeDraws = f.draws?.home || 0, homeLoses = f.loses?.home || 0;
+    const awayWins = f.wins?.away || 0, awayDraws = f.draws?.away || 0, awayLoses = f.loses?.away || 0;
+    const totWins = f.wins?.total || 0, totDraws = f.draws?.total || 0, totLoses = f.loses?.total || 0;
+
+    // Distribución de goles por minuto (para/contra) — para inferir tendencia tempranero/tardío
+    const minuteBuckets = g.for?.minute || {};
+    let totalMinuteGoals = 0;
+    let lateGoals = 0;
+    let earlyGoals = 0;
+    let secondHalfGoals = 0;
+    for (const bucket of Object.keys(minuteBuckets)) {
+      const entry = minuteBuckets[bucket] || {};
+      const total = entry.total || 0;
+      if (!total) continue;
+      totalMinuteGoals += total;
+      // Buckets típicos: "0-15", "16-30", "31-45", "46-60", "61-75", "76-90", "91-105", "106-120"
+      if (/^76-/.test(bucket) || /^91-/.test(bucket) || /^106-/.test(bucket)) lateGoals += total;
+      if (/^0-/.test(bucket) || /^16-/.test(bucket)) earlyGoals += total;
+      if (/^(46|61|76|91|106)-/.test(bucket)) secondHalfGoals += total;
+    }
+
+    // Promedio de tarjetas por partido (suma minutos y divide entre partidos jugados)
+    function sumCardBuckets(cardObj: any): number {
+      let total = 0;
+      for (const key of Object.keys(cardObj || {})) {
+        total += cardObj[key]?.total || 0;
+      }
+      return total;
+    }
+    const yellowTotal = sumCardBuckets(cards.yellow);
+    const redTotal = sumCardBuckets(cards.red);
+    const played = f.played?.total || 0;
+
+    return {
+      played: { home: f.played?.home || 0, away: f.played?.away || 0, total: played },
+      record: {
+        home: `${homeWins}V-${homeDraws}E-${homeLoses}D`,
+        away: `${awayWins}V-${awayDraws}E-${awayLoses}D`,
+        total: `${totWins}V-${totDraws}E-${totLoses}D`,
+      },
+      goalsFor: {
+        home: g.for?.total?.home || 0,
+        away: g.for?.total?.away || 0,
+        total: g.for?.total?.total || 0,
+        avgHome: String(g.for?.average?.home ?? "0"),
+        avgAway: String(g.for?.average?.away ?? "0"),
+        avgTotal: String(g.for?.average?.total ?? "0"),
+      },
+      goalsAgainst: {
+        home: g.against?.total?.home || 0,
+        away: g.against?.total?.away || 0,
+        total: g.against?.total?.total || 0,
+        avgHome: String(g.against?.average?.home ?? "0"),
+        avgAway: String(g.against?.average?.away ?? "0"),
+        avgTotal: String(g.against?.average?.total ?? "0"),
+      },
+      cleanSheets: { home: cs.home || 0, away: cs.away || 0, total: cs.total || 0 },
+      failedToScore: { home: fts.home || 0, away: fts.away || 0, total: fts.total || 0 },
+      biggestStreak: {
+        wins: big.streak?.wins || 0,
+        draws: big.streak?.draws || 0,
+        loses: big.streak?.loses || 0,
+      },
+      mostFrequentScore: raw.goals?.for?.most_frequent_score || "—",
+      lateGoalsShare: totalMinuteGoals > 0 ? Math.round((lateGoals / totalMinuteGoals) * 100) : null,
+      earlyGoalsShare: totalMinuteGoals > 0 ? Math.round((earlyGoals / totalMinuteGoals) * 100) : null,
+      secondHalfShare: totalMinuteGoals > 0 ? Math.round((secondHalfGoals / totalMinuteGoals) * 100) : null,
+      yellowAvg: played > 0 ? Number((yellowTotal / played).toFixed(2)) : null,
+      redAvg: played > 0 ? Number((redTotal / played).toFixed(2)) : null,
+      form: typeof raw.form === "string" ? raw.form.slice(-6) : null,
+    };
   } catch {
     return null;
   }
@@ -190,17 +294,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan homeTeam/awayTeam." }, { status: 400 });
     }
 
-    // Traer forma de ambos equipos + H2H en paralelo
-    const [homeFixtures, awayFixtures, h2hData] = await Promise.all([
+    // Traer forma de ambos equipos + H2H + estadísticas de temporada en paralelo
+    const [homeFixtures, awayFixtures, h2hData, homeSeasonRaw, awaySeasonRaw] = await Promise.all([
       homeId ? fetchLastFixtures(sport, homeId, apiKey, 5) : Promise.resolve([]),
       awayId ? fetchLastFixtures(sport, awayId, apiKey, 5) : Promise.resolve([]),
       (homeId && awayId && sport === "football") ? fetchH2H(homeId, awayId, apiKey, 5) : Promise.resolve({ summary: "sin datos", matches: [] }),
+      (homeId && leagueId && sport === "football") ? fetchTeamStatistics(homeId, leagueId, apiKey) : Promise.resolve(null),
+      (awayId && leagueId && sport === "football") ? fetchTeamStatistics(awayId, leagueId, apiKey) : Promise.resolve(null),
     ]);
 
     let homeForm = "sin datos";
     let awayForm = "sin datos";
     let homeData: ReturnType<typeof summarizeFootballForm> | null = null;
     let awayData: ReturnType<typeof summarizeFootballForm> | null = null;
+    const homeSeason = summarizeSeasonStats(homeSeasonRaw);
+    const awaySeason = summarizeSeasonStats(awaySeasonRaw);
 
     if (sport === "football" && homeId) {
       homeData = summarizeFootballForm(homeId, homeFixtures);
@@ -223,11 +331,40 @@ export async function POST(request: Request) {
     if (odds?.under25) oddsExtras.push(`Under 2.5: ${odds.under25}`);
     if (odds?.bttsYes) oddsExtras.push(`BTTS Sí: ${odds.bttsYes}`);
     if (odds?.bttsNo) oddsExtras.push(`BTTS No: ${odds.bttsNo}`);
+    if (odds?.dc1X) oddsExtras.push(`Doble Oportunidad 1X: ${odds.dc1X}`);
+    if (odds?.dc12) oddsExtras.push(`Doble Oportunidad 12: ${odds.dc12}`);
+    if (odds?.dcX2) oddsExtras.push(`Doble Oportunidad X2: ${odds.dcX2}`);
+    if (odds?.cornersOver && odds?.cornersLine) oddsExtras.push(`Corners +${odds.cornersLine}: ${odds.cornersOver}`);
+    if (odds?.cornersUnder && odds?.cornersLine) oddsExtras.push(`Corners -${odds.cornersLine}: ${odds.cornersUnder}`);
+    if (odds?.cardsOver && odds?.cardsLine) oddsExtras.push(`Tarjetas +${odds.cardsLine}: ${odds.cardsOver}`);
+    if (odds?.cardsUnder && odds?.cardsLine) oddsExtras.push(`Tarjetas -${odds.cardsLine}: ${odds.cardsUnder}`);
+    if (odds?.firstHalfOver05) oddsExtras.push(`Gol 1ª mitad Sí: ${odds.firstHalfOver05}`);
+    if (odds?.firstHalfUnder05) oddsExtras.push(`Gol 1ª mitad No: ${odds.firstHalfUnder05}`);
     const oddsExtrasLine = oddsExtras.length > 0 ? `Cuotas adicionales: ${oddsExtras.join(" · ")}` : "";
 
-    // Construir contexto expandido de forma
-    let homeContext = `Forma reciente ${homeTeam}: ${homeForm}`;
-    let awayContext = `Forma reciente ${awayTeam}: ${awayForm}`;
+    // Contexto de temporada (rendimiento general + splits local/visitante + tendencia de gol por minuto)
+    function seasonBlock(teamName: string, s: SeasonSummary | null, role: "L" | "V"): string {
+      if (!s) return "";
+      const roleLabel = role === "L" ? "jugando de LOCAL" : "jugando de VISITANTE";
+      const roleRecord = role === "L" ? s.record.home : s.record.away;
+      const roleGf = role === "L" ? s.goalsFor.avgHome : s.goalsFor.avgAway;
+      const roleGa = role === "L" ? s.goalsAgainst.avgHome : s.goalsAgainst.avgAway;
+      const roleCs = role === "L" ? s.cleanSheets.home : s.cleanSheets.away;
+      const roleFts = role === "L" ? s.failedToScore.home : s.failedToScore.away;
+      const rolePlayed = role === "L" ? s.played.home : s.played.away;
+      const tendencias: string[] = [];
+      if (s.lateGoalsShare !== null) tendencias.push(`${s.lateGoalsShare}% de sus goles caen después del minuto 75`);
+      if (s.earlyGoalsShare !== null) tendencias.push(`${s.earlyGoalsShare}% en los primeros 30'`);
+      if (s.secondHalfShare !== null) tendencias.push(`${s.secondHalfShare}% en la segunda mitad`);
+      const cardsLine = s.yellowAvg !== null || s.redAvg !== null
+        ? `Prom. tarjetas/partido: ${s.yellowAvg ?? "?"} amarillas · ${s.redAvg ?? "?"} rojas.`
+        : "";
+      return `\n[TEMPORADA ${teamName}] Global: ${s.record.total} en ${s.played.total} partidos | ${roleLabel}: ${roleRecord} en ${rolePlayed} juegos, ${roleGf} GF/partido y ${roleGa} GC/partido, ${roleCs} porterías a cero y ${roleFts} juegos sin anotar. Racha máxima de victorias: ${s.biggestStreak.wins}. Marcador más frecuente: ${s.mostFrequentScore}. ${tendencias.length ? `Tendencia de minuto: ${tendencias.join(", ")}.` : ""} ${cardsLine} Forma API: ${s.form || "—"}.`;
+    }
+
+    // Construir contexto expandido de forma (últimos 5 + temporada completa)
+    let homeContext = `Forma reciente ${homeTeam}: ${homeForm}` + seasonBlock(homeTeam, homeSeason, "L");
+    let awayContext = `Forma reciente ${awayTeam}: ${awayForm}` + seasonBlock(awayTeam, awaySeason, "V");
 
     if (homeData) {
       homeContext += `\nÚltimos 5 partidos: ${homeData.matchDetails.join(" | ")}`;
@@ -258,34 +395,44 @@ export async function POST(request: Request) {
 Tu trabajo es producir un PRONÓSTICO EXPANDIDO, PRECISO y COMERCIAL, con tono seguro, data-driven, pero genuino. Siempre en español neutro.
 
 ANALIZA OBLIGATORIAMENTE:
-1. Últimos 5 partidos de CADA equipo (racha, goles, tendencias)
-2. Historial directo H2H entre ambos equipos (si está disponible)
-3. Factor local/visitante
-4. Tendencia de goles (Over/Under, BTTS)
-5. Corners promedio si los datos están disponibles
-6. Cuotas del mercado (identificar value bets si la cuota no refleja la realidad estadística)
+1. Últimos 5 partidos de CADA equipo (racha, goles, tendencias de remate).
+2. Historial directo H2H entre ambos equipos (si está disponible).
+3. Factor local/visitante — compara rendimiento del local EN CASA contra rendimiento del visitante DE VISITA usando los splits de temporada (GF/GC promedio, porterías a cero, juegos sin anotar).
+4. Tendencia de goles: promedios, Over/Under, BTTS, y distribución por minuto (goles tardíos/tempraneros).
+5. Corners promedio y tarjetas promedio (prom. amarillas/rojas por partido, si están).
+6. Cuotas del mercado — cruza probabilidad implícita con la probabilidad real según stats. Si hay Doble Oportunidad, Corners O/U, Tarjetas O/U o Gol 1ª mitad, úsalas.
+7. Marcador más frecuente histórico del local/visitante.
 
 ESTRUCTURA EXACTA (JSON):
 {
   "tldr": "una línea con el veredicto principal",
-  "analysis": "4-6 oraciones de análisis profundo, citando resultados específicos recientes, el H2H, y datos estadísticos. MENCIONA partidos concretos y marcadores.",
+  "analysis": "5-7 oraciones de análisis profundo, citando resultados específicos, el H2H, splits local/visitante y datos estadísticos CONCRETOS (promedios, porcentajes, rachas). MENCIONA partidos concretos con marcadores.",
   "predictedScore": "el marcador más probable (ej: '2-1')",
+  "keyDrivers": ["3 a 5 bullets con los datos/insights más decisivos que sostienen el pronóstico, cada uno de máx. 12 palabras"],
+  "probabilities": { "home": 0-100, "draw": 0-100, "away": 0-100 },
   "markets": [
     {
       "market": "nombre del mercado",
       "pick": "la selección sugerida",
       "confidence": "Alta/Media/Baja",
+      "odd": "cuota decimal si está en los datos, si no omite el campo",
       "reasoning": "1 oración justificando con datos"
     }
   ],
   "parlay": {
     "picks": ["pick 1", "pick 2", "pick 3"],
     "combinedConfidence": "Alta/Media/Baja",
+    "estimatedOdd": "cuota total estimada (multiplica las cuotas individuales si están disponibles)",
     "description": "1 oración vendedora de por qué esta combinada tiene valor"
+  },
+  "riskyParlay": {
+    "picks": ["pick 1", "pick 2", "pick 3"],
+    "description": "1 oración explicando que es la combinada de mayor retorno pero más riesgo"
   },
   "valueBet": {
     "market": "el mercado con mejor valor",
     "pick": "la selección",
+    "odd": "la cuota si está disponible",
     "reasoning": "por qué la cuota está por encima de la probabilidad real"
   },
   "pick": "el pick PRINCIPAL (el de mayor confianza)",
@@ -293,13 +440,26 @@ ESTRUCTURA EXACTA (JSON):
   "caption": "Copy listo para IG/WhatsApp/TikTok, 5-7 líneas, con emojis y tono profesional. DEBE incluir: enfrentamiento, hora, pick principal, marcador predicho, 1-2 picks secundarios, y CTA para apostar. Menciona el H2H si es relevante."
 }
 
+MERCADOS A CUBRIR (prioriza los que tengan cuota en los datos, y si no existen, dedúcelos con base estadística):
+A) 1X2 (ganador del partido).
+B) Doble Oportunidad (1X / 12 / X2).
+C) Over/Under 2.5 goles.
+D) Ambos Equipos Anotan (BTTS Sí/No).
+E) Corners totales (usa la línea que veas en las cuotas si está; si no, propón 8.5 / 9.5).
+F) Tarjetas totales (línea 3.5 o 4.5).
+G) Handicap asiático o europeo (-1, +1, -1.5).
+H) Primera mitad: resultado o Gol en la 1ª mitad Sí/No.
+I) Resultado exacto probable (1-0, 2-1, etc.).
+J) Primer equipo en anotar.
+
 REGLAS:
-- Genera MÍNIMO 4 mercados y MÁXIMO 7 (siempre incluye 1X2, Over/Under, BTTS, y al menos un mercado de especialidad como Corners, Resultado Exacto, Handicap, o Primera Mitad).
-- SIEMPRE incluye un marcador predicho.
-- SIEMPRE incluye una combinada (parlay) de 2-3 picks.
-- Si identificas una value bet (cuota que no refleja la probabilidad real), inclúyela.
-- NO inventes estadísticas. Si no hay datos, reduce la confianza.
-- En el caption, cita brevemente resultados recientes y el H2H para credibilidad.`;
+- Genera MÍNIMO 7 mercados y MÁXIMO 10, cubriendo al menos 1X2 + Doble Oportunidad + Over/Under + BTTS + 1 mercado de corners + 1 mercado de tarjetas + 1 mercado de primera mitad O resultado exacto.
+- "probabilities" debe sumar 100.
+- SIEMPRE incluye marcador predicho + combinada segura + combinada de riesgo (riskyParlay) distinta.
+- Si "odd" no está en los datos, omite ese campo (NUNCA lo inventes).
+- Si identificas una value bet (probabilidad real mayor a la implícita de la cuota), inclúyela explicando el edge.
+- NO inventes estadísticas. Si no hay datos, reduce la confianza a "Baja" y dilo.
+- En el caption, cita brevemente 1 dato puntual (marcador reciente, racha, H2H) para credibilidad.`;
 
     const userContent = `Partido: ${homeTeam} vs ${awayTeam}
 Liga: ${league || "sin especificar"}
@@ -321,8 +481,8 @@ Genera el JSON pronóstico expandido completo.`;
         { role: "user", content: userContent },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.6,
-      max_tokens: 1200,
+      temperature: 0.55,
+      max_tokens: 1800,
     });
 
     const raw = completion.choices[0]?.message?.content || "{}";
@@ -352,7 +512,10 @@ Genera el JSON pronóstico expandido completo.`;
         yellowCards: awayData.yellowCards,
         matchDetails: awayData.matchDetails,
       } : null,
+      homeSeason,
+      awaySeason,
       h2h: h2hData,
+      odds: odds || null,
       forecast,
     });
   } catch (error: any) {

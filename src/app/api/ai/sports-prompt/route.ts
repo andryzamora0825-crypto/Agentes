@@ -8,7 +8,8 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const body = await request.json();
-    const { matches, mode, generatedIdea, sport, odds } = body;
+    const { matches, mode, generatedIdea, sport, odds, showOdds: showOddsRaw } = body;
+    const showOdds: boolean = showOddsRaw !== false; // default: true
     type OddsEntry = {
       fixtureId: number;
       featured?: "home" | "draw" | "away" | "over25" | "under25" | "bttsYes" | "bttsNo";
@@ -17,10 +18,14 @@ export async function POST(request: Request) {
       over25?: number | null; under25?: number | null;
       bttsYes?: number | null; bttsNo?: number | null;
     };
-    const oddsList: OddsEntry[] = Array.isArray(odds) ? odds : [];
+    const oddsList: OddsEntry[] = showOdds && Array.isArray(odds) ? odds : [];
 
     // ── Formateador de cuotas por partido (para inyectar en el prompt) ──
+    // IMPORTANTE: NUNCA incluimos el nombre del bookmaker externo (Bet365, Pinnacle, etc.)
+    // en el texto que se renderiza en la imagen, porque el modelo de imagen tiende a
+    // alucinar marcas similares ("Bet593", "Bet369") en el cartel de cuotas.
     function oddsBlockFor(matchObj: any): string {
+      if (!showOdds) return "";
       const row = oddsList.find(o => o.fixtureId === matchObj.id);
       if (!row) return "";
       const featured = row.featured || "home";
@@ -35,9 +40,9 @@ export async function POST(request: Request) {
       };
       const odd = (row as any)[featured];
       if (odd === null || odd === undefined) return "";
-      return `\n🔥 CUOTA DESTACADA: "${labels[featured]} → ${odd.toFixed(2)}x"${row.bookmaker ? ` (casa: ${row.bookmaker})` : ""}`;
+      return `\n🔥 CUOTA DESTACADA: "${labels[featured]} → ${odd.toFixed(2)}x"`;
     }
-    const oddsUpdated = oddsList.length > 0 ? new Date().toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" }) : "";
+    const oddsUpdated = showOdds && oddsList.length > 0 ? new Date().toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" }) : "";
 
     // ═══ VOCABULARIO VISUAL POR DEPORTE ═══
     const SPORT_VOCAB: Record<string, { arena: string; action: string; ball: string; trophy: string; players: string; gear: string; celebration: string }> = {
@@ -407,8 +412,14 @@ JSON: { "imagePrompt": "...", "caption": "..." }`;
       return NextResponse.json({ error: "Faltan datos. Envía matches (modo sports) o generatedIdea (modo creative)." }, { status: 400 });
     }
 
-    // Refuerzo positivo sobre la marca para evitar alucinaciones
-    systemPrompt += `\n\nIMPORTANTE: LA ÚNICA MARCA QUE EXISTE ES "${agencyName}".`;
+    // Refuerzo positivo + negativo sobre la marca para evitar alucinaciones
+    // (El modelo de imagen tiende a inventar marcas locales conocidas como "Bet593",
+    //  especialmente en el cartel de cuotas. Hay que prohibirlas explícitamente.)
+    systemPrompt += `\n\nIMPORTANTE — MARCA ÚNICA:
+- La ÚNICA marca visible en la imagen es "${agencyName}". NINGUNA otra.
+- PROHIBIDO escribir, estilizar, insinuar o renderizar nombres de otras casas de apuestas dentro de la imagen. Esto incluye en particular: "Bet593", "bet593", "Bet365", "Bet 365", "Pinnacle", "1xBet", "Betfair", "William Hill", "Betsson", "Codere", "Stake", "Bwin", "Caliente", "Rivalo", "Betano", "Betcris", "Betway".
+- El cartel/badge de cuotas NO debe llevar el nombre de ninguna casa de apuestas externa. El badge debe contener SOLO el texto del mercado ("${matches?.[0]?.home?.toUpperCase?.() || 'LOCAL'} GANA", "EMPATE", "MÁS DE 2.5", etc.) y el número de la cuota.
+- Si el diseño necesita atribuir las cuotas a alguien, atribúyelas SOLO a "${agencyName}".`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",

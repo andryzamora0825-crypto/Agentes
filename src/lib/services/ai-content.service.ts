@@ -160,7 +160,6 @@ REGLAS PARA EL PERSONAJE:
     doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
     masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
     databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
-    saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" },
     astrobet: { primary: "Azul Intenso (#1A3A6B)", secondary: "Rojo Vibrante (#E8253A)" }
   };
 
@@ -181,7 +180,6 @@ REGLAS PARA EL PERSONAJE:
     else if(platKey==='doradobet') formattedPlat = 'DoradoBet';
     else if(platKey==='databet') formattedPlat = 'DataBet';
     else if(platKey==='ecuabet') formattedPlat = 'Ecuabet';
-    else if(platKey==='saborabet') formattedPlat = 'Saborabet';
     else if(platKey==='astrobet') formattedPlat = 'AstroBet';
     else formattedPlat = platKey.toUpperCase();
 
