@@ -4,8 +4,10 @@ import { generateFullPost } from "@/lib/services/ai-content.service";
 import { createPost } from "@/lib/services/social-posts.service";
 import { publishPost } from "@/lib/services/meta-publisher.service";
 import { supabase } from "@/lib/supabase";
+import { spendCredits, refundCredits, ensureSeeded, InsufficientCreditsError } from "@/lib/credits";
 
 const ADMIN_EMAIL = "andryzamora0825@gmail.com";
+const BROADCAST_COST = 100; // Créditos por agencia (cubre $0.04 Gemini Flash + margen)
 
 export const maxDuration = 300; // 5 minutos de timeout por si demora
 
@@ -22,6 +24,28 @@ export async function POST(request: Request) {
 
     if (!targetUserId || !topic) {
         return NextResponse.json({ error: "Faltan datos requeridos (targetUserId, topic)" }, { status: 400 });
+    }
+
+    // ── COBRO DE CRÉDITOS AL ADMIN: 100c por agencia generada ──
+    await ensureSeeded(user.id, Number(user.publicMetadata?.credits || 0));
+    const idempotencyKey = `broadcast_single_${user.id}_${targetUserId}_${Date.now()}`;
+    let ledgerId: string;
+    try {
+      const r = await spendCredits({
+        userId: user.id,
+        amount: BROADCAST_COST,
+        relatedId: `broadcast_single_${targetUserId}`,
+        idempotencyKey,
+        note: `Broadcast a agencia ${targetUserId}`,
+      });
+      ledgerId = r.ledgerId;
+    } catch (e: any) {
+      if (e instanceof InsufficientCreditsError) {
+        return NextResponse.json({
+          error: `Créditos insuficientes. Necesitas ${BROADCAST_COST} créditos, tienes ${e.have}.`,
+        }, { status: 402 });
+      }
+      throw e;
     }
 
     // Obtener la configuración del cliente (Tokens y Prompts)
@@ -106,6 +130,20 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error("Broadcast Single Error:", error);
+    // Reembolso si algo falló después del cobro
+    try {
+      const u = await currentUser();
+      if (u) {
+        await refundCredits({
+          userId: u.id,
+          amount: BROADCAST_COST,
+          idempotencyKey: `refund_broadcast_single_${Date.now()}`,
+          note: `refund: ${String(error?.message || "broadcast failure").slice(0, 120)}`,
+        });
+      }
+    } catch (refundErr) {
+      console.error("⚠️ Refund broadcast falló:", refundErr);
+    }
     return NextResponse.json({ error: error.message || "Error interno del servidor" }, { status: 500 });
   }
 }

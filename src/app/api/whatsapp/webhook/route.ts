@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import OpenAI, { toFile } from "openai";
-import { GoogleGenAI } from "@google/genai";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
@@ -189,15 +188,17 @@ async function executeTool(
 }
 
 // =====================================================
-// VERIFICACIÓN DE COMPROBANTES CON GEMINI VISION
+// VERIFICACIÓN DE COMPROBANTES CON OPENAI VISION (GPT-4o-mini)
 // =====================================================
-// Valida que una imagen recibida sea un comprobante REAL de transferencia
-// y extrae monto, banco, fecha, referencia, titular para auto-verificar recargas.
+// Migrado desde Gemini Vision para reducir costos y mejorar consistencia.
+// GPT-4o-mini vision: $0.15/M input + $0.60/M output. Equivalente a Gemini en
+// docs/tickets pero más estable y unificado con el resto del flujo (mismo SDK).
 async function checkReceiptWithVision(params: {
   downloadUrl: string;
   ownerId: string;
   phoneNumber: string;
   chatMsgId: string;
+  openaiKey: string;
 }): Promise<{
   isValid: boolean;
   bank?: string;
@@ -207,13 +208,11 @@ async function checkReceiptWithVision(params: {
   titular?: string;
   raw: string;
 }> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) {
-    return { isValid: false, raw: "no_gemini_key" };
+  if (!params.openaiKey) {
+    return { isValid: false, raw: "no_openai_key" };
   }
 
   try {
-    // Descargar la imagen
     const imgRes = await fetch(params.downloadUrl, { signal: AbortSignal.timeout(10_000) });
     if (!imgRes.ok) return { isValid: false, raw: `fetch_image_failed_${imgRes.status}` };
     const imgBuf = await imgRes.arrayBuffer();
@@ -222,9 +221,10 @@ async function checkReceiptWithVision(params: {
     }
     const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
     const base64 = Buffer.from(imgBuf).toString("base64");
+    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    // Llamar a Gemini Vision con prompt estructurado
-    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const openai = new OpenAI({ apiKey: params.openaiKey });
+
     const prompt = `Eres un verificador de comprobantes de transferencia bancaria ecuatorianos.
 Analiza la imagen y responde EXCLUSIVAMENTE con JSON válido (sin texto extra):
 {
@@ -237,27 +237,33 @@ Analiza la imagen y responde EXCLUSIVAMENTE con JSON válido (sin texto extra):
 }
 Criterios para is_valid_receipt=true: debe mostrar claramente un movimiento bancario (transferencia, depósito o pago) con monto, fecha y algún identificador. Capturas de conversaciones, memes, selfies o documentos genéricos → false.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
-      contents: [
-        { text: prompt },
-        { inlineData: { mimeType, data: base64 } },
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: dataUrl, detail: "low" } },
+          ],
+        },
       ],
+      max_tokens: 200,
+      temperature: 0,
+      response_format: { type: "json_object" },
     });
 
-    const text = response.candidates?.[0]?.content?.parts
-      ?.map((p: any) => p.text || "")
-      .join("") || "";
-
-    // Extraer JSON (a veces viene con fences markdown)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { isValid: false, raw: text.slice(0, 300) };
+    const text = completion.choices[0]?.message?.content || "";
 
     let parsed: any;
-    try { parsed = JSON.parse(jsonMatch[0]); }
-    catch { return { isValid: false, raw: text.slice(0, 300) }; }
+    try { parsed = JSON.parse(text); }
+    catch {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return { isValid: false, raw: text.slice(0, 300) };
+      try { parsed = JSON.parse(jsonMatch[0]); }
+      catch { return { isValid: false, raw: text.slice(0, 300) }; }
+    }
 
-    // Guardar auditoría (best-effort)
     supabase.from("whatsapp_receipt_checks").insert({
       owner_id: params.ownerId,
       phone_number: params.phoneNumber,
@@ -402,31 +408,73 @@ export async function POST(request: Request) {
       messageText = phone ? `[CONTACTO_REENVIADO] Nombre: ${displayName}, Teléfono: ${phone}` : `[CONTACTO_REENVIADO] Nombre: ${displayName}`;
     }
     else if (['imageMessage', 'documentMessage'].includes(typeMessage)) {
-      // Verificar con Gemini Vision si es comprobante real y extraer datos
       const downloadUrl = payload.messageData?.fileMessageData?.downloadUrl
         || payload.messageData?.imageMessage?.downloadUrl
         || payload.messageData?.documentMessage?.downloadUrl;
 
-      if (downloadUrl && process.env.GEMINI_API_KEY) {
-        const verify = await checkReceiptWithVision({
-          downloadUrl,
-          ownerId: uid,
-          phoneNumber: payload.senderData?.sender || "",
-          chatMsgId: payload.idMessage || "",
-        });
-        if (verify.isValid) {
-          const parts: string[] = ["[COMPROBANTE_ENVIADO_VERIFICADO]"];
-          if (verify.amount !== undefined) parts.push(`monto=$${verify.amount.toFixed(2)}`);
-          if (verify.bank) parts.push(`banco=${verify.bank}`);
-          if (verify.date) parts.push(`fecha=${verify.date}`);
-          if (verify.reference) parts.push(`ref=${verify.reference}`);
-          if (verify.titular) parts.push(`titular=${verify.titular}`);
-          messageText = parts.join(" | ");
-        } else {
-          messageText = "[COMPROBANTE_INVALIDO: La imagen enviada NO parece un comprobante de transferencia real (quizás es una captura distinta). Responde amablemente y pídele que envíe el comprobante real de la transferencia bancaria.]";
-        }
-      } else {
+      // ── PRE-FILTRO DE CONTEXTO: solo gastar Vision si el cliente está en flujo de recarga ──
+      // Si el cliente no tiene tag de recarga pendiente y el bot no le pidió comprobante recientemente,
+      // probablemente la imagen es un meme/selfie/captura random — no malgastar Vision.
+      const senderForCheck = payload.senderData?.sender || "";
+      const [{ data: receiptTagsData }, { data: lastBotMsgs }] = await Promise.all([
+        supabase.from("whatsapp_contact_tags")
+          .select("tag")
+          .eq("owner_id", uid)
+          .eq("phone_number", senderForCheck)
+          .in("tag", ["recarga_pendiente", "cuentas_entregadas"]),
+        supabase.from("whatsapp_chats")
+          .select("content")
+          .eq("owner_id", uid)
+          .eq("phone_number", senderForCheck)
+          .eq("role", "model")
+          .order("created_at", { ascending: false })
+          .limit(2),
+      ]);
+
+      const inRechargeFlow = (receiptTagsData?.length || 0) > 0;
+      const botAskedReceipt = (lastBotMsgs || []).some(m =>
+        /comprobante|transferencia|dep[oó]sito|recibo|captura del pago/i.test(m.content || "")
+      );
+
+      const shouldVerify = downloadUrl && process.env.OPENAI_API_KEY && (inRechargeFlow || botAskedReceipt);
+
+      if (!downloadUrl) {
         messageText = "[COMPROBANTE_ENVIADO]";
+      } else if (!shouldVerify) {
+        // Imagen sin contexto de recarga: dejamos que el LLM la maneje sin Vision
+        messageText = "[IMAGEN_RECIBIDA_SIN_CONTEXTO: El cliente envió una imagen pero no estamos en flujo de recarga. Pregúntale brevemente qué necesita o si es un comprobante.]";
+      } else {
+        // ── RATE LIMIT: máx 8 verificaciones Vision por número/24h ──
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count: visionCount } = await supabase.from("whatsapp_receipt_checks")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_id", uid)
+          .eq("phone_number", senderForCheck)
+          .gte("created_at", dayAgo);
+
+        if ((visionCount || 0) >= 8) {
+          console.warn(`[VISION] 🛑 Rate limit alcanzado para ${senderForCheck} (${visionCount} verificaciones/24h)`);
+          messageText = "[COMPROBANTE_ENVIADO]";
+        } else {
+          const verify = await checkReceiptWithVision({
+            downloadUrl,
+            ownerId: uid,
+            phoneNumber: senderForCheck,
+            chatMsgId: payload.idMessage || "",
+            openaiKey: process.env.OPENAI_API_KEY!,
+          });
+          if (verify.isValid) {
+            const parts: string[] = ["[COMPROBANTE_ENVIADO_VERIFICADO]"];
+            if (verify.amount !== undefined) parts.push(`monto=$${verify.amount.toFixed(2)}`);
+            if (verify.bank) parts.push(`banco=${verify.bank}`);
+            if (verify.date) parts.push(`fecha=${verify.date}`);
+            if (verify.reference) parts.push(`ref=${verify.reference}`);
+            if (verify.titular) parts.push(`titular=${verify.titular}`);
+            messageText = parts.join(" | ");
+          } else {
+            messageText = "[COMPROBANTE_INVALIDO: La imagen enviada NO parece un comprobante de transferencia real (quizás es una captura distinta). Responde amablemente y pídele que envíe el comprobante real de la transferencia bancaria.]";
+          }
+        }
       }
     }
     else if (typeMessage === 'audioMessage') {

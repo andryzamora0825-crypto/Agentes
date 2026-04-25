@@ -258,22 +258,21 @@ export async function POST(request: Request) {
         });
       }
 
-      // ═══ RETRY OPTIMIZADO: timeout más agresivo + backoff más corto ═══
-      const MAX_RETRIES = 2; // ← 2 reintentos en vez de 3 para reducir espera total
+      // ═══ RETRY OPTIMIZADO: ambos intentos con Flash (no escalar a Pro) ═══
+      // Antes el segundo intento usaba NANO_BANANA_PRO automáticamente, que cuesta hasta 10x más.
+      // Si Flash está saturado, Pro normalmente también lo está → escalar sólo multiplicaba costo.
+      const MAX_RETRIES = 2;
       let response;
       let lastRetryError: any = null;
-      const fallbackModel = model === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        const currentModel = attempt >= 2 ? fallbackModel : model;
         const abortController = new AbortController();
-        // ═══ OPTIMIZACIÓN: 60s en vez de 120s → si no responde en 60s, el modelo está saturado ═══
         const geminiTimeout = setTimeout(() => abortController.abort(), 60_000);
 
         try {
-          console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
+          console.log(`🎨 Intento ${attempt}/${MAX_RETRIES} con ${model}...`);
           response = await ai.models.generateContent({
-            model: currentModel,
+            model,
             contents,
             config: {
               responseModalities: ["TEXT", "IMAGE"],
@@ -294,8 +293,7 @@ export async function POST(request: Request) {
             || combinedMsg.includes("temporarily") || combinedMsg.includes("capacity");
 
           if (isTransient && attempt < MAX_RETRIES) {
-            // ═══ OPTIMIZACIÓN: backoff de 1.5s fijo en vez de 2-5s escalado ═══
-            console.warn(`⏳ Gemini error transitorio — Reintento ${attempt}/${MAX_RETRIES} en 1.5s (→ ${fallbackModel})...`);
+            console.warn(`⏳ Gemini error transitorio — Reintento ${attempt}/${MAX_RETRIES} en 1.5s (mismo Flash)...`);
             await new Promise(resolve => setTimeout(resolve, 1500));
             continue;
           }
@@ -384,7 +382,7 @@ export async function POST(request: Request) {
         success: true,
         imageUrl: finalPermanentUrl,
         balance: newBalance,
-        model: hasRefImages ? "Nano Banana Pro 🍌" : "Nano Banana 2 🍌",
+        model: "Nano Banana 2 🍌",
       });
 
     } catch (apiError: any) {

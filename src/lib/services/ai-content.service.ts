@@ -251,23 +251,24 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   }
 
   let response;
-  const hasRefImages = referenceImages.length > 0;
-  const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
-  const fallbackModel = modelToUse === NANO_BANANA_2 ? NANO_BANANA_PRO : NANO_BANANA_2;
+  // ═══ OPTIMIZACIÓN CRÍTICA DE COSTOS ═══
+  // Antes: si había imágenes de referencia (logos/personaje/agencia) usaba NANO_BANANA_PRO,
+  // que cuesta hasta 10x más. Como CASI SIEMPRE hay refs (marca + plataforma), siempre usaba Pro.
+  // Ahora: Flash maneja referencias perfectamente. Solo Pro si se pidiera explícitamente.
+  // El reintento también queda en Flash (no escalar a Pro automáticamente al fallar).
+  const modelToUse = NANO_BANANA_2;
 
-  // ═══ RETRY OPTIMIZADO + FALLBACK DE MODELO PARA 503/429 ═══
   const MAX_RETRIES = 2;
   let lastRetryError: any = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const currentModel = attempt >= 2 ? fallbackModel : modelToUse;
     const abortController = new AbortController();
-    const geminiTimer = setTimeout(() => abortController.abort(), 60_000); // 60s máx — si no responde, está saturado
+    const geminiTimer = setTimeout(() => abortController.abort(), 60_000);
 
     try {
-      console.log(`🎨 [SOCIAL] Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
+      console.log(`🎨 [SOCIAL] Intento ${attempt}/${MAX_RETRIES} con ${modelToUse}...`);
       response = await ai.models.generateContent({
-        model: currentModel,
+        model: modelToUse,
         contents: contentParts,
         config: {
           responseModalities: ["TEXT", "IMAGE"],
@@ -293,9 +294,8 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
 
       if (isTransient && attempt < MAX_RETRIES) {
-        const backoffMs = 1500;
         console.warn(`⏳ [SOCIAL] Gemini error transitorio — Reintento ${attempt}/${MAX_RETRIES} en 1.5s...`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        await new Promise(resolve => setTimeout(resolve, 1500));
         continue;
       }
 
@@ -345,7 +345,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     .from("ai-generations")
     .getPublicUrl(fileName);
 
-  const modelNameUsed = referenceImages.length > 0 ? "Nano Banana Pro 🍌" : "Nano Banana 2 🍌";
+  const modelNameUsed = "Nano Banana 2 🍌";
 
   return {
     imageUrl: publicUrlData.publicUrl,

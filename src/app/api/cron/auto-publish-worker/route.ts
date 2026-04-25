@@ -4,8 +4,12 @@ import { supabase } from '@/lib/supabase';
 import { generateFullPost } from '@/lib/services/ai-content.service';
 import { createPost } from '@/lib/services/social-posts.service';
 import { publishPost } from '@/lib/services/meta-publisher.service';
+import { spendCredits, refundCredits, ensureSeeded, InsufficientCreditsError } from "@/lib/credits";
 
 export const maxDuration = 300; // 5 minutos permitidos en Vercel Pro
+
+const AUTO_POST_COST = 100;       // Créditos por post auto generado
+const AUTO_DAILY_LIMIT = 20;      // Máx posts auto/día/agencia (anti-runaway)
 
 // Lista de temas aleatorios básicos en caso de que no haya uno definido.
 const FALLBACK_TOPICS = [
@@ -43,11 +47,47 @@ export async function POST(request: Request) {
     const client = await clerkClient();
     const targetUserClerk = await client.users.getUser(userId);
     const oldClerkTokens = targetUserClerk.publicMetadata?.socialMediaSettings as any;
-    
+
     const page_access_token = socialSettings?.meta_page_access_token || oldClerkTokens?.meta_page_access_token;
 
     if (!page_access_token) {
       return NextResponse.json({ error: "Este cliente no tiene Tokens de Meta." }, { status: 400 });
+    }
+
+    // ── TOPE DIARIO POR AGENCIA: máximo 20 posts auto/día ──
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const { count: todayCount } = await supabase.from("social_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", dayStart.toISOString());
+    if ((todayCount || 0) >= AUTO_DAILY_LIMIT) {
+      console.warn(`[Worker ${userId}] 🛑 Tope diario alcanzado (${todayCount}/${AUTO_DAILY_LIMIT})`);
+      return NextResponse.json({ error: "Tope diario alcanzado", todayCount }, { status: 429 });
+    }
+
+    // ── COBRO DE CRÉDITOS: si la agencia no tiene saldo, auto-pausar ──
+    await ensureSeeded(userId, Number(targetUserClerk.publicMetadata?.credits || 0));
+    let chargedLedgerId: string | null = null;
+    try {
+      const r = await spendCredits({
+        userId,
+        amount: AUTO_POST_COST,
+        relatedId: `auto_publish_${Date.now()}`,
+        idempotencyKey: `auto_publish_${userId}_${Date.now()}`,
+        note: "Post auto generado por cron",
+      });
+      chargedLedgerId = r.ledgerId;
+    } catch (e: any) {
+      if (e instanceof InsufficientCreditsError) {
+        // Sin saldo → pausar auto_generate para evitar drenarte a ti
+        await supabase.from("social_settings")
+          .update({ auto_generate: false })
+          .eq("user_id", userId);
+        console.warn(`[Worker ${userId}] 💸 Sin saldo (${e.have}/${AUTO_POST_COST}). auto_generate pausado.`);
+        return NextResponse.json({ error: "Sin créditos suficientes, auto-publicación pausada", have: e.have }, { status: 402 });
+      }
+      throw e;
     }
 
     // 2. Retardo Aleatorio (Random Delay) para simulación humana (0 a 140000ms = ~0 a 2.3 minutos)
@@ -73,16 +113,36 @@ export async function POST(request: Request) {
     const aiSettings = targetUserClerk.publicMetadata?.aiSettings || null;
 
     // 4. Invocar generador IA (Nano Banana + Gemini)
-    const { caption, imageUrl, imagePrompt } = await generateFullPost(
-      { 
-        topic: finalTopic, 
-        brandVoice: brandVoice, 
-        platform: "facebook",  // Idealmente se usa la preferencia, por defecto Facebook.
-        imageFormat: "square" 
-      },
-      userId,
-      aiSettings // <- Se pasa aiSettings para aplicar anti-repetición y estilo
-    );
+    let caption: string, imageUrl: string, imagePrompt: string;
+    try {
+      const result = await generateFullPost(
+        {
+          topic: finalTopic,
+          brandVoice: brandVoice,
+          platform: "facebook",
+          imageFormat: "square"
+        },
+        userId,
+        aiSettings
+      );
+      caption = result.caption;
+      imageUrl = result.imageUrl;
+      imagePrompt = result.imagePrompt;
+    } catch (genErr: any) {
+      // Reembolso si la generación falló
+      if (chargedLedgerId) {
+        try {
+          await refundCredits({
+            userId,
+            amount: AUTO_POST_COST,
+            relatedId: chargedLedgerId,
+            idempotencyKey: `refund_${chargedLedgerId}`,
+            note: `refund: ${String(genErr?.message || "auto gen failure").slice(0, 120)}`,
+          });
+        } catch {}
+      }
+      throw genErr;
+    }
 
     if (!imageUrl) {
         throw new Error("No se pudo generar la imagen IA.");

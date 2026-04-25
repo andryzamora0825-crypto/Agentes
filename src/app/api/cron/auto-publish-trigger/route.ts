@@ -5,6 +5,17 @@ import { supabase } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  // ── PROTECCIÓN: solo Vercel Cron (que envía Authorization: Bearer <CRON_SECRET>) ──
+  // Esto bloquea disparadores externos (cron-job.org, Upstash, navegador, etc.)
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const authHeader = request.headers.get("authorization") || "";
+    if (!authHeader.includes(secret)) {
+      console.warn("[Cron Trigger] 🚫 Llamada rechazada — falta CRON_SECRET válido");
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   try {
     // 1. Obtener todos los usuarios con auto_generate = true
     const { data: users, error } = await supabase

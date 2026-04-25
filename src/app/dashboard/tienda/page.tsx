@@ -75,10 +75,33 @@ export default function TiendaPage() {
     },
     {
       id: "vip_plan",
-      price: 10,
+      price: 16,
       name: "Plan VIP",
-      features: ["Acceso a todos los módulos", "Herramientas ilimitadas", "Soporte Prioritario 24/7"],
+      features: [
+        "10,000 créditos incluidos",
+        "🎨 Estudio IA (Nano Banana) ilimitado",
+        "✨ Editor PRO con 7 herramientas mágicas",
+        "🏆 Pronosticador IA deportivo",
+        "📡 Partidos EN VIVO en tiempo real",
+        "👥 Comunidad IA + Feed creativo",
+        "💬 Chat interno con asesores",
+        "🛡️ Base de Estafadores compartida",
+        "💰 Gestor de Notas de Retiro",
+        "Soporte Prioritario 24/7",
+      ],
       isVip: true,
+    },
+    {
+      id: "basic_plan",
+      price: 8,
+      name: "Plan Básico",
+      features: [
+        "7,000 créditos incluidos",
+        "🎨 Estudio IA (Nano Banana)",
+        "👥 Comunidad IA + Feed creativo",
+        "Soporte estándar",
+      ],
+      isBasic: true,
     },
     {
       id: "custom_video_ai",
@@ -152,7 +175,8 @@ export default function TiendaPage() {
   };
 
   const vipPackage = packages.find(p => p.isVip);
-  const creditPackages = packages.filter(p => !p.isVip && !p.isService);
+  const basicPackage = packages.find(p => p.isBasic);
+  const creditPackages = packages.filter(p => !p.isVip && !p.isBasic && !p.isService);
   const servicePackages = packages.filter(p => {
     if (!p.isService) return false;
     if (p.id === 'whatsapp_bot' && hasWhatsappBot) return false;

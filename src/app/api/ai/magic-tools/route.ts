@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     }
 
     // 1. Descuento atómico de créditos (inmune a race conditions)
-    const cost = Math.min(Math.max(credits || 25, 25), 500); // Clamp 25-500
+    const cost = Math.min(Math.max(credits || 100, 100), 500); // Clamp 100-500 (mínimo 100c para cubrir costo real Gemini)
     const idempotencyKey = request.headers.get("x-idempotency-key") || `magic_${user.id}_${toolId}_${Date.now()}`;
 
     // Siembra one-time desde Clerk metadata para usuarios existentes
@@ -89,25 +89,25 @@ export async function POST(request: Request) {
         },
       ];
 
-      // 5. Call Gemini with retries + model fallback
+      // 5. Call Gemini with retries (mismo modelo Flash en ambos intentos)
       // ═══ OPTIMIZACIÓN CRÍTICA DE COSTOS ═══
-      // Usamos gemini-3.1-flash-image-preview para TODO. Pro es demasiado costoso (-90% token cost).
+      // Antes: si Flash fallaba por 503/429 (común con preview models), el reintento usaba PRO
+      // automáticamente — y PRO cuesta hasta 10x más. Si Flash está saturado, Pro también suele estarlo,
+      // así que escalar a Pro sólo multiplicaba el costo sin mejorar la tasa de éxito.
+      // Ahora: ambos intentos usan Flash. Si falla, error 503 → usuario reintenta manualmente.
       const PRIMARY_MODEL = "gemini-3.1-flash-image-preview";
-      const FALLBACK_MODEL = "gemini-3-pro-image-preview";
       const MAX_RETRIES = 2;
       let response;
       let lastErr: any = null;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        // Use fallback model on retry attempts
-        const currentModel = attempt >= 2 ? FALLBACK_MODEL : PRIMARY_MODEL;
         const abortController = new AbortController();
         const timeout = setTimeout(() => abortController.abort(), 60_000);
 
         try {
-          console.log(`🪄 Editor PRO [${toolId}] Intento ${attempt}/${MAX_RETRIES} con ${currentModel}...`);
+          console.log(`🪄 Editor PRO [${toolId}] Intento ${attempt}/${MAX_RETRIES} con ${PRIMARY_MODEL}...`);
           response = await ai.models.generateContent({
-            model: currentModel,
+            model: PRIMARY_MODEL,
             contents,
             config: { responseModalities: ["TEXT", "IMAGE"] },
           });
@@ -124,9 +124,8 @@ export async function POST(request: Request) {
             || msg.includes("Bad Gateway") || msg.includes("bad gateway")
             || msg.includes("DEADLINE_EXCEEDED") || msg.includes("deadline");
           if (isTransient && attempt < MAX_RETRIES) {
-            const backoff = 1500;
-            console.warn(`⏳ Editor PRO error transitorio → reintento ${attempt} en 1.5s con ${FALLBACK_MODEL}...`);
-            await new Promise(r => setTimeout(r, backoff));
+            console.warn(`⏳ Editor PRO error transitorio → reintento ${attempt} en 1.5s (mismo Flash)...`);
+            await new Promise(r => setTimeout(r, 1500));
             continue;
           }
           throw retryErr;
