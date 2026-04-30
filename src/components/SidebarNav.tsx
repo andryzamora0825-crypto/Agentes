@@ -19,9 +19,17 @@ export default function SidebarNav() {
 
   useEffect(() => {
     fetch("/api/user/sync")
-      .then(res => res.json())
+      .then(async res => {
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          console.error("Error parseando /api/user/sync. Respuesta HTML:", text.substring(0, 200));
+          throw new Error("Invalid JSON from /api/user/sync");
+        }
+      })
       .then(data => {
-        if (data.success) {
+        if (data && data.success) {
           setCredits(data.credits);
           setPlan(data.plan);
           setDaysLeft(data.daysLeft);

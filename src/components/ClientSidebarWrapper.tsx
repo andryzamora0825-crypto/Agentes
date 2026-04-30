@@ -26,8 +26,16 @@ export default function ClientSidebarWrapper({
         cache: 'no-store',
         headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
       })
-        .then(res => res.json())
-        .then(data => { if (data.success) setUnreadCount(data.count); })
+        .then(async res => {
+          const text = await res.text();
+          try {
+            return JSON.parse(text);
+          } catch (e) {
+            console.error("Error parseando /api/chat. HTML devuelto:", text.substring(0, 200));
+            throw new Error("Invalid JSON");
+          }
+        })
+        .then(data => { if (data && data.success) setUnreadCount(data.count); })
         .catch(() => {});
     };
     fetchUnread();

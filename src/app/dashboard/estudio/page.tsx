@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown } from "lucide-react";
+import { Sparkles, Loader2, Download, Image as ImageIcon, X, Plus, Zap, Eye, Trash2, Monitor, Smartphone, RectangleHorizontal, RectangleVertical, Square, UserCircle, Clipboard, RefreshCw, Paperclip, Mic, ChevronDown, XCircle, Pencil } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "@clerk/nextjs";
@@ -51,12 +51,23 @@ export default function EstudioIAPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
   const [isModerator, setIsModerator] = useState(false);
   const [autoPublishing, setAutoPublishing] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<'flash' | 'pro'>('flash');
+  const [showCancelBtn, setShowCancelBtn] = useState(false);
+  const [editingImage, setEditingImage] = useState<any | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editGenerating, setEditGenerating] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [showEditCancelBtn, setShowEditCancelBtn] = useState(false);
+  const editAbortRef = useRef<AbortController | null>(null);
+  const editCancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const originalPromptRef = useRef("");
   const refInputRef = useRef<HTMLInputElement>(null);
   const formatMenuRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalCost = 150;
 
@@ -78,13 +89,23 @@ export default function EstudioIAPage() {
     try {
       const isModRes = await fetch("/api/social/auto-broadcast", { method: "GET" }).catch(() => null);
       if (isModRes && isModRes.ok) {
-        const modData = await isModRes.json();
-        setIsModerator(modData.isModerator);
+        const modText = await isModRes.text();
+        try {
+          const modData = JSON.parse(modText);
+          setIsModerator(modData.isModerator);
+        } catch (e) {
+          console.error("Error parseando /api/social/auto-broadcast:", modText.substring(0, 100));
+        }
       }
 
       const res = await fetch("/api/ai/history");
-      const data = await res.json();
-      if (data.success) setImages(data.images);
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (data.success) setImages(data.images);
+      } catch (parseError) {
+        console.error("Error parseando /api/ai/history. Respuesta HTML:", text.substring(0, 200));
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -218,6 +239,20 @@ export default function EstudioIAPage() {
     }
   };
 
+  const handleCancelGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setGenerating(false);
+    setShowCancelBtn(false);
+    if (cancelTimerRef.current) {
+      clearTimeout(cancelTimerRef.current);
+      cancelTimerRef.current = null;
+    }
+    setErrorMsg("Generación cancelada por el usuario. Tus créditos serán reembolsados si no se completó.");
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
@@ -225,9 +260,16 @@ export default function EstudioIAPage() {
     setGenerating(true);
     setErrorMsg(null);
     setLastModel(null);
+    setShowCancelBtn(false);
 
     const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     const clientTimeout = setTimeout(() => abortController.abort(), 100_000);
+
+    // Mostrar botón de cancelar después de 20 segundos
+    cancelTimerRef.current = setTimeout(() => {
+      setShowCancelBtn(true);
+    }, 20_000);
 
     try {
       const fd = new FormData();
@@ -245,6 +287,7 @@ export default function EstudioIAPage() {
       fd.append("useAgencyIdentity", String(useAgencyIdentity));
       fd.append("useAgencyCharacter", String(useAgencyCharacter));
       fd.append("targetPlatform", selectedPlatform);
+      fd.append("forceModel", selectedModel);
       refImages.forEach((file, i) => fd.append(`ref_${i}`, file));
 
       const res = await fetch("/api/ai/generate", { 
@@ -269,7 +312,6 @@ export default function EstudioIAPage() {
             const resultData = await response.json();
             if (response.ok) {
               console.log("🔥 [BROADCAST EXITOSO]", resultData);
-              // alert removida a petición
             } else {
               console.error("⚠️ [BROADCAST FALLÓ]", resultData);
               alert("Error en Broadcaster Masivo: " + (resultData.error || "Falla desconocida."));
@@ -290,13 +332,19 @@ export default function EstudioIAPage() {
       }
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        setErrorMsg("La generación tardó demasiado (>100s). Intenta con un prompt más corto.");
+        setErrorMsg("Generación cancelada. Tus créditos serán reembolsados si no se completó.");
       } else {
         setErrorMsg("Error interno conectando con el servidor.");
       }
     } finally {
       clearTimeout(clientTimeout);
+      if (cancelTimerRef.current) {
+        clearTimeout(cancelTimerRef.current);
+        cancelTimerRef.current = null;
+      }
+      abortControllerRef.current = null;
       setGenerating(false);
+      setShowCancelBtn(false);
     }
   };
 
@@ -347,6 +395,75 @@ export default function EstudioIAPage() {
     }
   };
 
+  // --- EDIT IMAGE HANDLER ---
+  const handleEditImage = async () => {
+    if (!editPrompt.trim() || !editingImage) return;
+
+    setEditGenerating(true);
+    setEditError(null);
+    setShowEditCancelBtn(false);
+
+    const abortController = new AbortController();
+    editAbortRef.current = abortController;
+
+    editCancelTimerRef.current = setTimeout(() => {
+      setShowEditCancelBtn(true);
+    }, 20_000);
+
+    try {
+      const res = await fetch("/api/ai/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editPrompt: editPrompt,
+          sourceImageUrl: editingImage.image_url,
+        }),
+        signal: abortController.signal,
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setEditingImage(null);
+        setEditPrompt("");
+        fetchHistory();
+      } else {
+        if (res.status === 402) {
+          setEditError(`Créditos insuficientes. Tienes ${data.credits} y necesitas ${data.cost}.`);
+        } else {
+          setEditError(data.error || "Error en la edición.");
+        }
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        setEditError("Edición cancelada.");
+      } else {
+        setEditError("Error conectando con el servidor.");
+      }
+    } finally {
+      if (editCancelTimerRef.current) {
+        clearTimeout(editCancelTimerRef.current);
+        editCancelTimerRef.current = null;
+      }
+      editAbortRef.current = null;
+      setEditGenerating(false);
+      setShowEditCancelBtn(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (editAbortRef.current) {
+      editAbortRef.current.abort();
+      editAbortRef.current = null;
+    }
+    setEditGenerating(false);
+    setShowEditCancelBtn(false);
+    if (editCancelTimerRef.current) {
+      clearTimeout(editCancelTimerRef.current);
+      editCancelTimerRef.current = null;
+    }
+    setEditError("Edición cancelada por el usuario.");
+  };
+
   const handleRetry = (img: any) => {
     setPrompt(img.prompt);
     setRefImages([]);
@@ -393,15 +510,44 @@ export default function EstudioIAPage() {
         {/* Generation Panel */}
         <div className="bg-[#141414] rounded-lg border border-white/[0.06] p-5 sm:p-6 animate-slide-up">
 
-          {/* Model indicator + cost */}
+          {/* Model Selector + cost */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${refImages.length > 0
-                ? 'bg-purple-500/10 text-purple-300'
-                : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/70'
-              }`}>
-              <Sparkles className="w-3 h-3" />
-              {refImages.length > 0 ? 'Nano Pro' : 'Nano Banana'}
+            {/* Model Toggle */}
+            <div className="flex items-center bg-[#0A0A0A] rounded-lg border border-white/[0.06] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedModel('flash')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
+                  selectedModel === 'flash'
+                    ? 'bg-[#FFDE00]/10 text-[#FFDE00] shadow-inner'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                }`}
+              >
+                <Zap className="w-3 h-3" />
+                Flash
+              </button>
+              <div className="w-px h-5 bg-white/[0.06]"></div>
+              <button
+                type="button"
+                onClick={() => setSelectedModel('pro')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
+                  selectedModel === 'pro'
+                    ? 'bg-purple-500/10 text-purple-300 shadow-inner'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                Pro
+              </button>
             </div>
+
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
+              selectedModel === 'pro' 
+                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15' 
+                : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/50 border border-[#FFDE00]/10'
+            }`}>
+              {selectedModel === 'pro' ? 'Alta fidelidad · Más lento' : 'Rápido · Uso general'}
+            </span>
 
             <div className="ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all bg-purple-500/10 border-purple-500/15 text-purple-300">
               150 créditos
@@ -699,14 +845,27 @@ export default function EstudioIAPage() {
                   <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00]" />
                   <h3 className="font-semibold text-white text-lg">Generando tu imagen...</h3>
                   <p className="text-sm text-zinc-500 max-w-md">
-                    {refImages.length > 0
-                      ? 'Analizando referencias y generando. 20–40 segundos.'
-                      : 'Renderizando. 10–20 segundos.'}
+                    {selectedModel === 'pro'
+                      ? 'Modelo Pro activo. Alta fidelidad. 30–60 segundos.'
+                      : refImages.length > 0
+                        ? 'Analizando referencias y generando. 20–40 segundos.'
+                        : 'Renderizando con Flash. 10–20 segundos.'}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="w-1.5 h-1.5 rounded-full bg-[#FFDE00] animate-pulse-subtle"></div>
                     <span className="text-xs font-[family-name:var(--font-mono)] text-zinc-600">{elapsedSec}s</span>
                   </div>
+                  {/* Cancel Button — appears after 20s */}
+                  {showCancelBtn && (
+                    <button
+                      type="button"
+                      onClick={handleCancelGeneration}
+                      className="mt-3 flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 text-sm font-semibold transition-all active:scale-95 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Cancelar generación
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -758,8 +917,8 @@ export default function EstudioIAPage() {
                   </div>
 
                   <div className="mt-auto">
-                    {/* Action buttons 2x2 */}
-                    <div className="grid grid-cols-2 gap-1.5 mt-4">
+                    {/* Action buttons */}
+                    <div className="grid grid-cols-3 gap-1.5 mt-4">
                       <button 
                         onClick={() => forceDownload(img.image_url, `zamtools_ia_${img.id.slice(0,6)}.png`)} 
                         className="bg-[#FFDE00]/10 hover:bg-[#FFDE00]/15 text-[#FFDE00] py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-[#FFDE00]/15"
@@ -767,11 +926,19 @@ export default function EstudioIAPage() {
                         <Download className="w-3.5 h-3.5 shrink-0" /> Bajar
                       </button>
                       <button 
+                        onClick={() => { setEditingImage(img); setEditPrompt(""); setEditError(null); }} 
+                        className="bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-emerald-500/15"
+                      >
+                        <Pencil className="w-3.5 h-3.5 shrink-0" /> Editar
+                      </button>
+                      <button 
                         onClick={() => handleRetry(img)} 
                         className="bg-purple-500/10 hover:bg-purple-500/15 text-purple-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-purple-500/15"
                       >
                         <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Repetir
                       </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                       <button 
                         onClick={() => setLightboxUrl(img.image_url)} 
                         className="bg-white/[0.04] hover:bg-white/[0.06] text-zinc-400 py-2 rounded-lg flex justify-center items-center gap-1.5 text-[10px] font-semibold transition-colors border border-white/[0.06]"
@@ -854,6 +1021,100 @@ export default function EstudioIAPage() {
                 {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 {deleting ? "Eliminando..." : "Eliminar"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Image Modal */}
+      {editingImage && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => !editGenerating && setEditingImage(null)}>
+          <div
+            className="bg-[#111113] border border-white/[0.08] rounded-2xl max-w-lg w-full overflow-hidden animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+              <div className="flex items-center gap-2.5">
+                <div className="bg-emerald-500/15 p-2 rounded-lg">
+                  <Pencil className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Editar imagen</h3>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">75 créditos por edición</p>
+                </div>
+              </div>
+              <button
+                onClick={() => !editGenerating && setEditingImage(null)}
+                className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Image Preview */}
+            <div className="px-5 pt-4">
+              <div className="rounded-lg overflow-hidden border border-white/[0.06] bg-[#09090b] max-h-52 flex items-center justify-center">
+                <img
+                  src={editingImage.image_url}
+                  alt="Imagen a editar"
+                  className="w-full h-full object-contain max-h-52"
+                />
+              </div>
+            </div>
+
+            {/* Edit Prompt Input */}
+            <div className="px-5 pt-4 pb-5">
+              {editError && (
+                <div className="mb-3 bg-red-500/10 text-red-400 p-3 rounded-lg border border-red-500/15 text-xs font-medium">
+                  {editError}
+                </div>
+              )}
+
+              {editGenerating ? (
+                <div className="flex flex-col items-center py-6 space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+                  <p className="text-sm text-zinc-400 font-medium">Editando imagen...</p>
+                  <p className="text-xs text-zinc-600">Esto puede tomar 20–40 segundos</p>
+                  {showEditCancelBtn && (
+                    <button
+                      onClick={handleCancelEdit}
+                      className="mt-2 flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition-all"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <label className="text-xs font-semibold text-zinc-400 block mb-2">¿Qué quieres cambiar?</label>
+                  <textarea
+                    value={editPrompt}
+                    onChange={(e) => setEditPrompt(e.target.value)}
+                    placeholder='Ej: "Cambia el fondo a rojo", "Agrega lentes de sol", "Quita el texto del cartel"'
+                    className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg px-3.5 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 focus:border-emerald-500/30 resize-none transition-all"
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="flex gap-2.5 mt-4">
+                    <button
+                      onClick={() => setEditingImage(null)}
+                      className="flex-1 px-4 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] text-zinc-400 rounded-lg font-medium text-sm border border-white/[0.06] transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleEditImage}
+                      disabled={!editPrompt.trim()}
+                      className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Editar imagen
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

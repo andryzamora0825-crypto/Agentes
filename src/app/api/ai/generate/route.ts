@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     let useAgencyIdentity = false;
     let useAgencyCharacter = false;
     let targetPlatform = "";
+    let forceModel = "";
     let referenceImages: { base64: string; mimeType: string; label?: string }[] = [];
 
     if (contentType.includes("multipart/form-data")) {
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
       useAgencyCharacter = formData.get("useAgencyCharacter") === "true";
       
       targetPlatform = (formData.get("targetPlatform") as string) || (formData.get("targetPlatforms") as string) || "";
+      forceModel = (formData.get("forceModel") as string) || "";
 
       // Hasta 3 imágenes de referencia directas desde el formulario
       for (let i = 0; i < 3; i++) {
@@ -60,6 +62,7 @@ export async function POST(request: Request) {
       useAgencyIdentity = body.useAgencyIdentity === true;
       useAgencyCharacter = body.useAgencyCharacter === true;
       targetPlatform = body.targetPlatform || body.targetPlatforms || "";
+      forceModel = body.forceModel || "";
     }
 
     if (!prompt?.trim()) {
@@ -73,11 +76,23 @@ export async function POST(request: Request) {
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
       
+      const contactNumber = aiSettings.contactNumber || '';
+      const extraContact = aiSettings.extraContact || '';
+      const contactString = extraContact ? `${contactNumber} / ${extraContact}` : contactNumber;
+
       const agencyContext = `
 [INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
 Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
-A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca:
-- Contactos (añade creativamente a carteles/letreros si es orgánico): ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.
+A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca.
+
+[CONTACTO — INTEGRACIÓN NATURAL OBLIGATORIA]: 
+DEBES incluir el número de contacto "${contactString}" en la imagen, pero de forma que se sienta NATURAL y PARTE DEL DISEÑO, como si fuera un elemento orgánico de la escena. Ejemplos de integración creativa:
+- En un cartel/pancarta/banner que ya forme parte de la escena (como los sponsors en un estadio)
+- Escrito en una pantalla LED, neón, o marquesina dentro de la composición
+- En la camiseta, uniforme o vestimenta de un personaje si es coherente
+- Como parte de un flyer, volante o tarjeta que un personaje sostiene
+- En un letrero de la calle, valla publicitaria o elemento de fondo
+Lo IMPORTANTE es que el número se vea como parte artística y orgánica de la imagen, con la MISMA calidad estética y estilo visual del resto de la composición. PROHIBIDO crear barras genéricas, cintillos planos, o recuadros feos que rompan la estética. El número debe "vivir" dentro de la imagen, no estar pegado encima.
 `;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
@@ -129,7 +144,8 @@ ES OBLIGATORIO usar la siguiente paleta de colores para esta marca:
 - Color Primario: ${pColor}
 - Color Secundario: ${sColor}
 Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
+ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.
+[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de los logos proporcionados. NO los pongas en blanco y negro, escala de grises o metalizados a menos que el prompt explícitamente lo pida.`;
         
         if (OFFICIAL_PLATFORMS[platKey]) {
           itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
@@ -139,7 +155,8 @@ ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamen
         finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
 - Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
 - Color Secundario: ${aiSettings.secondaryColor || '#000000'}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
+Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.
+[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de cualquier logo proporcionado. NO los pongas en blanco y negro, ni metalizados. El logo debe salir a full color exactamente como en la imagen de referencia.`;
       }
 
       const fetchPromises = itemsToFetch.map(async (item) => {
@@ -190,8 +207,18 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
     }
 
-    // Refuerzo vital del formato al final del prompt para que el modelo no lo olvide
-    finalPrompt += `\n\n[INSTRUCCIONES FINALES]: ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ EN SU PROMPT.`;
+    // Refuerzo vital del formato y contacto al final del prompt para que el modelo no lo olvide
+    if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
+      const aiS: any = user.publicMetadata.aiSettings;
+      const cn = aiS.contactNumber || '';
+      const ec = aiS.extraContact || '';
+      const cs = ec ? `${cn} / ${ec}` : cn;
+      finalPrompt += `\n\n[INSTRUCCIONES FINALES — LEE ESTO ANTES DE RENDERIZAR]:
+1. ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ.
+2. VERIFICACIÓN DE CONTACTO: Asegúrate de que el número "${cs}" aparezca en la imagen de forma NATURAL, integrado en la escena como un elemento visual orgánico (cartel, pancarta, letrero, pantalla, etc.). NO uses barras genéricas ni cintillos planos — el número debe tener el mismo nivel de calidad artística que el resto de la imagen.`;
+    } else {
+      finalPrompt += `\n\n[INSTRUCCIONES FINALES]: ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ EN SU PROMPT.`;
+    }
 
     // 1. Verificación Financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
@@ -214,9 +241,18 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     });
 
     try {
-      // Nano Banana Pro cuando hay imágenes de referencia (alta fidelidad, mejor edición)
-      // Nano Banana 2 para generación pura de texto (más rápido)
-      const model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+      // Model selection: user can force a model, otherwise auto-select
+      // forceModel = 'pro' -> always use Pro
+      // forceModel = 'flash' -> always use Flash  
+      // empty/auto -> use Pro when ref images, Flash otherwise
+      let model: string;
+      if (forceModel === 'pro') {
+        model = NANO_BANANA_PRO;
+      } else if (forceModel === 'flash') {
+        model = NANO_BANANA_2;
+      } else {
+        model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+      }
 
       const contents: any[] = [{ text: finalPrompt }];
       for (const img of referenceImages) {
@@ -307,7 +343,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         success: true,
         imageUrl: finalPermanentUrl,
         balance: newBalance,
-        model: hasRefImages ? "Nano Banana Pro 🍌" : "Nano Banana 2 🍌",
+        model: model === NANO_BANANA_PRO ? "Nano Banana Pro 🍌" : "Nano Banana Flash ⚡",
       });
 
     } catch (apiError: any) {
