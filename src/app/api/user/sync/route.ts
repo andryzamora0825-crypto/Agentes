@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
+import { supabase } from "@/lib/supabase";
 
 export async function GET() {
   try {
@@ -52,6 +53,14 @@ export async function GET() {
     const hasWhatsappBot = !!(user.publicMetadata as any)?.whatsappSettings?.isUnlocked;
     const hasSocialMedia = !!(user.publicMetadata as any)?.socialMediaSettings?.isUnlocked;
     
+    // Check if user is admin in Supabase
+    let isAdmin = false;
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (email) {
+      const { data } = await supabase.from("admins").select("email").eq("email", email).single();
+      isAdmin = !!data;
+    }
+    
     return NextResponse.json({ 
       success: true, 
       credits: Number(currentCredits), 
@@ -59,7 +68,8 @@ export async function GET() {
       plan: currentPlan,
       daysLeft: daysLeft,
       hasWhatsappBot,
-      hasSocialMedia
+      hasSocialMedia,
+      isAdmin
     });
 
   } catch (error: any) {

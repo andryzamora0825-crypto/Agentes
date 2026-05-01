@@ -14,8 +14,7 @@ export default function SidebarNav() {
   const [daysLeft, setDaysLeft] = useState<number>(0);
   const [hasWhatsappBot, setHasWhatsappBot] = useState(false);
   const [hasSocialMedia, setHasSocialMedia] = useState(false);
-  
-  const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetch("/api/user/sync")
@@ -35,6 +34,7 @@ export default function SidebarNav() {
           setDaysLeft(data.daysLeft);
           setHasWhatsappBot(data.hasWhatsappBot || false);
           setHasSocialMedia(data.hasSocialMedia || false);
+          setIsAdmin(data.isAdmin || false);
         }
       })
       .catch(console.error);
