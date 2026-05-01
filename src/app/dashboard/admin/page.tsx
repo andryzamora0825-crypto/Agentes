@@ -595,7 +595,6 @@ export default function AdminPanelPage() {
           </div>
         </div>
       )}
-      </div>
 
       {/* Campaña de Estados Masiva */}
       <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg relative overflow-hidden mt-6">
