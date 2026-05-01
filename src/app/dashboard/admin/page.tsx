@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload, RefreshCw, UserPlus, Trash2, Image as ImageIcon, RotateCcw, Clock } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +9,8 @@ import { supabase } from "@/lib/supabase";
 export default function AdminPanelPage() {
   const { user } = useUser();
   const router = useRouter();
-  const isAdmin = user?.primaryEmailAddress?.emailAddress === "andryzamora0825@gmail.com";
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminChecked, setAdminChecked] = useState(false);
 
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +52,28 @@ export default function AdminPanelPage() {
   const [uploadingPlatform, setUploadingPlatform] = useState<string | null>(null);
   const [imageTokens, setImageTokens] = useState<Record<string, number>>({});
 
-  // Sincronizar el formulario cuando abrimos el modal
+  // Nuevos estados
+  const [recentImages, setRecentImages] = useState<any[]>([]);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminList, setAdminList] = useState<any[]>([]);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [addingAdmin, setAddingAdmin] = useState(false);
+  const [creditAmounts, setCreditAmounts] = useState<Record<string, string>>({});
+  const [restarting, setRestarting] = useState(false);
+  const [vipTimers, setVipTimers] = useState<Record<string, string>>({});
+  const vipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Check admin status via Supabase
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (!user?.primaryEmailAddress?.emailAddress) return;
+      const { data } = await supabase.from("admins").select("email").eq("email", user.primaryEmailAddress.emailAddress).single();
+      setIsAdmin(!!data);
+      setAdminChecked(true);
+      if (!data) router.push("/dashboard");
+    };
+    if (user) checkAdmin();
+  }, [user, router]);
   useEffect(() => {
     if (editingWa) {
       setWaForm({
@@ -158,11 +180,10 @@ export default function AdminPanelPage() {
   };
 
   useEffect(() => {
-    // Si la página carga y no es admin, échalo
-    if (user && !isAdmin) {
+    if (adminChecked && !isAdmin) {
       router.push("/dashboard");
     }
-  }, [user, isAdmin, router]);
+  }, [adminChecked, isAdmin, router]);
 
   const handleUploadGlobalLogo = async (e: any, platform: string) => {
     const file = e.target.files[0];
@@ -179,7 +200,7 @@ export default function AdminPanelPage() {
         
       if (error) throw error;
       setImageTokens(prev => ({ ...prev, [platform]: Date.now() }));
-      alert(`Logo global de ${platform.toUpperCase()} actualizado exitosamente en el sistema.`);
+      alert(`Logo global de ${platform.toUpperCase()} actualizado exitosamente.`);
     } catch (err: any) {
       console.error(err);
       alert("Error subiendo la imagen: " + err.message);
@@ -191,10 +212,11 @@ export default function AdminPanelPage() {
   const loadUsers = async () => {
     try {
       const res = await fetch("/api/admin/users");
-      const data = await res.json();
-      if (data.success) {
-        setUsers(data.users);
-      }
+      const textData = await res.text();
+      try {
+        const data = JSON.parse(textData);
+        if (data.success) setUsers(data.users);
+      } catch { console.error("Admin users parse error"); }
     } catch (e) {
       console.error(e);
     } finally {
@@ -202,9 +224,103 @@ export default function AdminPanelPage() {
     }
   };
 
+  const loadRecentImages = async () => {
+    try {
+      const res = await fetch("/api/admin/recent-images");
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (data.success) setRecentImages(data.images || []);
+      } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  };
+
+  const loadAdmins = async () => {
+    try {
+      const res = await fetch("/api/admin/admins");
+      const data = await res.json();
+      if (data.success) setAdminList(data.admins || []);
+    } catch { /* ignore */ }
+  };
+
+  const addAdmin = async () => {
+    if (!newAdminEmail.trim()) return;
+    setAddingAdmin(true);
+    try {
+      const res = await fetch("/api/admin/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newAdminEmail: newAdminEmail.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNewAdminEmail("");
+        loadAdmins();
+      } else {
+        alert(data.error || "Error agregando admin");
+      }
+    } catch { alert("Error de conexión"); }
+    finally { setAddingAdmin(false); }
+  };
+
+  const removeAdmin = async (email: string) => {
+    if (!confirm(`¿Remover a ${email} como administrador?`)) return;
+    try {
+      const res = await fetch("/api/admin/admins", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetEmail: email }),
+      });
+      if (res.ok) loadAdmins();
+      else { const d = await res.json(); alert(d.error); }
+    } catch { alert("Error de conexión"); }
+  };
+
+  const restartServer = async () => {
+    if (!confirm("¿Reiniciar el servidor? Esto hará un redeploy en Vercel. El sitio estará disponible en ~60 segundos.")) return;
+    setRestarting(true);
+    try {
+      const res = await fetch("/api/admin/restart", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ " + data.message);
+      } else {
+        alert("❌ " + (data.error || "Error reiniciando"));
+      }
+    } catch { alert("Error de conexión"); }
+    finally { setRestarting(false); }
+  };
+
+  // VIP countdown timer
+  useEffect(() => {
+    const updateTimers = () => {
+      const now = Date.now();
+      const timers: Record<string, string> = {};
+      users.forEach(u => {
+        if (u.plan === 'VIP' && u.vipExpiresAt) {
+          const diff = u.vipExpiresAt - now;
+          if (diff <= 0) {
+            timers[u.id] = "VENCIDO";
+          } else {
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            timers[u.id] = `${d}d ${h}h ${m}m ${s}s`;
+          }
+        }
+      });
+      setVipTimers(timers);
+    };
+    updateTimers();
+    vipIntervalRef.current = setInterval(updateTimers, 1000);
+    return () => { if (vipIntervalRef.current) clearInterval(vipIntervalRef.current); };
+  }, [users]);
+
   useEffect(() => {
     if (isAdmin) {
       loadUsers();
+      loadRecentImages();
     }
   }, [isAdmin]);
 
@@ -432,46 +548,53 @@ export default function AdminPanelPage() {
 
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
-    const matchesPlan = planFilter === "ALL" ? true : u.plan === planFilter;
-    return matchesSearch && matchesPlan;
+    if (planFilter === "ALL") return matchesSearch;
+    if (planFilter === "VIP") return matchesSearch && u.plan === "VIP" && u.vipExpiresAt && u.vipExpiresAt > Date.now();
+    if (planFilter === "FREE") return matchesSearch && u.plan === "FREE";
+    if (planFilter === "VENCIDO") return matchesSearch && u.plan === "VIP" && u.vipExpiresAt && u.vipExpiresAt <= Date.now();
+    return matchesSearch;
   });
 
-  if (!isAdmin) return null;
+  if (!adminChecked || !isAdmin) return null;
 
   const totalAgents = users.length;
   const totalVips = users.filter(u => u.plan === 'VIP').length;
 
   return (
-    <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-8">
+    <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-6">
       {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#141414] border border-white/[0.06] p-6 sm:p-8 rounded-lg text-white">
-         <div className="z-10 relative">
-           <h1 className="text-xl font-semibold tracking-tight flex items-center gap-3">
-             <ShieldCheck className="w-6 h-6 text-[#FFDE00]" />
-             Panel de Administración
-           </h1>
-           <p className="text-white/30 mt-1 text-sm max-w-md">Supervisa y controla los balances económicos y rangos de los agentes en tiempo real.</p>
-           
-           <button 
-             onClick={() => router.push('/dashboard/admin/codigos')}
-             className="mt-6 bg-[#FFDE00] text-black font-semibold px-4 py-2 rounded-lg hover:brightness-110 transition-all flex items-center gap-2 text-sm max-w-max"
-           >
-             <Ticket className="w-4 h-4" />
-             Generar Códigos Promo
-           </button>
+      <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg text-white">
+         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+           <div>
+             <h1 className="text-lg font-semibold tracking-tight flex items-center gap-2.5"><ShieldCheck className="w-5 h-5 text-[#FFDE00]" /> Panel Admin</h1>
+             <p className="text-white/30 mt-1 text-xs">Control de agentes y despliegue.</p>
+           </div>
+           <div className="flex items-center gap-2">
+              <div className="bg-[#0A0A0A] border border-white/[0.06] px-3 py-2 rounded-lg text-center"><div className="text-lg font-bold">{totalAgents}</div><div className="text-[8px] text-white/30 uppercase tracking-widest font-medium">Agentes</div></div>
+              <div className="bg-[#0A0A0A] border border-white/[0.06] px-3 py-2 rounded-lg text-center"><div className="text-lg font-bold text-[#FFDE00]">{totalVips}</div><div className="text-[8px] text-[#FFDE00]/30 uppercase tracking-widest font-medium">VIPs</div></div>
+              <div className="bg-[#0A0A0A] border border-white/[0.06] px-3 py-2 rounded-lg text-center"><div className="text-lg font-bold text-red-400">{users.filter(u => u.plan === 'VIP' && u.vipExpiresAt && u.vipExpiresAt <= Date.now()).length}</div><div className="text-[8px] text-red-400/30 uppercase tracking-widest font-medium">Vencidos</div></div>
+           </div>
          </div>
+         <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-white/[0.06]">
+            <button onClick={() => router.push('/dashboard/admin/codigos')} className="bg-[#FFDE00]/10 text-[#FFDE00] font-semibold px-3 py-2 rounded-lg hover:bg-[#FFDE00]/20 transition-all flex items-center gap-1.5 text-xs border border-[#FFDE00]/20"><Ticket className="w-3.5 h-3.5" /> Promos</button>
+            <button onClick={() => { setShowAdminModal(true); loadAdmins(); }} className="bg-blue-500/10 text-blue-400 font-semibold px-3 py-2 rounded-lg hover:bg-blue-500/20 transition-all flex items-center gap-1.5 text-xs border border-blue-500/20"><UserPlus className="w-3.5 h-3.5" /> Admins</button>
+            <button onClick={restartServer} disabled={restarting} className="bg-red-500/10 text-red-400 font-semibold px-3 py-2 rounded-lg hover:bg-red-500/20 transition-all flex items-center gap-1.5 text-xs border border-red-500/20 disabled:opacity-50">{restarting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} {restarting ? "Reiniciando..." : "Reiniciar"}</button>
+         </div>
+      </div>
 
-         {/* Stats Rápidas */}
-         <div className="flex items-center gap-4 z-10 relative">
-            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[120px]">
-               <div className="text-2xl font-bold">{totalAgents}</div>
-               <div className="text-[10px] text-white/30 uppercase tracking-widest font-medium mt-1">Agentes</div>
-            </div>
-            <div className="bg-[#0A0A0A] border border-white/[0.06] p-4 rounded-lg text-center min-w-[120px]">
-               <div className="text-2xl font-bold text-[#FFDE00]">{totalVips}</div>
-               <div className="text-[10px] text-[#FFDE00]/30 uppercase tracking-widest font-medium mt-1">VIPs</div>
-            </div>
-         </div>
+      {recentImages.length > 0 && (
+        <div className="bg-[#141414] border border-white/[0.06] p-4 rounded-lg">
+          <h2 className="text-xs font-semibold text-white/50 uppercase tracking-widest mb-3 flex items-center gap-2"><ImageIcon className="w-3.5 h-3.5" /> Actividad Reciente</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+            {recentImages.map(img => (
+              <div key={img.id} className="shrink-0 w-28 group cursor-pointer" onClick={() => setLightboxAdminUrl(img.image_url)}>
+                <div className="w-28 h-28 rounded-lg overflow-hidden border border-white/[0.06] bg-[#0A0A0A]"><img src={img.image_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" /></div>
+                <div className="flex items-center gap-1.5 mt-1.5"><img src={img.author_avatar_url || 'https://ui-avatars.com/api/?name=U'} alt="" className="w-4 h-4 rounded-full" /><span className="text-[9px] text-white/40 truncate">{img.author_name}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
 
       {/* Campaña de Estados Masiva */}
@@ -713,13 +836,11 @@ export default function AdminPanelPage() {
       <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg relative mt-6">
         <h2 className="text-lg font-semibold text-white/90 mb-1 flex items-center gap-2">
           <Upload className="w-5 h-5 text-emerald-400" />
-          Logos de Plataformas (Globales)
+          Logos Globales
         </h2>
-        <p className="text-white/30 text-sm mb-6 max-w-2xl">
-          Sube aquí los logos base sin fondo (.PNG) de altísima calidad. Estos logotipos serán inyectados mágicamente en el cerebro de la IA para cualquier agente que utilice estas plataformas. Al subirlos, sobrescribirán a los anteriores inmediatamente.
-        </p>
+        
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="flex flex-wrap gap-3">
           {[
             { id: "ecuabet", name: "Ecuabet", color: "text-[#FFDE00]" },
             { id: "doradobet", name: "DoradoBet", color: "text-[#F5A623]" },
@@ -727,8 +848,8 @@ export default function AdminPanelPage() {
             { id: "databet", name: "DataBet", color: "text-[#1d4ed8]" },
             { id: "astrobet", name: "AstroBet", color: "text-[#4A8FE7]" },
           ].map((plat) => (
-            <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-4 rounded-xl flex flex-col items-center text-center gap-3 group relative">
-              <span className={`font-bold ${plat.color} text-sm z-10`}>{plat.name}</span>
+            <div key={plat.id} className="bg-[#0A0A0A] border border-white/[0.08] p-2 rounded-lg flex items-center gap-3 group">
+              <span className={`font-bold ${plat.color} text-xs`}>{plat.name}</span>
               
               <div className="relative w-full aspect-square bg-[#141414] border border-white/5 rounded-lg overflow-hidden flex items-center justify-center p-4">
                 <img 
@@ -770,13 +891,13 @@ export default function AdminPanelPage() {
         <div className="flex flex-col sm:flex-row items-center gap-2 w-full xl:w-auto">
           {/* Selector de Plan */}
           <div className="flex bg-[#141414] border border-white/[0.06] p-1 rounded-lg w-full sm:w-auto overflow-x-auto min-w-max">
-            {['ALL', 'VIP', 'FREE'].map((plan) => (
+            {['ALL', 'VIP', 'FREE', 'VENCIDO'].map((plan) => (
               <button
                 key={plan}
                 onClick={() => setPlanFilter(plan)}
                 className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
                   planFilter === plan 
-                    ? plan === 'VIP' ? 'bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.3)]' : 'bg-white/20 text-white'
+                    ? plan === 'VIP' ? 'bg-[#FFDE00] text-black shadow-[0_0_10px_rgba(255,222,0,0.3)]' : plan === 'VENCIDO' ? 'bg-red-500/20 text-red-400' : 'bg-white/20 text-white'
                     : 'text-white/40 hover:text-white/80'
                 }`}
               >
@@ -887,7 +1008,16 @@ export default function AdminPanelPage() {
                     </div>
                   </div>
 
-                  {/* Economía de Créditos */}
+                  {/* VIP Countdown */}
+                   {u.plan === 'VIP' && u.vipExpiresAt && (
+                     <div className={`flex items-center gap-3 p-3 rounded-xl border ${vipTimers[u.id] === 'VENCIDO' ? 'bg-red-500/10 border-red-500/20' : 'bg-[#FFDE00]/5 border-[#FFDE00]/10'}`}>
+                       <Clock className={`w-4 h-4 ${vipTimers[u.id] === 'VENCIDO' ? 'text-red-400' : 'text-[#FFDE00]'}`} />
+                       <span className={`text-xs font-mono font-bold ${vipTimers[u.id] === 'VENCIDO' ? 'text-red-400' : 'text-[#FFDE00]'}`}>{vipTimers[u.id] || '...'}</span>
+                       <span className="text-[10px] text-white/30">restantes VIP</span>
+                     </div>
+                   )}
+
+                   {/* Economía de Créditos */}
                   <div className="bg-[#141414] border border-white/[0.06] rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <div>
                       <div className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-2">Billetera de Créditos</div>
@@ -902,32 +1032,10 @@ export default function AdminPanelPage() {
                     </div>
 
                     <div className="flex items-center gap-2 bg-[#0A0A0A] p-2 rounded-xl border border-white/[0.06]">
-                       <button 
-                         onClick={() => modifyCredits(u.id, u.credits, -1000)}
-                         disabled={processingId === u.id || (u.credits !== undefined && u.credits <= 0)}
-                         className="w-10 h-10 rounded-lg bg-white/[0.04] text-white/50 flex items-center justify-center hover:bg-red-500/20 hover:text-red-400 transition-colors disabled:opacity-50"
-                         title="Restar 1,000"
-                       >
-                         <Minus className="w-5 h-5" />
-                       </button>
-                       <button 
-                         onClick={() => modifyCredits(u.id, u.credits, 1000)}
-                         disabled={processingId === u.id}
-                         className="w-10 h-10 rounded-lg bg-white/[0.04] text-white/50 flex items-center justify-center hover:bg-emerald-500/20 hover:text-emerald-400 transition-colors disabled:opacity-50"
-                         title="Añadir 1,000"
-                       >
-                         <Plus className="w-5 h-5" />
-                       </button>
-                       <div className="w-px h-6 bg-white/[0.06] mx-2"></div>
-                       <button 
-                         onClick={() => modifyCredits(u.id, u.credits, 10000)}
-                         disabled={processingId === u.id}
-                         className="px-4 h-10 rounded-lg text-[11px] font-black bg-[#FFDE00]/10 text-[#FFDE00] border border-[#FFDE00]/20 hover:bg-[#FFDE00] hover:text-black transition-all disabled:opacity-50"
-                         title="Inyectar Paquete Master"
-                       >
-                         MASTER +10K
-                       </button>
-                    </div>
+                        <input type="number" min="1" placeholder="Cant." value={creditAmounts[u.id] || ''} onChange={e => setCreditAmounts(prev => ({ ...prev, [u.id]: e.target.value }))} className="w-24 h-10 bg-white/[0.04] text-white text-center text-sm font-bold rounded-lg border border-white/[0.06] focus:outline-none focus:border-[#FFDE00]/30 placeholder-white/20" />
+                        <button onClick={() => { const amt = parseInt(creditAmounts[u.id] || '0'); if (amt > 0) modifyCredits(u.id, u.credits, -amt); }} disabled={processingId === u.id || !creditAmounts[u.id]} className="h-10 px-3 rounded-lg bg-red-500/10 text-red-400 flex items-center gap-1 hover:bg-red-500/20 transition-colors disabled:opacity-50 text-[10px] font-bold border border-red-500/20"><Minus className="w-3.5 h-3.5" /> Restar</button>
+                        <button onClick={() => { const amt = parseInt(creditAmounts[u.id] || '0'); if (amt > 0) modifyCredits(u.id, u.credits, amt); }} disabled={processingId === u.id || !creditAmounts[u.id]} className="h-10 px-3 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center gap-1 hover:bg-emerald-500/20 transition-colors disabled:opacity-50 text-[10px] font-bold border border-emerald-500/20"><Plus className="w-3.5 h-3.5" /> Sumar</button>
+                     </div>
                   </div>
 
                   {/* Módulos Extra (WhatsApp & Social) */}
@@ -1221,6 +1329,29 @@ export default function AdminPanelPage() {
            </div>
         </div>
       )}
+      {/* MODAL ADMINISTRADORES */}
+      {showAdminModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+           <div className="bg-[#111111] border border-white/10 p-6 rounded-2xl shadow-2xl max-w-md w-full relative">
+              <button onClick={() => setShowAdminModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5 text-blue-400" /> Administradores</h3>
+              <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                {adminList.map(a => (
+                  <div key={a.id} className="flex items-center justify-between bg-[#0A0A0A] border border-white/[0.06] p-3 rounded-lg">
+                    <span className="text-sm text-white font-medium">{a.email}</span>
+                    <button onClick={() => removeAdmin(a.email)} className="text-red-400/50 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input type="email" placeholder="email@nuevo-admin.com" value={newAdminEmail} onChange={e => setNewAdminEmail(e.target.value)} className="flex-1 bg-[#0A0A0A] text-white text-sm border border-white/[0.06] rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500/30" />
+                <button onClick={addAdmin} disabled={addingAdmin} className="bg-blue-500 hover:bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1">{addingAdmin ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Agregar</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+
 
     </div>
   );

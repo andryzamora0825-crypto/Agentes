@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 
+async function isAdmin(email: string): Promise<boolean> {
+  const { data } = await supabase.from("admins").select("email").eq("email", email).single();
+  return !!data;
+}
+
 export async function GET() {
   try {
     const user = await currentUser();
-    // Protección absoluta: Solo Admin
-    if (!user || user.primaryEmailAddress?.emailAddress !== "andryzamora0825@gmail.com") {
+    const email = user?.primaryEmailAddress?.emailAddress;
+    if (!email || !(await isAdmin(email))) {
       return NextResponse.json({ error: "No autorizado. Solo administrador." }, { status: 403 });
     }
 
