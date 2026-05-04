@@ -112,6 +112,7 @@ export default function EstudioIAPage() {
   const formatMenuRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const compressionPromiseRef = useRef<Promise<void> | null>(null);
 
   const totalCost = 150;
 
@@ -174,8 +175,13 @@ export default function EstudioIAPage() {
   const handleRefImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const rawFiles = Array.from(e.target.files);
-      const compressedFiles = await Promise.all(rawFiles.map(f => compressImage(f)));
-      setRefImages(prev => [...prev, ...compressedFiles].slice(0, 3));
+      const task = (async () => {
+        const compressedFiles = await Promise.all(rawFiles.map(f => compressImage(f)));
+        setRefImages(prev => [...prev, ...compressedFiles].slice(0, 3));
+      })();
+      compressionPromiseRef.current = task;
+      await task;
+      compressionPromiseRef.current = null;
     }
     if (refInputRef.current) refInputRef.current.value = "";
   };
@@ -192,8 +198,13 @@ export default function EstudioIAPage() {
         e.preventDefault();
         const file = item.getAsFile();
         if (file) {
-          const compressed = await compressImage(file);
-          setRefImages(prev => [...prev, compressed].slice(0, 3));
+          const task = (async () => {
+            const compressed = await compressImage(file);
+            setRefImages(prev => [...prev, compressed].slice(0, 3));
+          })();
+          compressionPromiseRef.current = task;
+          await task;
+          compressionPromiseRef.current = null;
         }
         break;
       }
@@ -316,6 +327,15 @@ export default function EstudioIAPage() {
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
+
+    // Esperar a que terminen de comprimir las imágenes de referencia (si las hay pendientes)
+    if (compressionPromiseRef.current) {
+      try {
+        await compressionPromiseRef.current;
+      } catch {
+        // Si la compresión falla, continuamos sin refs — no son obligatorias
+      }
+    }
 
     setGenerating(true);
     setErrorMsg(null);
