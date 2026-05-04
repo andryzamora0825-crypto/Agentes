@@ -264,8 +264,8 @@ export default function EstudioIAPage() {
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
-    // El servidor corta a ~75s; damos 5s extra al cliente para que llegue la respuesta de error/refund.
-    const clientTimeout = setTimeout(() => abortController.abort(), 80_000);
+    // El servidor corta a ~80s (Pro puede tardar 50-65s legítimamente); damos margen al cliente para recibir respuesta o refund.
+    const clientTimeout = setTimeout(() => abortController.abort(), 95_000);
 
     // Mostrar botón de cancelar después de 15 segundos
     cancelTimerRef.current = setTimeout(() => {
