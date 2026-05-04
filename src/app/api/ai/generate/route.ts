@@ -109,15 +109,21 @@ export async function POST(request: Request) {
           const file = formData.get(`ref_${i}`) as File | null;
           if (!file || typeof (file as any).arrayBuffer !== "function") return null;
           if (file.size === 0) return null;
-          // Hard cap: 8 MB por imagen para evitar uploads gigantes que tumban Gemini
-          if (file.size > 8 * 1024 * 1024) {
+          // Hard cap: 6 MB por imagen — Pro rechaza payloads grandes con 500 INTERNAL
+          if (file.size > 6 * 1024 * 1024) {
             console.warn(`[REF USER] ref_${i} demasiado grande (${file.size} bytes), descartada`);
             return null;
           }
           try {
             const arrayBuffer = await file.arrayBuffer();
             const base64 = Buffer.from(arrayBuffer).toString("base64");
-            const mimeType = file.type && file.type.startsWith("image/") ? file.type : "image/png";
+            // Normalizar mimeType: Gemini Pro solo acepta image/jpeg, image/png, image/webp.
+            // Cualquier variante ("image/jpg", "image/heic", undefined) la mapeamos a una soportada.
+            let mimeType = (file.type || "").toLowerCase();
+            if (mimeType === "image/jpg") mimeType = "image/jpeg";
+            if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+              mimeType = "image/png";
+            }
             return {
               base64,
               mimeType,
@@ -261,14 +267,26 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           const res = await fetchWithTimeout(item.url, REF_FETCH_TIMEOUT_MS);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
-            const mimeType = res.headers.get('content-type') || "image/png";
-            if (mimeType.includes("image")) {
-              return {
-                base64: Buffer.from(arrayBuffer).toString("base64"),
-                mimeType,
-                label: item.label
-              };
+            let mimeType = (res.headers.get('content-type') || "image/png").toLowerCase().split(";")[0].trim();
+            if (mimeType === "image/jpg") mimeType = "image/jpeg";
+            if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+              // Si el content-type es genérico (octet-stream) o raro, asumimos PNG y dejamos que Gemini lo intente.
+              if (!mimeType.startsWith("image/")) {
+                console.warn(`[REF] mime sospechoso para ${item.label}: ${mimeType} — descartando`);
+                return null;
+              }
+              mimeType = "image/png";
             }
+            // Cap de 6 MB por logo remoto también
+            if (arrayBuffer.byteLength > 6 * 1024 * 1024) {
+              console.warn(`[REF] ${item.label} pesa ${arrayBuffer.byteLength}B — descartando para no romper Pro`);
+              return null;
+            }
+            return {
+              base64: Buffer.from(arrayBuffer).toString("base64"),
+              mimeType,
+              label: item.label
+            };
           }
         } catch (e) {
           console.warn(`[REF] Timeout/error trayendo ${item.label} (ignorando):`, (e as Error).message);
@@ -288,11 +306,20 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           const res = await fetchWithTimeout(aiSettings.characterImageUrl, REF_FETCH_TIMEOUT_MS);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
-            referenceImages.push({
-              base64: Buffer.from(arrayBuffer).toString("base64"),
-              mimeType: res.headers.get('content-type') || "image/png",
-              label: "Foto del Representante/Personaje de la Agencia"
-            });
+            let mimeType = (res.headers.get('content-type') || "image/png").toLowerCase().split(";")[0].trim();
+            if (mimeType === "image/jpg") mimeType = "image/jpeg";
+            if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+              mimeType = "image/png";
+            }
+            if (arrayBuffer.byteLength <= 6 * 1024 * 1024) {
+              referenceImages.push({
+                base64: Buffer.from(arrayBuffer).toString("base64"),
+                mimeType,
+                label: "Foto del Representante/Personaje de la Agencia"
+              });
+            } else {
+              console.warn(`[REF] personaje pesa ${arrayBuffer.byteLength}B — descartado`);
+            }
           }
         } catch (e) {
           console.warn("[REF] Timeout/error trayendo personaje (ignorando):", (e as Error).message);
@@ -374,6 +401,23 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       const response: any = await generateWithTimeoutAndRetry(model, contents);
 
+      // Diagnóstico: detectar bloqueos por safety / promptFeedback ANTES de buscar la imagen
+      const promptFeedback = response?.promptFeedback || response?.response?.promptFeedback;
+      if (promptFeedback?.blockReason) {
+        console.warn("[GEMINI] prompt bloqueado:", promptFeedback);
+        throw new Error(`El prompt fue bloqueado por las políticas del modelo (${promptFeedback.blockReason}). Reformula el contenido.`);
+      }
+      const finishReason = response?.candidates?.[0]?.finishReason;
+      if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
+        console.warn("[GEMINI] finishReason no exitoso:", finishReason, response?.candidates?.[0]?.safetyRatings);
+        if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
+          throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt y reintenta.`);
+        }
+        if (finishReason === "RECITATION") {
+          throw new Error("El modelo detectó contenido recitado. Cambia el prompt.");
+        }
+      }
+
       let imageBase64: string | null = null;
       let imageMimeType = "image/png";
 
@@ -390,7 +434,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           ?.filter((p: any) => p.text)
           ?.map((p: any) => p.text)
           ?.join(" ") || "";
-        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 200));
+        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300), "finishReason:", finishReason);
         throw new Error("Nano Banana no devolvió una imagen. El modelo respondió con texto. Intenta reformular el prompt.");
       }
 
@@ -443,8 +487,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
 
       const msg = String(apiError?.message || "");
+      const status = apiError?.status || apiError?.statusCode || apiError?.code;
       const isTimeout = apiError?.name === "AbortError" || msg === "GEMINI_TIMEOUT" || msg.includes("abort");
       const overloaded = isOverloaded(apiError);
+      const isInvalidArg = status === 400 || msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("invalid_argument");
+      const isInternal = status === 500 || msg.toLowerCase().includes("internal") || msg.toLowerCase().includes("internal_error");
 
       let friendlyMsg: string;
       let httpStatus = 500;
@@ -454,16 +501,33 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       } else if (overloaded) {
         friendlyMsg = "El modelo está saturado (503). Intenta de nuevo en unos segundos. Tus créditos fueron reembolsados.";
         httpStatus = 503;
+      } else if (isInvalidArg) {
+        friendlyMsg = "El modelo rechazó la entrada (formato/imagen no soportado). Verifica que las referencias sean JPG/PNG/WEBP <6MB. Créditos reembolsados.";
+        httpStatus = 400;
+      } else if (isInternal) {
+        friendlyMsg = `Pro devolvió 500 INTERNAL. Suele pasar con prompts muy largos o referencias pesadas. Intenta con menos referencias o prompt más corto. Créditos reembolsados. (${msg.slice(0, 120)})`;
+        httpStatus = 500;
       } else {
         friendlyMsg = msg || "Nano Banana falló. Tus créditos han sido reembolsados.";
       }
 
-      console.error("[GEMINI ERROR]", { msg, isTimeout, overloaded });
+      console.error("[GEMINI ERROR]", {
+        msg,
+        status,
+        isTimeout,
+        overloaded,
+        isInvalidArg,
+        isInternal,
+        name: apiError?.name,
+        stack: apiError?.stack?.split("\n").slice(0, 4).join(" | "),
+      });
       return NextResponse.json({ error: friendlyMsg, refunded: true }, { status: httpStatus });
     }
 
   } catch (error: any) {
-    console.error("Error crítico en ruta AI:", error);
-    return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
+    console.error("Error crítico en ruta AI:", error?.message, error?.stack);
+    return NextResponse.json({
+      error: `Error interno: ${error?.message || "desconocido"}`,
+    }, { status: 500 });
   }
 }

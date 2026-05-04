@@ -117,7 +117,14 @@ export async function POST(request: Request) {
       if (!imgRes.ok) throw new Error("No se pudo descargar la imagen original");
 
       const arrayBuffer = await imgRes.arrayBuffer();
-      const mimeType = imgRes.headers.get("content-type") || "image/png";
+      let mimeType = (imgRes.headers.get("content-type") || "image/png").toLowerCase().split(";")[0].trim();
+      if (mimeType === "image/jpg") mimeType = "image/jpeg";
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        mimeType = "image/png";
+      }
+      if (arrayBuffer.byteLength > 6 * 1024 * 1024) {
+        throw new Error("La imagen original supera 6MB. Pro la rechaza. Usa una versión más liviana.");
+      }
       const imageBase64 = Buffer.from(arrayBuffer).toString("base64");
 
       const finalPrompt = `[INSTRUCCIÓN DE EDICIÓN DE IMAGEN]: Estás recibiendo una imagen ya existente. Tu tarea es editarla siguiendo EXACTAMENTE las instrucciones del usuario. NO generes una imagen nueva desde cero. MODIFICA la imagen proporcionada aplicando únicamente los cambios solicitados. Mantén TODO lo demás igual (composición, personas, fondos, logos, texto, etc.).
@@ -145,6 +152,18 @@ REGLAS ESTRICTAS:
       ];
 
       const response: any = await generateWithTimeoutAndRetry(contents);
+
+      const promptFeedback = response?.promptFeedback || response?.response?.promptFeedback;
+      if (promptFeedback?.blockReason) {
+        console.warn("[GEMINI EDIT] prompt bloqueado:", promptFeedback);
+        throw new Error(`El prompt fue bloqueado por las políticas del modelo (${promptFeedback.blockReason}). Reformula la edición.`);
+      }
+      const finishReason = response?.candidates?.[0]?.finishReason;
+      if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
+        if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
+          throw new Error(`Edición rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt.`);
+        }
+      }
 
       let editedBase64: string | null = null;
       let editedMimeType = "image/png";
@@ -212,8 +231,11 @@ REGLAS ESTRICTAS:
       }
 
       const msg = String(apiError?.message || "");
+      const status = apiError?.status || apiError?.statusCode || apiError?.code;
       const isTimeout = apiError?.name === "AbortError" || msg === "GEMINI_TIMEOUT" || msg.includes("abort");
       const overloaded = isOverloaded(apiError);
+      const isInvalidArg = status === 400 || msg.toLowerCase().includes("invalid_argument");
+      const isInternal = status === 500 || msg.toLowerCase().includes("internal");
 
       let friendlyMsg: string;
       let httpStatus = 500;
@@ -223,16 +245,24 @@ REGLAS ESTRICTAS:
       } else if (overloaded) {
         friendlyMsg = "El modelo está saturado (503). Intenta de nuevo en unos segundos. Tus créditos fueron reembolsados.";
         httpStatus = 503;
+      } else if (isInvalidArg) {
+        friendlyMsg = "El modelo rechazó la imagen original (formato no soportado o demasiado grande). Créditos reembolsados.";
+        httpStatus = 400;
+      } else if (isInternal) {
+        friendlyMsg = `Pro devolvió 500 INTERNAL en la edición. Suele pasar con imágenes grandes o prompts muy complejos. Intenta con una imagen más liviana o un prompt más corto. Créditos reembolsados.`;
+        httpStatus = 500;
       } else {
         friendlyMsg = msg || "Error en la edición. Tus créditos han sido reembolsados.";
       }
 
-      console.error("[GEMINI EDIT ERROR]", { msg, isTimeout, overloaded });
+      console.error("[GEMINI EDIT ERROR]", { msg, status, isTimeout, overloaded, isInvalidArg, isInternal });
       return NextResponse.json({ error: friendlyMsg, refunded: true }, { status: httpStatus });
     }
 
   } catch (error: any) {
-    console.error("Error crítico en ruta AI edit:", error);
-    return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
+    console.error("Error crítico en ruta AI edit:", error?.message, error?.stack);
+    return NextResponse.json({
+      error: `Error interno: ${error?.message || "desconocido"}`,
+    }, { status: 500 });
   }
 }
