@@ -28,6 +28,50 @@ function FormatIcon({ icon, className = "w-3.5 h-3.5" }: { icon: string; classNa
   }
 }
 
+const compressImage = async (file: File): Promise<File> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_SIZE = 1200;
+        
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg', lastModified: Date.now() }));
+          } else {
+            resolve(file);
+          }
+        }, 'image/jpeg', 0.8);
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
 export default function EstudioIAPage() {
   const { user, isLoaded } = useUser();
   const [prompt, setPrompt] = useState("");
@@ -127,10 +171,11 @@ export default function EstudioIAPage() {
     }
   }, [user, isLoaded]);
 
-  const handleRefImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRefImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setRefImages(prev => [...prev, ...newFiles].slice(0, 3));
+      const rawFiles = Array.from(e.target.files);
+      const compressedFiles = await Promise.all(rawFiles.map(f => compressImage(f)));
+      setRefImages(prev => [...prev, ...compressedFiles].slice(0, 3));
     }
     if (refInputRef.current) refInputRef.current.value = "";
   };
@@ -139,14 +184,17 @@ export default function EstudioIAPage() {
     setRefImages(prev => prev.filter((_, idx) => idx !== i));
   };
 
-  const handlePaste = useCallback((e: ClipboardEvent) => {
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
     for (const item of Array.from(items)) {
       if (item.type.startsWith('image/')) {
         e.preventDefault();
         const file = item.getAsFile();
-        if (file) setRefImages(prev => [...prev, file].slice(0, 3));
+        if (file) {
+          const compressed = await compressImage(file);
+          setRefImages(prev => [...prev, compressed].slice(0, 3));
+        }
         break;
       }
     }
