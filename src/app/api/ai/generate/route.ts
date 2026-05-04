@@ -3,24 +3,80 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
 
-export const maxDuration = 120; // 2 min máximo — si no responde en 90s, es un error real
+export const maxDuration = 90;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-// Nano Banana 2 — capa gratuita + de pago, texto a imagen
 const NANO_BANANA_2   = "gemini-3.1-flash-image-preview";
-// Nano Banana Pro — requiere billing, alta fidelidad + imágenes de referencia
 const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
 
-// Helper: fetch con timeout para evitar cuelgues en imágenes de referencia
-async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+const GEMINI_HARD_TIMEOUT_MS = 75_000;
+const REF_FETCH_TIMEOUT_MS = 6_000;
+
+async function fetchWithTimeout(url: string, timeoutMs = REF_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: controller.signal });
-    return res;
+    return await fetch(url, { signal: controller.signal });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function refundCredits(client: any, userId: string, amount: number) {
+  // Re-leer balance ACTUAL antes de reembolsar para evitar pisar otra operación concurrente
+  try {
+    const fresh = await client.users.getUser(userId);
+    const current = Number(fresh.publicMetadata?.credits || 0);
+    await client.users.updateUserMetadata(userId, {
+      publicMetadata: { ...fresh.publicMetadata, credits: current + amount },
+    });
+    return current + amount;
+  } catch (e) {
+    console.error("[CREDITS] Reembolso falló — registrando para reconciliación manual:", { userId, amount, error: (e as Error).message });
+    return null;
+  }
+}
+
+function isOverloaded(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const status = err?.status || err?.statusCode || err?.code;
+  return (
+    status === 503 ||
+    status === 429 ||
+    msg.includes("503") ||
+    msg.includes("overloaded") ||
+    msg.includes("unavailable") ||
+    msg.includes("rate limit") ||
+    msg.includes("resource_exhausted")
+  );
+}
+
+async function generateWithTimeoutAndRetry(model: string, contents: any[]): Promise<any> {
+  const callOnce = () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), GEMINI_HARD_TIMEOUT_MS);
+    });
+    const apiPromise = ai.models.generateContent({
+      model,
+      contents,
+      config: { responseModalities: ["TEXT", "IMAGE"] },
+    });
+    return Promise.race([apiPromise, timeoutPromise]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+
+  try {
+    return await callOnce();
+  } catch (err: any) {
+    if (isOverloaded(err)) {
+      console.warn("[GEMINI] 503/overloaded — reintentando una vez tras 1.5s");
+      await new Promise(r => setTimeout(r, 1500));
+      return await callOnce();
+    }
+    throw err;
   }
 }
 
@@ -29,7 +85,6 @@ export async function POST(request: Request) {
     const user = await currentUser();
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    // Aceptar FormData (con imágenes de referencia opcionales) o JSON simple
     const contentType = request.headers.get("content-type") || "";
     let prompt = "";
     let useAgencyIdentity = false;
@@ -37,23 +92,48 @@ export async function POST(request: Request) {
     let targetPlatform = "";
     let forceModel = "";
     let referenceImages: { base64: string; mimeType: string; label?: string }[] = [];
+    let userRefCount = 0; // imágenes subidas por el usuario (no logos, no personaje)
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       prompt = formData.get("prompt") as string;
       useAgencyIdentity = formData.get("useAgencyIdentity") === "true";
       useAgencyCharacter = formData.get("useAgencyCharacter") === "true";
-      
       targetPlatform = (formData.get("targetPlatform") as string) || (formData.get("targetPlatforms") as string) || "";
       forceModel = (formData.get("forceModel") as string) || "";
 
-      // Hasta 3 imágenes de referencia directas desde el formulario
-      for (let i = 0; i < 3; i++) {
-        const file = formData.get(`ref_${i}`) as File | null;
-        if (file) {
-          const arrayBuffer = await file.arrayBuffer();
-          const base64 = Buffer.from(arrayBuffer).toString("base64");
-          referenceImages.push({ base64, mimeType: file.type || "image/png", label: "Imagen de Referencia enviada por el usuario" });
+      // Cargar las 3 refs en paralelo y etiquetarlas con índice + nombre del archivo
+      const slots = [0, 1, 2];
+      const refResults = await Promise.all(
+        slots.map(async (i) => {
+          const file = formData.get(`ref_${i}`) as File | null;
+          if (!file || typeof (file as any).arrayBuffer !== "function") return null;
+          if (file.size === 0) return null;
+          // Hard cap: 8 MB por imagen para evitar uploads gigantes que tumban Gemini
+          if (file.size > 8 * 1024 * 1024) {
+            console.warn(`[REF USER] ref_${i} demasiado grande (${file.size} bytes), descartada`);
+            return null;
+          }
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString("base64");
+            const mimeType = file.type && file.type.startsWith("image/") ? file.type : "image/png";
+            return {
+              base64,
+              mimeType,
+              label: `Imagen de Referencia #${i + 1} subida por el usuario${file.name ? ` (archivo: ${file.name})` : ""}`,
+              index: i,
+            };
+          } catch (e) {
+            console.error(`[REF USER] error leyendo ref_${i}:`, (e as Error).message);
+            return null;
+          }
+        })
+      );
+      for (const r of refResults) {
+        if (r) {
+          referenceImages.push({ base64: r.base64, mimeType: r.mimeType, label: r.label });
+          userRefCount += 1;
         }
       }
     } else {
@@ -69,46 +149,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta el prompt" }, { status: 400 });
     }
 
-
-    // Usamos el prompt base
     let finalPrompt = prompt;
+
+    if (userRefCount > 0) {
+      finalPrompt += `\n\n[IMÁGENES DE REFERENCIA DEL USUARIO — USO OBLIGATORIO]:
+El usuario adjuntó ${userRefCount} ${userRefCount === 1 ? 'imagen' : 'imágenes'} de referencia (etiquetadas más abajo como "Imagen de Referencia #1", "#2", etc.). Estas imágenes NO son decorativas: son CRÍTICAS y deben influir directamente en la imagen final.
+Reglas:
+1. Si las referencias muestran personas, productos u objetos concretos, INCLÚYELOS en la imagen final preservando su apariencia distintiva (rostro, marca, forma, colores, vestuario).
+2. Si la referencia es un estilo visual o paleta, aplícalo a la composición.
+3. Combina coherentemente todas las referencias entre sí y con el prompt textual del usuario.
+4. NO ignores ninguna referencia. Si una referencia es ambigua, intégrala como contexto/atmósfera.
+5. Mantén la calidad y proporción solicitadas.`;
+    }
 
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
-      
+
       const contactNumber = aiSettings.contactNumber || '';
       const extraContact = aiSettings.extraContact || '';
       const contactString = extraContact ? `${contactNumber} / ${extraContact}` : contactNumber;
 
       const agencyContext = `
-[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]: 
-Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
+[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]:
+Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}".
 A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca.
 
-[CONTACTO — INTEGRACIÓN NATURAL OBLIGATORIA]: 
-DEBES incluir el número de contacto "${contactString}" en la imagen, pero de forma que se sienta NATURAL y PARTE DEL DISEÑO, como si fuera un elemento orgánico de la escena. Ejemplos de integración creativa:
-- En un cartel/pancarta/banner que ya forme parte de la escena (como los sponsors en un estadio)
-- Escrito en una pantalla LED, neón, o marquesina dentro de la composición
-- En la camiseta, uniforme o vestimenta de un personaje si es coherente
-- Como parte de un flyer, volante o tarjeta que un personaje sostiene
-- En un letrero de la calle, valla publicitaria o elemento de fondo
-Lo IMPORTANTE es que el número se vea como parte artística y orgánica de la imagen, con la MISMA calidad estética y estilo visual del resto de la composición. PROHIBIDO crear barras genéricas, cintillos planos, o recuadros feos que rompan la estética. El número debe "vivir" dentro de la imagen, no estar pegado encima.
+[CONTACTO — INTEGRACIÓN NATURAL OBLIGATORIA]:
+DEBES incluir el número de contacto "${contactString}" en la imagen, pero de forma que se sienta NATURAL y PARTE DEL DISEÑO. Ejemplos:
+- En un cartel/pancarta/banner que ya forme parte de la escena.
+- Escrito en una pantalla LED, neón, o marquesina dentro de la composición.
+- En la camiseta, uniforme o vestimenta de un personaje si es coherente.
+- Como parte de un flyer, volante o tarjeta que un personaje sostiene.
+- En un letrero de la calle, valla publicitaria o elemento de fondo.
+
+[REGLAS ESTRICTAS DE LEGIBILIDAD Y NO-SUPERPOSICIÓN — OBLIGATORIO]:
+1. EL TEXTO DEL CONTENIDO PRINCIPAL DE LA IMAGEN (titulares, headlines, eslogan, mensaje del cartel/banner/flyer, copy promocional, frases destacadas, números importantes, fechas, premios, montos, cuotas, llamados a la acción) DEBE SER 100% VISIBLE Y 100% LEGIBLE EN SU TOTALIDAD. CADA LETRA Y CADA PALABRA DEBEN VERSE COMPLETAS, SIN UN SOLO CARÁCTER TAPADO. ESTO ES INNEGOCIABLE.
+2. PROHIBIDO superponer el número, logos o cualquier texto sobre rostros, manos, o el sujeto principal de la imagen.
+3. PROHIBIDO que el texto se cruce, choque, intersecte o quede tapado por OTROS objetos, cuerpos, edificios, brazos, manos, productos o elementos del primer plano. Ningún elemento puede pasar POR DELANTE del texto principal.
+4. El texto y los logos DEBEN ubicarse en zonas LIMPIAS y DESPEJADAS de la composición (cielo, paredes vacías, espacios negativos, esquinas no ocupadas), con suficiente contraste de fondo para que cada letra se distinga sin esfuerzo.
+5. Reserva un margen mínimo de espacio respiratorio alrededor de cualquier texto/logo. Si no hay espacio limpio, REDISEÑA la escena (mueve sujetos, ajusta encuadre, cambia ángulo) para crear un área despejada que aloje el texto completo.
+6. Cualquier texto debe ser 100% legible: enfocado, nítido, sin recortes en bordes, sin salirse del lienzo, sin deformaciones, sin doble exposición, sin motion blur, sin objetos parciales encima, sin sombras que lo oscurezcan, sin gradientes que lo desvanezcan.
+7. Si dos elementos compiten por el mismo espacio, prioriza la VISIBILIDAD TOTAL del texto principal y desplaza al sujeto u objeto a otra zona. NUNCA los apiles ni cortes el texto.
+8. ANTES DE FINALIZAR EL RENDER, autoverifica: ¿se lee el texto principal de un vistazo, completo, sin interrupciones? Si la respuesta no es un SÍ rotundo, recompón la imagen.
 `;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
-      // --- SISTEMA MULTIPLATAFORMA (LOGOS ROBUSTOS ADMINISTRADOS POR ZAMTOOLS) ---
+      // Logos oficiales — sin cache buster: dejamos que el CDN los sirva rápido.
+      // Cuando ZamTools actualice un logo, basta con renombrar el archivo (default_X_v2.png) o purgar el bucket.
       const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
-      const cacheBuster = `?t=${Date.now()}`;
       const OFFICIAL_PLATFORMS: Record<string, string> = {
-        ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png${cacheBuster}`,
-        doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png${cacheBuster}`,
-        masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png${cacheBuster}`,
-        databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png${cacheBuster}`,
-        astrobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_astrobet.png${cacheBuster}`,
+        ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
+        doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png`,
+        masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png`,
+        databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png`,
+        astrobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_astrobet.png`,
       };
 
       const itemsToFetch: { url: string; label: string }[] = [];
-      
+
       if (aiSettings.agencyLogoUrl) {
         itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
       }
@@ -139,44 +237,41 @@ Lo IMPORTANTE es que el número se vea como parte artística y orgánica de la i
         const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings.primaryColor || '#FFDE00';
         const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings.secondaryColor || '#000000';
 
-        finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}. 
-ES OBLIGATORIO usar la siguiente paleta de colores para esta marca: 
+        finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}.
+ES OBLIGATORIO usar la siguiente paleta de colores para esta marca:
 - Color Primario: ${pColor}
 - Color Secundario: ${sColor}
 Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
 ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.
-[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de los logos proporcionados. NO los pongas en blanco y negro, escala de grises o metalizados a menos que el prompt explícitamente lo pida.`;
-        
+[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de los logos proporcionados. NO los pongas en blanco y negro, escala de grises o metalizados a menos que el prompt explícitamente lo pida. EL LOGO NUNCA debe quedar tapado, recortado o superpuesto a un sujeto — colócalo en una zona vacía con margen.`;
+
         if (OFFICIAL_PLATFORMS[platKey]) {
           itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
         }
       } else {
-        // Fallback to agency colors if no platform selected
         finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
 - Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
 - Color Secundario: ${aiSettings.secondaryColor || '#000000'}
 Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.
-[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de cualquier logo proporcionado. NO los pongas en blanco y negro, ni metalizados. El logo debe salir a full color exactamente como en la imagen de referencia.`;
+[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de cualquier logo proporcionado. NO los pongas en blanco y negro, ni metalizados. El logo debe salir a full color exactamente como en la imagen de referencia y NUNCA superpuesto a otro sujeto.`;
       }
 
       const fetchPromises = itemsToFetch.map(async (item) => {
         try {
-          const res = await fetchWithTimeout(item.url, 8000);
+          const res = await fetchWithTimeout(item.url, REF_FETCH_TIMEOUT_MS);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             const mimeType = res.headers.get('content-type') || "image/png";
-            
-            // FILTRO CRITICO: Solo enviar a Gemini si realmente es una imagen (Evitar Error 500 Internal)
             if (mimeType.includes("image")) {
-              return { 
-                base64: Buffer.from(arrayBuffer).toString("base64"), 
+              return {
+                base64: Buffer.from(arrayBuffer).toString("base64"),
                 mimeType,
                 label: item.label
               };
             }
           }
         } catch (e) {
-          console.warn(`⚠️ Timeout/error trayendo imagen ${item.label} (ignorando):`, (e as Error).message);
+          console.warn(`[REF] Timeout/error trayendo ${item.label} (ignorando):`, (e as Error).message);
         }
         return null;
       });
@@ -186,12 +281,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
     }
 
-    // --- INYECCIÓN DE PERSONAJE DE AGENCIA ---
     if (useAgencyCharacter && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
       if (aiSettings.characterImageUrl) {
         try {
-          const res = await fetchWithTimeout(aiSettings.characterImageUrl, 8000);
+          const res = await fetchWithTimeout(aiSettings.characterImageUrl, REF_FETCH_TIMEOUT_MS);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             referenceImages.push({
@@ -201,13 +295,12 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
             });
           }
         } catch (e) {
-          console.warn("⚠️ Timeout/error trayendo imagen de personaje (ignorando):", (e as Error).message);
+          console.warn("[REF] Timeout/error trayendo personaje (ignorando):", (e as Error).message);
         }
         finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada.`;
       }
     }
 
-    // Refuerzo vital del formato y contacto al final del prompt para que el modelo no lo olvide
     if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
       const aiS: any = user.publicMetadata.aiSettings;
       const cn = aiS.contactNumber || '';
@@ -215,15 +308,21 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       const cs = ec ? `${cn} / ${ec}` : cn;
       finalPrompt += `\n\n[INSTRUCCIONES FINALES — LEE ESTO ANTES DE RENDERIZAR]:
 1. ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ.
-2. VERIFICACIÓN DE CONTACTO: Asegúrate de que el número "${cs}" aparezca en la imagen de forma NATURAL, integrado en la escena como un elemento visual orgánico (cartel, pancarta, letrero, pantalla, etc.). NO uses barras genéricas ni cintillos planos — el número debe tener el mismo nivel de calidad artística que el resto de la imagen.`;
+2. VERIFICACIÓN DE CONTACTO: el número "${cs}" debe aparecer en la imagen de forma natural Y COMPLETAMENTE VISIBLE (cada dígito legible, sin caracteres tapados).
+3. VISIBILIDAD DEL TEXTO PRINCIPAL: cualquier texto del contenido principal (titular, mensaje, eslogan, premios, montos, llamados a la acción, fechas) debe verse ENTERO y NÍTIDO. Cero letras cortadas, cero palabras tapadas, cero caracteres detrás de objetos. Si tu boceto mental tiene aunque sea UNA letra obstruida, recompón la escena.
+4. ANTI-SUPERPOSICIÓN: NINGÚN texto, número de contacto o logo puede quedar tapado, atravesado, recortado o detrás de personas, objetos, manos, brazos o elementos del primer plano. Reubica el texto a un espacio limpio antes de renderizar.
+5. AUTO-CHEQUEO FINAL: simula leer la imagen como un usuario. Si no puedes leer cada palabra del texto principal de un solo vistazo, REHAZ la composición.`;
     } else {
-      finalPrompt += `\n\n[INSTRUCCIONES FINALES]: ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ EN SU PROMPT.`;
+      finalPrompt += `\n\n[INSTRUCCIONES FINALES]:
+1. ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA.
+2. EL TEXTO DEL CONTENIDO PRINCIPAL (titulares, mensajes, eslóganes, números, premios, llamados a la acción) DEBE SER 100% VISIBLE Y LEGIBLE: cada letra completa, sin recortes, sin objetos por delante, sin tapado parcial, sin deformación. Reubica sujetos u objetos si es necesario para liberar el espacio del texto.
+3. Antes de renderizar, autoverifica que cada palabra del texto principal se lea entera.`;
     }
 
-    // 1. Verificación Financiera
+    // 1. Verificación financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
     const hasRefImages = referenceImages.length > 0;
-    const cost = 150; // Costo fijo independientemente de los extras
+    const cost = 150;
 
     if (currentCredits < cost) {
       return NextResponse.json({
@@ -233,20 +332,21 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }, { status: 402 });
     }
 
-    // 2. Descontar créditos (prematuramente para evitar abusos)
+    // 2. Descontar créditos preventivamente (preservando el resto del publicMetadata)
     const newBalance = currentCredits - cost;
     const client = await clerkClient();
     await client.users.updateUserMetadata(user.id, {
-      publicMetadata: { credits: newBalance },
+      publicMetadata: { ...user.publicMetadata, credits: newBalance },
     });
 
+    let creditsRefunded = false;
+
     try {
-      // Model selection: user can force a model, otherwise auto-select
-      // forceModel = 'pro' -> always use Pro
-      // forceModel = 'flash' -> always use Flash  
-      // empty/auto -> use Pro when ref images, Flash otherwise
+      // Si el usuario subió refs propias, FORZAMOS Pro: Flash no maneja bien múltiples refs y suele ignorarlas.
       let model: string;
-      if (forceModel === 'pro') {
+      if (userRefCount > 0) {
+        model = NANO_BANANA_PRO;
+      } else if (forceModel === 'pro') {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'flash') {
         model = NANO_BANANA_2;
@@ -254,10 +354,12 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
       }
 
-      const contents: any[] = [{ text: finalPrompt }];
+      // Orden recomendado por Gemini: imágenes primero, prompt textual al final.
+      // Mejora notablemente la incorporación de las refs en el render final.
+      const contents: any[] = [];
       for (const img of referenceImages) {
         if (img.label) {
-           contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
+          contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
         }
         contents.push({
           inlineData: {
@@ -266,27 +368,12 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
           },
         });
       }
+      contents.push({ text: finalPrompt });
 
-      // ═══ FIX CRÍTICO: responseModalities + timeout con AbortController ═══
-      // Sin responseModalities: ["TEXT", "IMAGE"], el SDK NUNCA devuelve imágenes
-      // y se queda colgado hasta que Vercel mata la función (5 min timeout fantasma)
-      const abortController = new AbortController();
-      const geminiTimeout = setTimeout(() => abortController.abort(), 90_000); // 90s máx
+      console.log(`[GEMINI] Modelo=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model,
-          contents,
-          config: {
-            responseModalities: ["TEXT", "IMAGE"],
-          },
-        });
-      } finally {
-        clearTimeout(geminiTimeout);
-      }
+      const response: any = await generateWithTimeoutAndRetry(model, contents);
 
-      // 4. Extraer la imagen generada de la respuesta
       let imageBase64: string | null = null;
       let imageMimeType = "image/png";
 
@@ -299,16 +386,15 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
 
       if (!imageBase64) {
-        // Gemini a veces solo devuelve texto en lugar de imagen — reembolsar
         const textParts = response.candidates?.[0]?.content?.parts
           ?.filter((p: any) => p.text)
           ?.map((p: any) => p.text)
           ?.join(" ") || "";
-        console.warn("⚠️ Gemini respondió solo texto:", textParts.slice(0, 200));
+        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 200));
         throw new Error("Nano Banana no devolvió una imagen. El modelo respondió con texto. Intenta reformular el prompt.");
       }
 
-      // 5. Guardar en Supabase Storage para inmortalidad
+      // Guardar en Supabase
       const imageBuffer = Buffer.from(imageBase64, "base64");
       const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
       const fileName = `nanobanana_${user.id}_${Date.now()}.${ext}`;
@@ -328,7 +414,6 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       const finalPermanentUrl = publicUrlData.publicUrl;
 
-      // 6. Guardar registro en BD
       const { error: dbError } = await supabase.from("ai_images").insert({
         prompt,
         image_url: finalPermanentUrl,
@@ -337,7 +422,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         author_avatar_url: user.imageUrl,
       });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        // Borrar el archivo huérfano antes de fallar
+        await supabase.storage.from("ai-generations").remove([fileName]).catch(() => {});
+        throw dbError;
+      }
 
       return NextResponse.json({
         success: true,
@@ -347,21 +436,30 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       });
 
     } catch (apiError: any) {
-      // Revertir pago si falló la generación
-      await client.users.updateUserMetadata(user.id, {
-        publicMetadata: { credits: currentCredits },
-      });
-      
-      // Mensaje de error más descriptivo
-      const isTimeout = apiError?.name === "AbortError" || apiError?.message?.includes("abort");
-      const friendlyMsg = isTimeout
-        ? "Nano Banana tardó demasiado (>90s). Intenta con un prompt más simple. Tus créditos fueron reembolsados."
-        : apiError?.message || "Nano Banana falló. Tus créditos han sido reembolsados.";
-        
-      console.error("Error en Nano Banana:", apiError?.message || apiError);
-      return NextResponse.json({
-        error: friendlyMsg,
-      }, { status: 500 });
+      // Reembolso seguro
+      if (!creditsRefunded) {
+        creditsRefunded = true;
+        await refundCredits(client, user.id, cost);
+      }
+
+      const msg = String(apiError?.message || "");
+      const isTimeout = apiError?.name === "AbortError" || msg === "GEMINI_TIMEOUT" || msg.includes("abort");
+      const overloaded = isOverloaded(apiError);
+
+      let friendlyMsg: string;
+      let httpStatus = 500;
+      if (isTimeout) {
+        friendlyMsg = "Nano Banana tardó demasiado (>75s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
+        httpStatus = 504;
+      } else if (overloaded) {
+        friendlyMsg = "El modelo está saturado (503). Intenta de nuevo en unos segundos. Tus créditos fueron reembolsados.";
+        httpStatus = 503;
+      } else {
+        friendlyMsg = msg || "Nano Banana falló. Tus créditos han sido reembolsados.";
+      }
+
+      console.error("[GEMINI ERROR]", { msg, isTimeout, overloaded });
+      return NextResponse.json({ error: friendlyMsg, refunded: true }, { status: httpStatus });
     }
 
   } catch (error: any) {
