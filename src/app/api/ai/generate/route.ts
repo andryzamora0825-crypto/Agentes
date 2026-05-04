@@ -49,7 +49,10 @@ function isOverloaded(err: any): boolean {
   return (
     status === 503 ||
     status === 429 ||
+    status === 500 ||
     msg.includes("503") ||
+    msg.includes("500") ||
+    msg.includes("internal") ||
     msg.includes("overloaded") ||
     msg.includes("unavailable") ||
     msg.includes("rate limit") ||

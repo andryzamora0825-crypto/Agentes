@@ -31,8 +31,9 @@ function isOverloadedErr(err: any): boolean {
   const msg = String(err?.message || err || "").toLowerCase();
   const status = err?.status || err?.statusCode || err?.code;
   return (
-    status === 503 || status === 429 ||
-    msg.includes("503") || msg.includes("overloaded") ||
+    status === 503 || status === 429 || status === 500 ||
+    msg.includes("503") || msg.includes("500") || msg.includes("internal") ||
+    msg.includes("overloaded") ||
     msg.includes("unavailable") || msg.includes("rate limit") ||
     msg.includes("resource_exhausted")
   );
