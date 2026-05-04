@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { validateCronAuth } from '@/lib/services/cron-auth.service';
 
 // Requerimientos de Vercel Cron
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
+  // Solo Vercel Cron (con CRON_SECRET) o desarrollo local pueden disparar el fan-out.
+  if (!validateCronAuth(request)) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
   try {
     // 1. Obtener todos los usuarios con auto_generate = true
     const { data: users, error } = await supabase

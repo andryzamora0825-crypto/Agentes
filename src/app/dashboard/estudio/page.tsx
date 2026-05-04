@@ -212,6 +212,18 @@ export default function EstudioIAPage() {
     return () => clearInterval(interval);
   }, [generating]);
 
+  // Polling silencioso si hay imágenes "pending" (Workflows de Vercel corriendo en segundo plano)
+  useEffect(() => {
+    const hasPending = images.some(img => img.image_url === "pending" || img.status === "pending");
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      fetchHistory(); // Recarga y descubre si la imagen ya fue completada por el Workflow
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [images, fetchHistory]);
+
   const toggleVoiceMode = async () => {
     if (isListening) {
       // Stop recording
@@ -355,7 +367,26 @@ export default function EstudioIAPage() {
 
       if (res.ok) {
         setLastModel(data.model || null);
-        fetchHistory();
+        
+        // Optimistic UI: Mostrar que estamos "pensando" al instante
+        if (data.jobId) {
+          const optimisticImage = {
+            id: data.jobId,
+            prompt: finalPrompt,
+            image_url: "pending",
+            status: "pending",
+            created_at: new Date().toISOString(),
+          };
+          setImages(prev => [optimisticImage, ...prev]);
+        } else {
+          fetchHistory();
+        }
+
+        // Ya no necesitamos esperar a Gemini, apagamos el botón de generación
+        setGenerating(false);
+        setShowCancelBtn(false);
+        setPrompt(""); // Limpiamos el prompt para una nueva idea
+        setRefImages([]);
         
         // Disparar auto-publicación MASIVA si es moderador (Fire and forget silencioso)
         if (isModerator) {

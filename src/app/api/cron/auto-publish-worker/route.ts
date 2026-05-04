@@ -22,16 +22,16 @@ function getRandomDelay(minMs: number, maxMs: number) {
 }
 
 export async function POST(request: Request) {
-  try {
-    const url = new URL(request.url);
-    const userId = url.searchParams.get('userId');
+  const url = new URL(request.url);
+  const userId = url.searchParams.get('userId');
 
+  try {
     if (!userId) {
       return NextResponse.json({ error: "No userId provided" }, { status: 400 });
     }
 
     // 1. Validar al usuario y estado auto_generate
-    const { data: socialSettings, error: socialError } = await supabase
+    const { data: socialSettings } = await supabase
       .from("social_settings")
       .select("*")
       .eq("user_id", userId)
@@ -39,6 +39,22 @@ export async function POST(request: Request) {
 
     if (!socialSettings || !socialSettings.auto_generate) {
       return NextResponse.json({ error: "El usuario está deshabilitado para generación automática." }, { status: 400 });
+    }
+
+    // 1.b DEDUPLICACIÓN: si en los últimos 30 min ya se publicó/falló para este user, no duplicamos.
+    // Vercel cron puede disparar trigger 2 veces (retries internos) o haber colas paralelas que dispatch al mismo worker.
+    const dedupeWindow = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: recent } = await supabase
+      .from("social_posts")
+      .select("id, status, created_at")
+      .eq("user_id", userId)
+      .gte("created_at", dedupeWindow)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (recent && recent.length > 0 && (recent[0].status === "published" || recent[0].status === "pending")) {
+      console.log(`[Worker ${userId}] DEDUPE: ya hay un post reciente (${recent[0].id}, ${recent[0].status}). Saltando.`);
+      return NextResponse.json({ success: true, skipped: true, reason: "dedupe" });
     }
     const client = await clerkClient();
     const targetUserClerk = await client.users.getUser(userId);
@@ -50,10 +66,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Este cliente no tiene Tokens de Meta." }, { status: 400 });
     }
 
-    // 2. Retardo Aleatorio (Random Delay) para simulación humana (0 a 140000ms = ~0 a 2.3 minutos)
-    // Se usa maxDuration=300, banana dev toma aprox 15-30s. Así que hasta 4 minutos (240000ms) es factible y previsor.
-    const delay = getRandomDelay(10000, 180000); 
-    console.log(`[Worker ${userId}] DURMIENDO POR ${delay}ms para simulación de bot cron aleatorio...`);
+    // 2. Retardo Aleatorio (10-90s). maxDuration=300; generar+publicar suele tardar 30-90s, así dejamos margen.
+    const delay = getRandomDelay(10_000, 90_000);
+    console.log(`[Worker ${userId}] Sleep ${delay}ms (jitter humano)...`);
     await new Promise(resolve => setTimeout(resolve, delay));
 
     // 3. Obtener/construir el Tema y Tono (Brand Voice - Master Prompt)
@@ -72,20 +87,38 @@ export async function POST(request: Request) {
     // Obtener aiSettings del usuario desde Clerk
     const aiSettings = targetUserClerk.publicMetadata?.aiSettings || null;
 
-    // 4. Invocar generador IA (Nano Banana + Gemini)
-    const { caption, imageUrl, imagePrompt } = await generateFullPost(
-      { 
-        topic: finalTopic, 
-        brandVoice: brandVoice, 
-        platform: "facebook",  // Idealmente se usa la preferencia, por defecto Facebook.
-        imageFormat: "square" 
-      },
-      userId,
-      aiSettings // <- Se pasa aiSettings para aplicar anti-repetición y estilo
-    );
+    // 4. Invocar generador IA (Nano Banana + Gemini) — registramos el fallo en BD si la IA cae.
+    let caption: string, imageUrl: string, imagePrompt: string;
+    try {
+      const result = await generateFullPost(
+        {
+          topic: finalTopic,
+          brandVoice: brandVoice,
+          platform: "facebook",
+          imageFormat: "square"
+        },
+        userId,
+        aiSettings
+      );
+      caption = result.caption;
+      imageUrl = result.imageUrl;
+      imagePrompt = result.imagePrompt;
 
-    if (!imageUrl) {
-        throw new Error("No se pudo generar la imagen IA.");
+      if (!imageUrl) throw new Error("No se pudo generar la imagen IA.");
+    } catch (aiErr: any) {
+      const errMsg = aiErr?.message || "Error desconocido en IA";
+      console.error(`[Worker ${userId}] FALLO IA: ${errMsg}`);
+      // Persistimos el fallo para que el usuario lo vea en su feed de social_posts
+      await supabase.from("social_posts").insert({
+        user_id: userId,
+        caption: "",
+        image_url: "",
+        image_prompt: finalTopic,
+        status: "failed",
+        platform: "facebook",
+        last_error: `IA: ${errMsg}`.slice(0, 500),
+      }).then(() => {}, (e) => console.error("No se pudo persistir el fallo:", e));
+      return NextResponse.json({ success: false, stage: "ai", error: errMsg }, { status: 500 });
     }
 
     // 5. Guardar el post asociado al cliente
@@ -130,7 +163,7 @@ export async function POST(request: Request) {
     }
 
   } catch (err: any) {
-    console.error(`[Worker Error]:`, err);
+    console.error(`[Worker ${userId} Error]:`, err?.message, err?.stack?.split("\n")[1]);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

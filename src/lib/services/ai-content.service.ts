@@ -27,33 +27,60 @@ async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response
   }
 }
 
+function isOverloadedErr(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const status = err?.status || err?.statusCode || err?.code;
+  return (
+    status === 503 || status === 429 ||
+    msg.includes("503") || msg.includes("overloaded") ||
+    msg.includes("unavailable") || msg.includes("rate limit") ||
+    msg.includes("resource_exhausted")
+  );
+}
+
+function normalizeMime(raw: string | null | undefined): string | null {
+  let mime = (raw || "").toLowerCase().split(";")[0].trim();
+  if (mime === "image/jpg") mime = "image/jpeg";
+  if (!mime.startsWith("image/")) return null;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) return "image/png";
+  return mime;
+}
+
 /**
- * Helper: Generates text using OpenAI GPT-4o-mini (replaces the unstable Gemini text model)
+ * Helper: Generates text using OpenAI GPT-4o-mini con timeout y retry.
  */
 async function generateTextOpenAI(systemPrompt: string): Promise<string> {
   let lastError: any = null;
+  const TEXT_TIMEOUT_MS = 20_000;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const response = await openai.chat.completions.create({
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("OPENAI_TIMEOUT")), TEXT_TIMEOUT_MS);
+      });
+      const apiPromise = openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{ role: "system", content: systemPrompt }],
         max_tokens: 300,
         temperature: 0.7,
       });
+      const response = await Promise.race([apiPromise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+      });
 
-      return response.choices[0].message.content || "";
+      return (response as any).choices[0].message.content || "";
     } catch (error: any) {
       lastError = error;
-      if (error?.status === 429 && attempt < 3) {
-        await new Promise(res => setTimeout(res, attempt * 2000));
+      if ((error?.status === 429 || error?.message === "OPENAI_TIMEOUT") && attempt < 3) {
+        await new Promise(res => setTimeout(res, attempt * 1500));
         continue;
       }
       break;
     }
   }
 
-  throw new Error(`OpenAI falló generando texto con el error: ${lastError?.message || JSON.stringify(lastError)}`);
+  throw new Error(`OpenAI falló generando texto: ${lastError?.message || JSON.stringify(lastError)}`);
 }
 
 
@@ -165,13 +192,13 @@ REGLAS PARA EL PERSONAJE:
   };
 
   const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
-  const cacheBuster = `?t=${Date.now()}`;
+  // Sin cache buster: dejamos que el CDN cachee. Para invalidar un logo, renombrar el archivo a default_X_v2.png.
   const OFFICIAL_PLATFORMS: Record<string, string> = {
-    ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png${cacheBuster}`,
-    doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png${cacheBuster}`,
-    masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png${cacheBuster}`,
-    databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png${cacheBuster}`,
-    astrobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_astrobet.png${cacheBuster}`,
+    ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
+    doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png`,
+    masparley: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_masparley.png`,
+    databet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_databet.png`,
+    astrobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_astrobet.png`,
   };
 
   if (targetPlatform) {
@@ -207,37 +234,46 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   }
 
 
-  // Fetch all images concurrently
-  const fetchPromises = itemsToFetch.map(async (item) => {
+  // Fetch all images concurrently — devolvemos resultados ORDENADOS para no depender de race-conditions
+  const fetched = await Promise.all(itemsToFetch.map(async (item) => {
     try {
-      const res = await fetchWithTimeout(item.url, 8000);
-      if (res.ok) {
-        const arrayBuffer = await res.arrayBuffer();
-        referenceImages.push({
-          base64: Buffer.from(arrayBuffer).toString("base64"),
-          mimeType: res.headers.get('content-type') || "image/png",
-          label: item.label
-        });
+      const res = await fetchWithTimeout(item.url, 6000);
+      if (!res.ok) return null;
+      const arrayBuffer = await res.arrayBuffer();
+      if (arrayBuffer.byteLength > 6 * 1024 * 1024) {
+        console.warn(`[SOCIAL] ${item.label} pesa ${arrayBuffer.byteLength}B — descartando`);
+        return null;
       }
+      const mime = normalizeMime(res.headers.get('content-type'));
+      if (!mime) return null;
+      return {
+        base64: Buffer.from(arrayBuffer).toString("base64"),
+        mimeType: mime,
+        label: item.label,
+      };
     } catch (e) {
-      console.error(`[SOCIAL] Error descargando imagen de referencia ${item.label}:`, e);
+      console.error(`[SOCIAL] Error descargando ${item.label}:`, (e as Error).message);
+      return null;
     }
-  });
-  await Promise.all(fetchPromises);
+  }));
+  for (const r of fetched) if (r) referenceImages.push(r);
 
   if (useAgencyCharacter && aiSettings && aiSettings.characterImageUrl) {
     try {
-      const res = await fetchWithTimeout(aiSettings.characterImageUrl, 8000);
+      const res = await fetchWithTimeout(aiSettings.characterImageUrl, 6000);
       if (res.ok) {
         const arrayBuffer = await res.arrayBuffer();
-        referenceImages.push({
-          base64: Buffer.from(arrayBuffer).toString("base64"),
-          mimeType: res.headers.get('content-type') || "image/png",
-          label: "Foto del Representante/Personaje de la Agencia"
-        });
+        const mime = normalizeMime(res.headers.get('content-type'));
+        if (mime && arrayBuffer.byteLength <= 6 * 1024 * 1024) {
+          referenceImages.push({
+            base64: Buffer.from(arrayBuffer).toString("base64"),
+            mimeType: mime,
+            label: "Foto del Representante/Personaje de la Agencia"
+          });
+        }
       }
     } catch (e) {
-      console.error("[SOCIAL] Error descargando imagen del personaje:", e);
+      console.error("[SOCIAL] Error descargando personaje:", (e as Error).message);
     }
   }
 
@@ -255,29 +291,87 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   
   const contents = parts;
 
-  let response;
-  try {
-    const hasRefImages = referenceImages.length > 0;
-    const modelToUse = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+  // Timeouts reales por intento + retry inteligente (mismo patrón que /api/ai/generate)
+  const PER_CALL_TIMEOUT_PRO_MS = 65_000;
+  const PER_CALL_TIMEOUT_FLASH_MS = 25_000;
+  const TOTAL_BUDGET_MS = 80_000;
 
-    // ═══ FIX CRÍTICO: responseModalities + timeout ═══
-    const abortController = new AbortController();
-    const geminiTimer = setTimeout(() => abortController.abort(), 90_000); // 90s máx
-    try {
-      response = await ai.models.generateContent({
-        model: modelToUse,
-        contents: contents,
-        config: {
-          responseModalities: ["TEXT", "IMAGE"],
-        },
-      });
-    } finally {
-      clearTimeout(geminiTimer);
-    }
+  const callOnce = async (model: string, budgetMs: number): Promise<any> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), budgetMs);
+    });
+    const apiPromise = ai.models.generateContent({
+      model,
+      contents,
+      config: { responseModalities: ["TEXT", "IMAGE"] },
+    });
+    return Promise.race([apiPromise, timeoutPromise]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+
+  const hasRefImages = referenceImages.length > 0;
+  const primaryModel = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
+  const fallbackModel = primaryModel === NANO_BANANA_PRO ? NANO_BANANA_2 : NANO_BANANA_PRO;
+  const timeoutFor = (m: string) => (m === NANO_BANANA_PRO ? PER_CALL_TIMEOUT_PRO_MS : PER_CALL_TIMEOUT_FLASH_MS);
+
+  const startedAt = Date.now();
+  const remaining = () => Math.max(0, TOTAL_BUDGET_MS - (Date.now() - startedAt));
+  let response: any = null;
+  let modelUsed = primaryModel;
+
+  const attempt = async (model: string): Promise<any> => {
+    const budget = Math.min(timeoutFor(model), remaining());
+    if (budget <= 2000) throw new Error("GEMINI_TIMEOUT");
+    return callOnce(model, budget);
+  };
+
+  try {
+    response = await attempt(primaryModel);
   } catch (err: any) {
-    const isTimeout = err?.name === "AbortError";
-    console.error("🔴 Error DENTRO de Nano Banana Gemini:", isTimeout ? "TIMEOUT (>90s)" : err);
-    throw new Error(isTimeout ? "Timeout: el modelo tardó más de 90 segundos" : `El modelo de imagen de Google falló: ${err?.message || "Error desconocido"}`);
+    const overloaded = isOverloadedErr(err);
+    const timedOut = String(err?.message || "") === "GEMINI_TIMEOUT";
+    console.warn(`[SOCIAL] ${primaryModel} falló: ${err?.message || err} (overloaded=${overloaded}, timeout=${timedOut})`);
+
+    if (overloaded && remaining() > timeoutFor(primaryModel) + 2000) {
+      // 1 retry sobre el mismo modelo
+      await new Promise(r => setTimeout(r, 1200 + Math.floor(Math.random() * 600)));
+      try {
+        response = await attempt(primaryModel);
+      } catch (err2: any) {
+        if (isOverloadedErr(err2) && remaining() > 5000) {
+          // fallback al modelo opuesto
+          console.warn(`[SOCIAL] Fallback ${primaryModel} → ${fallbackModel}`);
+          response = await attempt(fallbackModel);
+          modelUsed = fallbackModel;
+        } else {
+          throw err2;
+        }
+      }
+    } else if (timedOut && fallbackModel === NANO_BANANA_2 && remaining() > 8000) {
+      // Pro timeoutó → probar Flash una vez
+      try {
+        response = await attempt(fallbackModel);
+        modelUsed = fallbackModel;
+      } catch {
+        throw err;
+      }
+    } else {
+      throw new Error(`El modelo de imagen falló: ${err?.message || "desconocido"}`);
+    }
+  }
+
+  // Detección de bloqueo por safety / promptFeedback
+  const promptFeedback = response?.promptFeedback || response?.response?.promptFeedback;
+  if (promptFeedback?.blockReason) {
+    throw new Error(`Prompt bloqueado por políticas (${promptFeedback.blockReason}). Reformula el tema.`);
+  }
+  const finishReason = response?.candidates?.[0]?.finishReason;
+  if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
+    if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
+      throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}).`);
+    }
   }
 
   // Extract image from response (same pattern as Estudio IA)
@@ -314,7 +408,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     .from("ai-generations")
     .getPublicUrl(fileName);
 
-  const modelNameUsed = referenceImages.length > 0 ? "Nano Banana Pro 🍌" : "Nano Banana 2 🍌";
+  const modelNameUsed = modelUsed === NANO_BANANA_PRO ? "Nano Banana Pro 🍌" : "Nano Banana Flash ⚡";
 
   return {
     imageUrl: publicUrlData.publicUrl,

@@ -15,7 +15,8 @@ const REF_FETCH_TIMEOUT_MS = 6_000;
 // Timeouts por intento ajustados al SLA real de cada modelo.
 // Pro tarda 25-55s honestamente; aborta a 35s era prematuro y disparaba retries que doblaban el costo.
 const PER_CALL_TIMEOUT_PRO = 65_000;
-const PER_CALL_TIMEOUT_FLASH = 45_000;
+// Flash sano resuelve en 8-18s. Si tarda >25s suele estar saturado: cortamos rápido y caemos a Pro.
+const PER_CALL_TIMEOUT_FLASH = 25_000;
 
 async function fetchWithTimeout(url: string, timeoutMs = REF_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -444,9 +445,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     let creditsRefunded = false;
 
     try {
-      // Respetar la selección del usuario
+      // Si el usuario subió refs propias, FORZAMOS Pro: Flash no maneja bien múltiples refs.
       let model: string;
-      if (forceModel === 'pro') {
+      if (userRefCount > 0) {
+        model = NANO_BANANA_PRO;
+      } else if (forceModel === 'pro') {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'flash') {
         model = NANO_BANANA_2;
@@ -455,43 +458,30 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
 
       // Orden recomendado por Gemini: imágenes primero, prompt textual al final.
-      // Mejora notablemente la incorporación de las refs en el render final.
-      const parts: any[] = [];
+      const contents: any[] = [];
       for (const img of referenceImages) {
-        if (img.label) {
-          parts.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
-        }
-        parts.push({
-          inlineData: {
-            mimeType: img.mimeType,
-            data: img.base64,
-          },
-        });
+        if (img.label) contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
+        contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
       }
-      parts.push({ text: finalPrompt });
-
-      const contents = parts;
+      contents.push({ text: finalPrompt });
 
       console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
 
       const startedAt = Date.now();
       const { response, modelUsed } = await generateWithSmartRetry(model, contents, startedAt);
-      const elapsedMs = Date.now() - startedAt;
-      console.log(`[GEMINI] Generación completada en ${elapsedMs}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""}`);
-      // Sobrescribimos para que el response al cliente refleje el modelo realmente usado
+      console.log(`[GEMINI] Generación completada en ${Date.now() - startedAt}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""}`);
       model = modelUsed;
 
-      // Diagnóstico: detectar bloqueos por safety / promptFeedback ANTES de buscar la imagen
-      const promptFeedback = response?.promptFeedback || response?.response?.promptFeedback;
+      // Detectar bloqueo por safety / promptFeedback
+      const promptFeedback = (response as any)?.promptFeedback || (response as any)?.response?.promptFeedback;
       if (promptFeedback?.blockReason) {
         console.warn("[GEMINI] prompt bloqueado:", promptFeedback);
-        throw new Error(`El prompt fue bloqueado por las políticas del modelo (${promptFeedback.blockReason}). Reformula el contenido.`);
+        throw new Error(`El prompt fue bloqueado por políticas (${promptFeedback.blockReason}). Reformula el contenido.`);
       }
-      const finishReason = response?.candidates?.[0]?.finishReason;
+      const finishReason = (response as any)?.candidates?.[0]?.finishReason;
       if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
-        console.warn("[GEMINI] finishReason no exitoso:", finishReason, response?.candidates?.[0]?.safetyRatings);
         if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
-          throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt y reintenta.`);
+          throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt.`);
         }
         if (finishReason === "RECITATION") {
           throw new Error("El modelo detectó contenido recitado. Cambia el prompt.");
@@ -500,8 +490,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       let imageBase64: string | null = null;
       let imageMimeType = "image/png";
-
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
+      for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
         if ((part as any).inlineData) {
           imageBase64 = (part as any).inlineData.data;
           imageMimeType = (part as any).inlineData.mimeType || "image/png";
@@ -510,25 +499,20 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
 
       if (!imageBase64) {
-        const textParts = response.candidates?.[0]?.content?.parts
-          ?.filter((p: any) => p.text)
-          ?.map((p: any) => p.text)
-          ?.join(" ") || "";
-        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300), "finishReason:", finishReason);
-        throw new Error("Nano Banana no devolvió una imagen. El modelo respondió con texto. Intenta reformular el prompt.");
+        const textParts = (response as any)?.candidates?.[0]?.content?.parts
+          ?.filter((p: any) => p.text)?.map((p: any) => p.text)?.join(" ") || "";
+        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300));
+        throw new Error("Nano Banana no devolvió una imagen. Intenta reformular el prompt.");
       }
 
-      // Guardar en Supabase
+      // Subir a Supabase
       const imageBuffer = Buffer.from(imageBase64, "base64");
       const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
       const fileName = `nanobanana_${user.id}_${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("ai-generations")
-        .upload(fileName, imageBuffer, {
-          contentType: imageMimeType,
-          upsert: false,
-        });
+        .upload(fileName, imageBuffer, { contentType: imageMimeType, upsert: false });
 
       if (uploadError) throw uploadError;
 
@@ -547,7 +531,6 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       });
 
       if (dbError) {
-        // Borrar el archivo huérfano antes de fallar
         await supabase.storage.from("ai-generations").remove([fileName]).catch(() => {});
         throw dbError;
       }
@@ -560,7 +543,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       });
 
     } catch (apiError: any) {
-      // Reembolso seguro
+      // Reembolso seguro re-leyendo el balance actual (evita pisar concurrencia)
       if (!creditsRefunded) {
         creditsRefunded = true;
         await refundCredits(client, user.id, cost);
