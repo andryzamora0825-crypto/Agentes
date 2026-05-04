@@ -296,7 +296,14 @@ export default function EstudioIAPage() {
         body: fd,
         signal: abortController.signal,
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        const text = await res.text().catch(() => "Sin respuesta textual");
+        throw new Error(`Fallo del servidor (no JSON). Código: ${res.status}. Detalles: ${text.substring(0, 100)}`);
+      }
 
       if (res.ok) {
         setLastModel(data.model || null);
@@ -335,7 +342,7 @@ export default function EstudioIAPage() {
       if (err?.name === "AbortError") {
         setErrorMsg("Generación cancelada. Tus créditos serán reembolsados si no se completó.");
       } else {
-        setErrorMsg("Error interno conectando con el servidor.");
+        setErrorMsg(err?.message || "Error interno conectando con el servidor.");
       }
     } finally {
       clearTimeout(clientTimeout);

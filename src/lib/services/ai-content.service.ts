@@ -253,7 +253,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
   }
   parts.push({ text: finalPrompt });
   
-  const contents = [{ role: "user", parts }];
+  const contents = parts;
 
   let response;
   try {
