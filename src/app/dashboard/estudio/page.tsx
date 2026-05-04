@@ -350,6 +350,21 @@ export default function EstudioIAPage() {
   };
 
   const forceDownload = async (url: string, filename: string) => {
+    // Solución para Safari: descargar síncronamente usando el parámetro ?download de Supabase
+    // Safari bloquea descargas generadas a través de 'await fetch' (pierde el contexto de clic del usuario).
+    if (url.includes("supabase.co/storage")) {
+      const separator = url.includes("?") ? "&" : "?";
+      const downloadUrl = `${url}${separator}download=${encodeURIComponent(filename)}`;
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
+    // Fallback para URLs que no sean de Supabase (comportamiento original)
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error("Fallo en fetch");
