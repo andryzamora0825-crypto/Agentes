@@ -241,16 +241,19 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     }
   }
 
-  // Construir el contenido final: texto + imágenes de referencia (idéntico a Estudio IA)
-  const contentParts: any[] = [{ text: finalPrompt }];
+  // Construir el contenido final: imágenes primero, luego texto (mejores prácticas)
+  const parts: any[] = [];
   for (const refImg of referenceImages) {
     if (refImg.label) {
-       contentParts.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${refImg.label}]\n` });
+       parts.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${refImg.label}]\n` });
     }
-    contentParts.push({
+    parts.push({
       inlineData: { data: refImg.base64, mimeType: refImg.mimeType }
     });
   }
+  parts.push({ text: finalPrompt });
+  
+  const contents = [{ role: "user", parts }];
 
   let response;
   try {
@@ -263,7 +266,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     try {
       response = await ai.models.generateContent({
         model: modelToUse,
-        contents: contentParts,
+        contents: contents,
         config: {
           responseModalities: ["TEXT", "IMAGE"],
         },

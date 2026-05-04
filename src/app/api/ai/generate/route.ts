@@ -234,7 +234,7 @@ export async function POST(request: Request) {
 
     if (userRefCount > 0) {
       finalPrompt += `\n\n[IMÁGENES DE REFERENCIA DEL USUARIO — USO OBLIGATORIO]:
-El usuario adjuntó ${userRefCount} ${userRefCount === 1 ? 'imagen' : 'imágenes'} de referencia (etiquetadas más abajo como "Imagen de Referencia #1", "#2", etc.). Estas imágenes NO son decorativas: son CRÍTICAS y deben influir directamente en la imagen final.
+El usuario adjuntó ${userRefCount} ${userRefCount === 1 ? 'imagen' : 'imágenes'} de referencia (etiquetadas ARRIBA como "Imagen de Referencia #1", "#2", etc.). Estas imágenes NO son decorativas: son CRÍTICAS y deben influir directamente en la imagen final.
 Reglas:
 1. Si las referencias muestran personas, productos u objetos concretos, INCLÚYELOS en la imagen final preservando su apariencia distintiva (rostro, marca, forma, colores, vestuario).
 2. Si la referencia es un estilo visual o paleta, aplícalo a la composición.
@@ -444,11 +444,9 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     let creditsRefunded = false;
 
     try {
-      // Si el usuario subió refs propias, FORZAMOS Pro: Flash no maneja bien múltiples refs y suele ignorarlas.
+      // Respetar la selección del usuario
       let model: string;
-      if (userRefCount > 0) {
-        model = NANO_BANANA_PRO;
-      } else if (forceModel === 'pro') {
+      if (forceModel === 'pro') {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'flash') {
         model = NANO_BANANA_2;
@@ -458,19 +456,21 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
       // Orden recomendado por Gemini: imágenes primero, prompt textual al final.
       // Mejora notablemente la incorporación de las refs en el render final.
-      const contents: any[] = [];
+      const parts: any[] = [];
       for (const img of referenceImages) {
         if (img.label) {
-          contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
+          parts.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
         }
-        contents.push({
+        parts.push({
           inlineData: {
             mimeType: img.mimeType,
             data: img.base64,
           },
         });
       }
-      contents.push({ text: finalPrompt });
+      parts.push({ text: finalPrompt });
+
+      const contents = [{ role: "user", parts }];
 
       console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
 
