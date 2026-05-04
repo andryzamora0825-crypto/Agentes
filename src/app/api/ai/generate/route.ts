@@ -52,32 +52,74 @@ function isOverloaded(err: any): boolean {
   );
 }
 
-async function generateWithTimeoutAndRetry(model: string, contents: any[]): Promise<any> {
-  const callOnce = () => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), GEMINI_HARD_TIMEOUT_MS);
-    });
-    const apiPromise = ai.models.generateContent({
-      model,
-      contents,
-      config: { responseModalities: ["TEXT", "IMAGE"] },
-    });
-    return Promise.race([apiPromise, timeoutPromise]).finally(() => {
-      if (timer) clearTimeout(timer);
-    });
+// Llamada única con timeout duro
+function callGemini(model: string, contents: any[], perCallTimeoutMs: number): Promise<any> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), perCallTimeoutMs);
+  });
+  const apiPromise = ai.models.generateContent({
+    model,
+    contents,
+    config: { responseModalities: ["TEXT", "IMAGE"] },
+  });
+  return Promise.race([apiPromise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+// Estrategia robusta para 503/saturación:
+// 1) Reintenta el modelo elegido hasta 3 veces con backoff exponencial + jitter (1.2s, 2.5s, 5s).
+// 2) Si los 3 reintentos fallan por 503, hace FALLBACK al modelo opuesto (Flash<->Pro) con 1 intento extra.
+// Cada intento individual tiene un timeout corto (35s) en lugar de bloquear los 75s totales.
+async function generateWithSmartRetry(
+  primaryModel: string,
+  contents: any[],
+  startedAt: number,
+): Promise<{ response: any; modelUsed: string }> {
+  const PER_CALL_TIMEOUT = 35_000;
+  const TOTAL_BUDGET_MS = GEMINI_HARD_TIMEOUT_MS;
+  const fallbackModel = primaryModel === NANO_BANANA_PRO ? NANO_BANANA_2 : NANO_BANANA_PRO;
+
+  const remaining = () => Math.max(0, TOTAL_BUDGET_MS - (Date.now() - startedAt));
+  const tryOnce = async (model: string) => {
+    const budget = Math.min(PER_CALL_TIMEOUT, remaining());
+    if (budget <= 1500) throw new Error("GEMINI_TIMEOUT");
+    return callGemini(model, contents, budget);
   };
 
-  try {
-    return await callOnce();
-  } catch (err: any) {
-    if (isOverloaded(err)) {
-      console.warn("[GEMINI] 503/overloaded — reintentando una vez tras 1.5s");
-      await new Promise(r => setTimeout(r, 1500));
-      return await callOnce();
+  const backoffs = [1200, 2500, 5000];
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt < backoffs.length; attempt++) {
+    try {
+      const response = await tryOnce(primaryModel);
+      if (attempt > 0) console.log(`[GEMINI] ${primaryModel} OK en intento #${attempt + 1}`);
+      return { response, modelUsed: primaryModel };
+    } catch (err: any) {
+      lastErr = err;
+      const overloaded = isOverloaded(err);
+      const timedOut = String(err?.message || "") === "GEMINI_TIMEOUT";
+      if (!overloaded && !timedOut) throw err;
+      if (remaining() < 3000) break;
+      const wait = backoffs[attempt] + Math.floor(Math.random() * 400);
+      console.warn(`[GEMINI] ${primaryModel} ${overloaded ? "503" : "timeout"} intento #${attempt + 1}, esperando ${wait}ms...`);
+      await new Promise(r => setTimeout(r, Math.min(wait, remaining() - 1000)));
     }
-    throw err;
   }
+
+  // Fallback automático al modelo opuesto si nos queda presupuesto
+  if (remaining() > 5000) {
+    console.warn(`[GEMINI] Fallback ${primaryModel} -> ${fallbackModel} (saturación persistente)`);
+    try {
+      const response = await tryOnce(fallbackModel);
+      return { response, modelUsed: fallbackModel };
+    } catch (err: any) {
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error("Falla persistente del modelo");
 }
 
 export async function POST(request: Request) {
@@ -397,9 +439,14 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       }
       contents.push({ text: finalPrompt });
 
-      console.log(`[GEMINI] Modelo=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
+      console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
 
-      const response: any = await generateWithTimeoutAndRetry(model, contents);
+      const startedAt = Date.now();
+      const { response, modelUsed } = await generateWithSmartRetry(model, contents, startedAt);
+      const elapsedMs = Date.now() - startedAt;
+      console.log(`[GEMINI] Generación completada en ${elapsedMs}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""}`);
+      // Sobrescribimos para que el response al cliente refleje el modelo realmente usado
+      model = modelUsed;
 
       // Diagnóstico: detectar bloqueos por safety / promptFeedback ANTES de buscar la imagen
       const promptFeedback = response?.promptFeedback || response?.response?.promptFeedback;

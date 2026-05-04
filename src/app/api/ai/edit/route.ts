@@ -50,32 +50,53 @@ function isOverloaded(err: any): boolean {
   );
 }
 
-async function generateWithTimeoutAndRetry(contents: any[]): Promise<any> {
-  const callOnce = () => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), GEMINI_HARD_TIMEOUT_MS);
-    });
-    const apiPromise = ai.models.generateContent({
-      model: EDIT_MODEL,
-      contents,
-      config: { responseModalities: ["TEXT", "IMAGE"] },
-    });
-    return Promise.race([apiPromise, timeoutPromise]).finally(() => {
-      if (timer) clearTimeout(timer);
-    });
+function callGemini(contents: any[], perCallTimeoutMs: number): Promise<any> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), perCallTimeoutMs);
+  });
+  const apiPromise = ai.models.generateContent({
+    model: EDIT_MODEL,
+    contents,
+    config: { responseModalities: ["TEXT", "IMAGE"] },
+  });
+  return Promise.race([apiPromise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+// 3 reintentos con backoff exponencial + jitter, cada intento limitado a 35s para no quemar el presupuesto total.
+async function generateWithSmartRetry(contents: any[]): Promise<any> {
+  const PER_CALL_TIMEOUT = 35_000;
+  const startedAt = Date.now();
+  const remaining = () => Math.max(0, GEMINI_HARD_TIMEOUT_MS - (Date.now() - startedAt));
+  const tryOnce = () => {
+    const budget = Math.min(PER_CALL_TIMEOUT, remaining());
+    if (budget <= 1500) throw new Error("GEMINI_TIMEOUT");
+    return callGemini(contents, budget);
   };
 
-  try {
-    return await callOnce();
-  } catch (err: any) {
-    if (isOverloaded(err)) {
-      console.warn("[GEMINI EDIT] 503/overloaded — reintentando una vez tras 1.5s");
-      await new Promise(r => setTimeout(r, 1500));
-      return await callOnce();
+  const backoffs = [1200, 2500, 5000];
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt < backoffs.length; attempt++) {
+    try {
+      const response = await tryOnce();
+      if (attempt > 0) console.log(`[GEMINI EDIT] OK en intento #${attempt + 1}`);
+      return response;
+    } catch (err: any) {
+      lastErr = err;
+      const overloaded = isOverloaded(err);
+      const timedOut = String(err?.message || "") === "GEMINI_TIMEOUT";
+      if (!overloaded && !timedOut) throw err;
+      if (remaining() < 3000) break;
+      const wait = backoffs[attempt] + Math.floor(Math.random() * 400);
+      console.warn(`[GEMINI EDIT] ${overloaded ? "503" : "timeout"} intento #${attempt + 1}, esperando ${wait}ms`);
+      await new Promise(r => setTimeout(r, Math.min(wait, remaining() - 1000)));
     }
-    throw err;
   }
+
+  throw lastErr || new Error("Falla persistente en edición");
 }
 
 export async function POST(request: Request) {
@@ -151,7 +172,7 @@ REGLAS ESTRICTAS:
         },
       ];
 
-      const response: any = await generateWithTimeoutAndRetry(contents);
+      const response: any = await generateWithSmartRetry(contents);
 
       const promptFeedback = response?.promptFeedback || response?.response?.promptFeedback;
       if (promptFeedback?.blockReason) {
