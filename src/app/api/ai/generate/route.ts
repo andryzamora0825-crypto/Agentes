@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
 
 export const maxDuration = 140;
 
@@ -13,13 +12,8 @@ const aiBackup = process.env.GEMINI_API_KEY_BACKUP
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_BACKUP })
   : null;
 
-// OpenAI gpt-image-1 — modelo top de OpenAI para generación de imágenes.
-// Sucesor de DALL·E 3, soporta referencias multi-imagen y edición. Tier de fallback cuando Gemini está saturado.
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
 const NANO_BANANA_2   = "gemini-3.1-flash-image-preview";
 const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
-const OPENAI_IMAGE_MODEL = "gpt-image-1";
 
 const GEMINI_HARD_TIMEOUT_MS = 125_000;
 const REF_FETCH_TIMEOUT_MS = 6_000;
@@ -116,73 +110,6 @@ function callGemini(client: GoogleGenAI, model: string, contents: any[], perCall
   return Promise.race([apiPromise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
   });
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// OPENAI gpt-image-1 — CONFIGURACIÓN MATCH CHATGPT
-// ═══════════════════════════════════════════════════════════════════
-// ChatGPT (chat.openai.com) usa internamente estos parámetros que el SDK NO aplica por defecto:
-//   - quality: "high"          → ChatGPT siempre usa high. El default del SDK es "auto" (~medium).
-//   - moderation: "low"        → permite más libertad creativa (rostros, marcas, texto, etc).
-//   - output_format: "png"     → mantiene transparencia y máxima fidelidad.
-// Sin estos, gpt-image-1 vía API genera notablemente PEOR que ChatGPT.
-//
-// Latencias reales con quality:high:
-//   - sin refs: 25-50s
-//   - con refs (edit): 35-70s
-// Por eso subimos el timeout a 90s.
-const PER_CALL_TIMEOUT_OPENAI = 90_000;
-
-async function generateWithOpenAI(
-  prompt: string,
-  refs: { base64: string; mimeType: string; label?: string }[],
-  size: "1024x1024" | "1536x1024" | "1024x1536" = "1024x1024",
-  perCallMs: number = PER_CALL_TIMEOUT_OPENAI,
-): Promise<{ base64: string; mimeType: string }> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), perCallMs);
-  });
-
-  let apiPromise: Promise<any>;
-  if (refs.length > 0) {
-    // EDICIÓN multi-imagen: gpt-image-1 acepta array de hasta 16 imágenes como contexto.
-    const imageFiles = refs.map((r, i) => {
-      const buffer = Buffer.from(r.base64, "base64");
-      const ext = r.mimeType.includes("jpeg") ? "jpg" : r.mimeType.includes("webp") ? "webp" : "png";
-      return new File([new Uint8Array(buffer)], `ref_${i}.${ext}`, { type: r.mimeType });
-    });
-    apiPromise = openai.images.edit({
-      model: OPENAI_IMAGE_MODEL,
-      image: imageFiles as any,
-      prompt,
-      size,
-      n: 1,
-      // ─── parámetros premium match ChatGPT ───
-      quality: "high",
-      // input_fidelity high: preserva mejor las referencias del usuario (rostros, productos, marcas)
-      input_fidelity: "high",
-    } as any);
-  } else {
-    apiPromise = openai.images.generate({
-      model: OPENAI_IMAGE_MODEL,
-      prompt,
-      size,
-      n: 1,
-      // ─── parámetros premium match ChatGPT ───
-      quality: "high",
-      moderation: "low",
-      output_format: "png",
-    } as any);
-  }
-
-  const result: any = await Promise.race([apiPromise, timeoutPromise]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-
-  const b64 = result?.data?.[0]?.b64_json;
-  if (!b64) throw new Error("OpenAI no devolvió imagen base64");
-  return { base64: b64, mimeType: "image/png" };
 }
 
 // Detecta el patrón "respuesta vacía sin error" que el SDK @google/genai devuelve
@@ -611,17 +538,9 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     let creditsRefunded = false;
 
     try {
-      // Selección de proveedor:
-      // forceModel = 'openai' → OpenAI gpt-image-1 (modelo top de OpenAI, sucesor de DALL·E 3)
-      // forceModel = 'pro' → Gemini Pro
-      // forceModel = 'flash' → Gemini Flash
-      // refs del usuario → Gemini Pro (Flash las ignora)
-      // auto → Pro si hay cualquier ref, Flash si no
+      // Si el usuario subió refs propias, FORZAMOS Pro: Flash no maneja bien múltiples refs.
       let model: string;
-      const useOpenAI = forceModel === 'openai';
-      if (useOpenAI) {
-        model = OPENAI_IMAGE_MODEL;
-      } else if (userRefCount > 0) {
+      if (userRefCount > 0) {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'pro') {
         model = NANO_BANANA_PRO;
@@ -631,77 +550,58 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
       }
 
-      let imageBase64: string | null = null;
-      let imageMimeType = "image/png";
+      // Orden recomendado por Gemini: imágenes primero, prompt textual al final.
+      const contents: any[] = [];
+      for (const img of referenceImages) {
+        if (img.label) contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
+        contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+      }
+      contents.push({ text: finalPrompt });
 
-      if (useOpenAI) {
-        // ─── Rama OpenAI gpt-image-1 ───
-        console.log(`[OPENAI] Modelo=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
-        // Mapear el formato pedido al tamaño que soporta gpt-image-1
-        const lp = finalPrompt.toLowerCase();
-        let openaiSize: "1024x1024" | "1536x1024" | "1024x1536" = "1024x1024";
-        if (lp.includes("9:16") || lp.includes("vertical") || lp.includes("retrato")) openaiSize = "1024x1536";
-        else if (lp.includes("16:9") || lp.includes("horizontal") || lp.includes("paisaje")) openaiSize = "1536x1024";
+      console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
 
-        const t0 = Date.now();
-        const out = await generateWithOpenAI(finalPrompt, referenceImages, openaiSize);
-        console.log(`[OPENAI] Generación completada en ${Date.now() - t0}ms con ${OPENAI_IMAGE_MODEL}`);
-        imageBase64 = out.base64;
-        imageMimeType = out.mimeType;
-      } else {
-        // ─── Rama Gemini (Pro/Flash) con ping-pong y rotación de keys ───
-        const contents: any[] = [];
-        for (const img of referenceImages) {
-          if (img.label) contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
-          contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+      const startedAt = Date.now();
+      const { response, modelUsed, keyUsed } = await generateWithSmartRetry(model, contents, startedAt);
+      console.log(`[GEMINI] Generación completada en ${Date.now() - startedAt}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""} (key=${keyUsed})`);
+      model = modelUsed;
+
+      // Detectar bloqueo por safety / promptFeedback
+      const promptFeedback = (response as any)?.promptFeedback || (response as any)?.response?.promptFeedback;
+      if (promptFeedback?.blockReason) {
+        console.warn("[GEMINI] prompt bloqueado:", promptFeedback);
+        throw new Error(`El prompt fue bloqueado por políticas (${promptFeedback.blockReason}). Reformula el contenido.`);
+      }
+      const finishReason = (response as any)?.candidates?.[0]?.finishReason;
+      if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
+        if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
+          throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt.`);
         }
-        contents.push({ text: finalPrompt });
-
-        console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
-
-        const startedAt = Date.now();
-        const { response, modelUsed, keyUsed } = await generateWithSmartRetry(model, contents, startedAt);
-        console.log(`[GEMINI] Generación completada en ${Date.now() - startedAt}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""} (key=${keyUsed})`);
-        model = modelUsed;
-
-        const promptFeedback = (response as any)?.promptFeedback || (response as any)?.response?.promptFeedback;
-        if (promptFeedback?.blockReason) {
-          console.warn("[GEMINI] prompt bloqueado:", promptFeedback);
-          throw new Error(`El prompt fue bloqueado por políticas (${promptFeedback.blockReason}). Reformula el contenido.`);
-        }
-        const finishReason = (response as any)?.candidates?.[0]?.finishReason;
-        if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
-          if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
-            throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt.`);
-          }
-          if (finishReason === "RECITATION") {
-            throw new Error("El modelo detectó contenido recitado. Cambia el prompt.");
-          }
-        }
-
-        for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
-          if ((part as any).inlineData) {
-            imageBase64 = (part as any).inlineData.data;
-            imageMimeType = (part as any).inlineData.mimeType || "image/png";
-            break;
-          }
-        }
-
-        if (!imageBase64) {
-          const textParts = (response as any)?.candidates?.[0]?.content?.parts
-            ?.filter((p: any) => p.text)?.map((p: any) => p.text)?.join(" ") || "";
-          console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300));
-          throw new Error("Nano Banana no devolvió una imagen. Intenta reformular el prompt.");
+        if (finishReason === "RECITATION") {
+          throw new Error("El modelo detectó contenido recitado. Cambia el prompt.");
         }
       }
-      // ─── Fin de la rama Gemini/OpenAI ───
 
-      // Subir a Supabase (común para ambos proveedores)
-      if (!imageBase64) throw new Error("No se obtuvo imagen del proveedor");
+      let imageBase64: string | null = null;
+      let imageMimeType = "image/png";
+      for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
+        if ((part as any).inlineData) {
+          imageBase64 = (part as any).inlineData.data;
+          imageMimeType = (part as any).inlineData.mimeType || "image/png";
+          break;
+        }
+      }
+
+      if (!imageBase64) {
+        const textParts = (response as any)?.candidates?.[0]?.content?.parts
+          ?.filter((p: any) => p.text)?.map((p: any) => p.text)?.join(" ") || "";
+        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300));
+        throw new Error("Nano Banana no devolvió una imagen. Intenta reformular el prompt.");
+      }
+
+      // Subir a Supabase
       const imageBuffer = Buffer.from(imageBase64, "base64");
       const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
-      const filePrefix = useOpenAI ? "openai" : "nanobanana";
-      const fileName = `${filePrefix}_${user.id}_${Date.now()}.${ext}`;
+      const fileName = `nanobanana_${user.id}_${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("ai-generations")
@@ -728,15 +628,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         throw dbError;
       }
 
-      const modelLabel = useOpenAI
-        ? "OpenAI gpt-image-1 🎨"
-        : model === NANO_BANANA_PRO ? "Nano Banana Pro 🍌" : "Nano Banana Flash ⚡";
-
       return NextResponse.json({
         success: true,
         imageUrl: finalPermanentUrl,
         balance: newBalance,
-        model: modelLabel,
+        model: model === NANO_BANANA_PRO ? "Nano Banana Pro 🍌" : "Nano Banana Flash ⚡",
       });
 
     } catch (apiError: any) {

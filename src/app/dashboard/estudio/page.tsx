@@ -95,7 +95,7 @@ export default function EstudioIAPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
   const [isModerator, setIsModerator] = useState(false);
   const [autoPublishing, setAutoPublishing] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<'flash' | 'pro' | 'openai'>('flash');
+  const [selectedModel, setSelectedModel] = useState<'flash' | 'pro'>('flash');
   const [showCancelBtn, setShowCancelBtn] = useState(false);
   const [editingImage, setEditingImage] = useState<any | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
@@ -661,34 +661,14 @@ export default function EstudioIAPage() {
                 <Sparkles className="w-3 h-3" />
                 Pro
               </button>
-              <div className="w-px h-5 bg-white/[0.06]"></div>
-              <button
-                type="button"
-                onClick={() => setSelectedModel('openai')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
-                  selectedModel === 'openai'
-                    ? 'bg-emerald-500/10 text-emerald-300 shadow-inner'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
-                }`}
-                title="OpenAI gpt-image-1 — alternativa cuando Gemini está saturado"
-              >
-                <Sparkles className="w-3 h-3" />
-                OpenAI
-              </button>
             </div>
 
             <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
-              selectedModel === 'pro'
-                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15'
-                : selectedModel === 'openai'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
+              selectedModel === 'pro' 
+                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15' 
                 : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/50 border border-[#FFDE00]/10'
             }`}>
-              {selectedModel === 'pro'
-                ? 'Alta fidelidad · Más lento'
-                : selectedModel === 'openai'
-                ? 'OpenAI gpt-image-1 · Estable'
-                : 'Rápido · Uso general'}
+              {selectedModel === 'pro' ? 'Alta fidelidad · Más lento' : 'Rápido · Uso general'}
             </span>
 
             <div className="ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all bg-purple-500/10 border-purple-500/15 text-purple-300">
@@ -987,9 +967,7 @@ export default function EstudioIAPage() {
                   <Loader2 className="w-10 h-10 animate-spin text-[#FFDE00]" />
                   <h3 className="font-semibold text-white text-lg">Generando tu imagen...</h3>
                   <p className="text-sm text-zinc-500 max-w-md">
-                    {selectedModel === 'openai'
-                      ? 'OpenAI gpt-image-1 activo. 20–45 segundos.'
-                      : selectedModel === 'pro'
+                    {selectedModel === 'pro'
                       ? 'Modelo Pro activo. Alta fidelidad. 30–60 segundos.'
                       : refImages.length > 0
                         ? 'Analizando referencias y generando. 20–40 segundos.'
