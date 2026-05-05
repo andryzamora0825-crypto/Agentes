@@ -2,15 +2,26 @@ import { NextResponse } from "next/server";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 
-export const maxDuration = 100;
+export const maxDuration = 140;
 
+// Cliente principal + cliente de respaldo opcional con segunda API key.
+// Si GEMINI_API_KEY_BACKUP existe, rotamos automáticamente al respaldo cuando la principal queda sin cuota (429 RESOURCE_EXHAUSTED).
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const aiBackup = process.env.GEMINI_API_KEY_BACKUP
+  ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_BACKUP })
+  : null;
+
+// OpenAI gpt-image-1 — modelo top de OpenAI para generación de imágenes.
+// Sucesor de DALL·E 3, soporta referencias multi-imagen y edición. Tier de fallback cuando Gemini está saturado.
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 const NANO_BANANA_2   = "gemini-3.1-flash-image-preview";
 const NANO_BANANA_PRO = "gemini-3-pro-image-preview";
+const OPENAI_IMAGE_MODEL = "gpt-image-1";
 
-const GEMINI_HARD_TIMEOUT_MS = 90_000;
+const GEMINI_HARD_TIMEOUT_MS = 125_000;
 const REF_FETCH_TIMEOUT_MS = 6_000;
 // Timeouts por intento ajustados al SLA real de cada modelo.
 // Pro tarda 25-55s honestamente; aborta a 35s era prematuro y disparaba retries que doblaban el costo.
@@ -43,37 +54,150 @@ async function refundCredits(client: any, userId: string, amount: number) {
   }
 }
 
+// CUOTA AGOTADA: la API key llegó a su límite diario/mensual.
+// NO debe reintentarse ni hacer fallback Flash↔Pro (ambos comparten cuota).
+// Solución: rotar a API key de respaldo (si está configurada) o avisar al admin.
+function isQuotaExhausted(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const status = err?.status || err?.statusCode || err?.code;
+  return (
+    status === 429 ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("exceeded") ||
+    msg.includes("daily limit") ||
+    msg.includes("requests per minute") ||
+    msg.includes("rpm")
+  );
+}
+
+// SATURACIÓN TEMPORAL: el servidor de Google está sobrecargado pero la cuota está OK.
+// Esto SÍ se reintenta y se hace fallback al modelo opuesto.
 function isOverloaded(err: any): boolean {
+  if (isQuotaExhausted(err)) return false; // separar de quota: cuota no es saturación
   const msg = String(err?.message || err || "").toLowerCase();
   const status = err?.status || err?.statusCode || err?.code;
   return (
     status === 503 ||
-    status === 429 ||
     status === 500 ||
     msg.includes("503") ||
     msg.includes("500") ||
     msg.includes("internal") ||
     msg.includes("overloaded") ||
     msg.includes("unavailable") ||
-    msg.includes("rate limit") ||
-    msg.includes("resource_exhausted")
+    msg.includes("no disponible") ||                  // mensajes en español del SDK
+    msg.includes("alta demanda") ||                   // "Este modelo está experimentando una alta demanda"
+    msg.includes("picos de demanda")
   );
 }
 
-// Llamada única con timeout duro
-function callGemini(model: string, contents: any[], perCallTimeoutMs: number): Promise<any> {
+// Llamada única con timeout duro. Acepta cliente para soportar rotación de API keys.
+// safetySettings BLOCK_NONE: con prompts largos y referencias, los modelos preview a veces
+// disparan filtros falsos positivos que devuelven respuestas vacías sin error. Desactivamos
+// los safety filters de aplicación para que el modelo solo bloquee contenido realmente prohibido.
+function callGemini(client: GoogleGenAI, model: string, contents: any[], perCallTimeoutMs: number): Promise<any> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), perCallTimeoutMs);
   });
-  const apiPromise = ai.models.generateContent({
+  const apiPromise = client.models.generateContent({
     model,
     contents,
-    config: { responseModalities: ["TEXT", "IMAGE"] },
+    config: {
+      responseModalities: ["TEXT", "IMAGE"],
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_HATE_SPEECH" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+      ],
+    },
   });
   return Promise.race([apiPromise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// OPENAI gpt-image-1 — CONFIGURACIÓN MATCH CHATGPT
+// ═══════════════════════════════════════════════════════════════════
+// ChatGPT (chat.openai.com) usa internamente estos parámetros que el SDK NO aplica por defecto:
+//   - quality: "high"          → ChatGPT siempre usa high. El default del SDK es "auto" (~medium).
+//   - moderation: "low"        → permite más libertad creativa (rostros, marcas, texto, etc).
+//   - output_format: "png"     → mantiene transparencia y máxima fidelidad.
+// Sin estos, gpt-image-1 vía API genera notablemente PEOR que ChatGPT.
+//
+// Latencias reales con quality:high:
+//   - sin refs: 25-50s
+//   - con refs (edit): 35-70s
+// Por eso subimos el timeout a 90s.
+const PER_CALL_TIMEOUT_OPENAI = 90_000;
+
+async function generateWithOpenAI(
+  prompt: string,
+  refs: { base64: string; mimeType: string; label?: string }[],
+  size: "1024x1024" | "1536x1024" | "1024x1536" = "1024x1024",
+  perCallMs: number = PER_CALL_TIMEOUT_OPENAI,
+): Promise<{ base64: string; mimeType: string }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("GEMINI_TIMEOUT")), perCallMs);
+  });
+
+  let apiPromise: Promise<any>;
+  if (refs.length > 0) {
+    // EDICIÓN multi-imagen: gpt-image-1 acepta array de hasta 16 imágenes como contexto.
+    const imageFiles = refs.map((r, i) => {
+      const buffer = Buffer.from(r.base64, "base64");
+      const ext = r.mimeType.includes("jpeg") ? "jpg" : r.mimeType.includes("webp") ? "webp" : "png";
+      return new File([new Uint8Array(buffer)], `ref_${i}.${ext}`, { type: r.mimeType });
+    });
+    apiPromise = openai.images.edit({
+      model: OPENAI_IMAGE_MODEL,
+      image: imageFiles as any,
+      prompt,
+      size,
+      n: 1,
+      // ─── parámetros premium match ChatGPT ───
+      quality: "high",
+      // input_fidelity high: preserva mejor las referencias del usuario (rostros, productos, marcas)
+      input_fidelity: "high",
+    } as any);
+  } else {
+    apiPromise = openai.images.generate({
+      model: OPENAI_IMAGE_MODEL,
+      prompt,
+      size,
+      n: 1,
+      // ─── parámetros premium match ChatGPT ───
+      quality: "high",
+      moderation: "low",
+      output_format: "png",
+    } as any);
+  }
+
+  const result: any = await Promise.race([apiPromise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+
+  const b64 = result?.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI no devolvió imagen base64");
+  return { base64: b64, mimeType: "image/png" };
+}
+
+// Detecta el patrón "respuesta vacía sin error" que el SDK @google/genai devuelve
+// cuando hay rate limits silenciosos, modelos preview rotos o degradación de Google.
+// Tratamos como reintentable.
+function isEmptyResponse(response: any): boolean {
+  if (!response) return true;
+  const candidates = response?.candidates;
+  if (!candidates || candidates.length === 0) return true;
+  const parts = candidates[0]?.content?.parts;
+  if (!parts || parts.length === 0) return true;
+  // Sin imagen Y sin texto = vacío
+  const hasImage = parts.some((p: any) => p.inlineData);
+  const hasText = parts.some((p: any) => p.text && String(p.text).trim().length > 0);
+  return !hasImage && !hasText;
 }
 
 // Política nueva (post incidente de 75s):
@@ -86,77 +210,116 @@ async function generateWithSmartRetry(
   primaryModel: string,
   contents: any[],
   startedAt: number,
-): Promise<{ response: any; modelUsed: string }> {
+): Promise<{ response: any; modelUsed: string; keyUsed: "primary" | "backup" }> {
   const TOTAL_BUDGET_MS = GEMINI_HARD_TIMEOUT_MS;
   const fallbackModel = primaryModel === NANO_BANANA_PRO ? NANO_BANANA_2 : NANO_BANANA_PRO;
   const timeoutFor = (m: string) => (m === NANO_BANANA_PRO ? PER_CALL_TIMEOUT_PRO : PER_CALL_TIMEOUT_FLASH);
 
   const remaining = () => Math.max(0, TOTAL_BUDGET_MS - (Date.now() - startedAt));
+  let usingBackupKey = false;
+  const currentClient = () => (usingBackupKey && aiBackup ? aiBackup : ai);
+  const currentKeyLabel = (): "primary" | "backup" => (usingBackupKey ? "backup" : "primary");
+
   const tryOnce = async (model: string, label: string) => {
     const budget = Math.min(timeoutFor(model), remaining());
     if (budget <= 2000) throw new Error("GEMINI_TIMEOUT");
     const t0 = Date.now();
     try {
-      const r = await callGemini(model, contents, budget);
-      console.log(`[GEMINI] ${label} ${model} OK en ${Date.now() - t0}ms`);
+      const r = await callGemini(currentClient(), model, contents, budget);
+      // Detectar respuesta vacía (rate limit silencioso, modelo preview roto, degradación)
+      if (isEmptyResponse(r)) {
+        const blocked = (r as any)?.promptFeedback?.blockReason;
+        const finish = (r as any)?.candidates?.[0]?.finishReason;
+        console.warn(`[GEMINI] ${label} ${model} (key=${currentKeyLabel()}) respuesta VACÍA en ${Date.now() - t0}ms (blocked=${blocked}, finish=${finish}). Tratando como saturación.`);
+        const e = new Error("EMPTY_RESPONSE") as any;
+        e.status = 503;
+        throw e;
+      }
+      console.log(`[GEMINI] ${label} ${model} (key=${currentKeyLabel()}) OK en ${Date.now() - t0}ms`);
       return r;
     } catch (e: any) {
-      console.warn(`[GEMINI] ${label} ${model} falló en ${Date.now() - t0}ms: ${e?.message || e}`);
+      // Logging completo: muchas veces el SDK envuelve el error real en propiedades anidadas.
+      const realStatus = e?.status || e?.statusCode || e?.code || e?.response?.status;
+      const realDetails = e?.response?.data || e?.error || e?.details;
+      console.warn(`[GEMINI] ${label} ${model} (key=${currentKeyLabel()}) falló en ${Date.now() - t0}ms: msg="${e?.message || e}" status=${realStatus} details=${realDetails ? JSON.stringify(realDetails).slice(0, 300) : "—"}`);
       throw e;
     }
   };
 
-  // Intento 1
-  try {
-    const response = await tryOnce(primaryModel, "intento#1");
-    return { response, modelUsed: primaryModel };
-  } catch (err: any) {
-    const overloaded = isOverloaded(err);
-    const timedOut = String(err?.message || "") === "GEMINI_TIMEOUT";
+  // Si hay error de cuota agotada en cualquier intento, intentamos rotar a la API key de respaldo (si existe).
+  const rotateToBackupIfPossible = (): boolean => {
+    if (!aiBackup || usingBackupKey) return false;
+    console.warn(`[GEMINI] Cuota agotada en API key principal → rotando a key de respaldo`);
+    usingBackupKey = true;
+    return true;
+  };
 
-    // Errores de input/safety/etc. → no tiene sentido reintentar
-    if (!overloaded && !timedOut) throw err;
+  // Estrategia ping-pong para saturación persistente de Google:
+  // intento#1 primario → wait 2s → intento#2 fallback → wait 5s → intento#3 primario → wait 10s → intento#4 fallback.
+  // Cada intento alterna de modelo y aumenta el backoff (jitter ±300ms). Total ~17s de espera + 4 generaciones.
+  // Con TOTAL_BUDGET=125s y per-call=65s/Pro y 25s/Flash, en el peor caso usamos 17s espera + ~50s en intentos = 67s.
+  const sequence: Array<{ model: string; waitBefore: number; label: string }> = [
+    { model: primaryModel, waitBefore: 0, label: "intento#1" },
+    { model: fallbackModel, waitBefore: 2000, label: "intento#2-alt" },
+    { model: primaryModel, waitBefore: 5000, label: "intento#3-primario" },
+    { model: fallbackModel, waitBefore: 10000, label: "intento#4-alt" },
+  ];
 
-    // Timeout en el primer intento: NO reintentamos en el mismo modelo (probablemente está generando del lado de Google).
-    // Si queda presupuesto y hay modelo alterno, intentamos el fallback (que será más rápido si Pro→Flash).
-    if (timedOut) {
-      if (remaining() > 8000 && fallbackModel === NANO_BANANA_2) {
-        try {
-          const response = await tryOnce(fallbackModel, "fallback-tras-timeout");
-          return { response, modelUsed: fallbackModel };
-        } catch (e2) {
-          throw err;
-        }
+  let lastErr: any = null;
+  let lastQuotaErr: any = null;
+
+  for (const step of sequence) {
+    if (step.waitBefore > 0) {
+      const jitter = Math.floor(Math.random() * 600) - 300;
+      const wait = Math.max(500, step.waitBefore + jitter);
+      if (remaining() < wait + timeoutFor(step.model) + 2000) {
+        console.warn(`[GEMINI] sin presupuesto para ${step.label} (queda ${remaining()}ms)`);
+        break;
       }
-      throw err;
-    }
-
-    // Saturación 503/429: 1 retry rápido sobre el mismo modelo
-    if (remaining() > timeoutFor(primaryModel) + 2000) {
-      const wait = 1200 + Math.floor(Math.random() * 600);
-      console.warn(`[GEMINI] 503/saturación → reintentando ${primaryModel} tras ${wait}ms`);
+      console.warn(`[GEMINI] esperando ${wait}ms antes de ${step.label} (${step.model})`);
       await new Promise(r => setTimeout(r, wait));
-      try {
-        const response = await tryOnce(primaryModel, "retry");
-        return { response, modelUsed: primaryModel };
-      } catch (err2: any) {
-        if (!isOverloaded(err2)) throw err2;
-        // Sigue saturado → fallback al opuesto si queda presupuesto
-        if (remaining() > 5000) {
-          console.warn(`[GEMINI] Fallback ${primaryModel} → ${fallbackModel} (saturación persistente)`);
-          try {
-            const response = await tryOnce(fallbackModel, "fallback-tras-503");
-            return { response, modelUsed: fallbackModel };
-          } catch (e3) {
-            throw err2;
-          }
-        }
-        throw err2;
-      }
+    } else if (remaining() < timeoutFor(step.model) + 2000) {
+      break;
     }
 
-    throw err;
+    try {
+      const response = await tryOnce(step.model, step.label);
+      return { response, modelUsed: step.model, keyUsed: currentKeyLabel() };
+    } catch (err: any) {
+      lastErr = err;
+      const quota = isQuotaExhausted(err);
+      const overloaded = isOverloaded(err);
+      const timedOut = String(err?.message || "") === "GEMINI_TIMEOUT";
+
+      // CUOTA AGOTADA → rotar a backup si existe; no tiene sentido seguir alternando modelos (comparten cuota)
+      if (quota) {
+        lastQuotaErr = err;
+        if (rotateToBackupIfPossible() && remaining() > timeoutFor(step.model) + 2000) {
+          try {
+            const response = await tryOnce(step.model, `${step.label}-key-backup`);
+            return { response, modelUsed: step.model, keyUsed: currentKeyLabel() };
+          } catch (errBk: any) {
+            lastErr = errBk;
+            // si backup también dio quota, salimos del loop (todas las keys agotadas)
+            if (isQuotaExhausted(errBk)) break;
+            // si dio otra cosa (overloaded/timeout) seguimos el ping-pong con la backup activa
+          }
+        } else {
+          // No hay backup o no queda presupuesto → no tiene sentido más reintentos por quota
+          break;
+        }
+      }
+
+      // Si NO es saturación ni timeout (ej. INVALID_ARGUMENT, SAFETY) → propagar inmediatamente
+      if (!overloaded && !timedOut && !quota) throw err;
+      // Si es timeout, seguir al siguiente paso del ping-pong
+      // Si es overloaded, seguir al siguiente paso del ping-pong
+    }
   }
+
+  // Si todos los intentos quedaron por quota, propagar el error de quota (mensaje correcto al usuario)
+  if (lastQuotaErr && isQuotaExhausted(lastErr)) throw lastQuotaErr;
+  throw lastErr || new Error("Falla persistente del modelo tras múltiples intentos");
 }
 
 export async function POST(request: Request) {
@@ -448,9 +611,17 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     let creditsRefunded = false;
 
     try {
-      // Si el usuario subió refs propias, FORZAMOS Pro: Flash no maneja bien múltiples refs.
+      // Selección de proveedor:
+      // forceModel = 'openai' → OpenAI gpt-image-1 (modelo top de OpenAI, sucesor de DALL·E 3)
+      // forceModel = 'pro' → Gemini Pro
+      // forceModel = 'flash' → Gemini Flash
+      // refs del usuario → Gemini Pro (Flash las ignora)
+      // auto → Pro si hay cualquier ref, Flash si no
       let model: string;
-      if (userRefCount > 0) {
+      const useOpenAI = forceModel === 'openai';
+      if (useOpenAI) {
+        model = OPENAI_IMAGE_MODEL;
+      } else if (userRefCount > 0) {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'pro') {
         model = NANO_BANANA_PRO;
@@ -460,58 +631,77 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;
       }
 
-      // Orden recomendado por Gemini: imágenes primero, prompt textual al final.
-      const contents: any[] = [];
-      for (const img of referenceImages) {
-        if (img.label) contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
-        contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-      }
-      contents.push({ text: finalPrompt });
-
-      console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
-
-      const startedAt = Date.now();
-      const { response, modelUsed } = await generateWithSmartRetry(model, contents, startedAt);
-      console.log(`[GEMINI] Generación completada en ${Date.now() - startedAt}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""}`);
-      model = modelUsed;
-
-      // Detectar bloqueo por safety / promptFeedback
-      const promptFeedback = (response as any)?.promptFeedback || (response as any)?.response?.promptFeedback;
-      if (promptFeedback?.blockReason) {
-        console.warn("[GEMINI] prompt bloqueado:", promptFeedback);
-        throw new Error(`El prompt fue bloqueado por políticas (${promptFeedback.blockReason}). Reformula el contenido.`);
-      }
-      const finishReason = (response as any)?.candidates?.[0]?.finishReason;
-      if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
-        if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
-          throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt.`);
-        }
-        if (finishReason === "RECITATION") {
-          throw new Error("El modelo detectó contenido recitado. Cambia el prompt.");
-        }
-      }
-
       let imageBase64: string | null = null;
       let imageMimeType = "image/png";
-      for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
-        if ((part as any).inlineData) {
-          imageBase64 = (part as any).inlineData.data;
-          imageMimeType = (part as any).inlineData.mimeType || "image/png";
-          break;
+
+      if (useOpenAI) {
+        // ─── Rama OpenAI gpt-image-1 ───
+        console.log(`[OPENAI] Modelo=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
+        // Mapear el formato pedido al tamaño que soporta gpt-image-1
+        const lp = finalPrompt.toLowerCase();
+        let openaiSize: "1024x1024" | "1536x1024" | "1024x1536" = "1024x1024";
+        if (lp.includes("9:16") || lp.includes("vertical") || lp.includes("retrato")) openaiSize = "1024x1536";
+        else if (lp.includes("16:9") || lp.includes("horizontal") || lp.includes("paisaje")) openaiSize = "1536x1024";
+
+        const t0 = Date.now();
+        const out = await generateWithOpenAI(finalPrompt, referenceImages, openaiSize);
+        console.log(`[OPENAI] Generación completada en ${Date.now() - t0}ms con ${OPENAI_IMAGE_MODEL}`);
+        imageBase64 = out.base64;
+        imageMimeType = out.mimeType;
+      } else {
+        // ─── Rama Gemini (Pro/Flash) con ping-pong y rotación de keys ───
+        const contents: any[] = [];
+        for (const img of referenceImages) {
+          if (img.label) contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
+          contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+        }
+        contents.push({ text: finalPrompt });
+
+        console.log(`[GEMINI] Modelo solicitado=${model}, refs=${referenceImages.length} (usuario=${userRefCount}), prompt=${finalPrompt.length} chars`);
+
+        const startedAt = Date.now();
+        const { response, modelUsed, keyUsed } = await generateWithSmartRetry(model, contents, startedAt);
+        console.log(`[GEMINI] Generación completada en ${Date.now() - startedAt}ms con ${modelUsed}${modelUsed !== model ? " (fallback)" : ""} (key=${keyUsed})`);
+        model = modelUsed;
+
+        const promptFeedback = (response as any)?.promptFeedback || (response as any)?.response?.promptFeedback;
+        if (promptFeedback?.blockReason) {
+          console.warn("[GEMINI] prompt bloqueado:", promptFeedback);
+          throw new Error(`El prompt fue bloqueado por políticas (${promptFeedback.blockReason}). Reformula el contenido.`);
+        }
+        const finishReason = (response as any)?.candidates?.[0]?.finishReason;
+        if (finishReason && !["STOP", "MAX_TOKENS", undefined].includes(finishReason)) {
+          if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
+            throw new Error(`Imagen rechazada por filtros de seguridad (${finishReason}). Suaviza el prompt.`);
+          }
+          if (finishReason === "RECITATION") {
+            throw new Error("El modelo detectó contenido recitado. Cambia el prompt.");
+          }
+        }
+
+        for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
+          if ((part as any).inlineData) {
+            imageBase64 = (part as any).inlineData.data;
+            imageMimeType = (part as any).inlineData.mimeType || "image/png";
+            break;
+          }
+        }
+
+        if (!imageBase64) {
+          const textParts = (response as any)?.candidates?.[0]?.content?.parts
+            ?.filter((p: any) => p.text)?.map((p: any) => p.text)?.join(" ") || "";
+          console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300));
+          throw new Error("Nano Banana no devolvió una imagen. Intenta reformular el prompt.");
         }
       }
+      // ─── Fin de la rama Gemini/OpenAI ───
 
-      if (!imageBase64) {
-        const textParts = (response as any)?.candidates?.[0]?.content?.parts
-          ?.filter((p: any) => p.text)?.map((p: any) => p.text)?.join(" ") || "";
-        console.warn("[GEMINI] respondió solo texto:", textParts.slice(0, 300));
-        throw new Error("Nano Banana no devolvió una imagen. Intenta reformular el prompt.");
-      }
-
-      // Subir a Supabase
+      // Subir a Supabase (común para ambos proveedores)
+      if (!imageBase64) throw new Error("No se obtuvo imagen del proveedor");
       const imageBuffer = Buffer.from(imageBase64, "base64");
       const ext = imageMimeType.includes("jpeg") ? "jpg" : "png";
-      const fileName = `nanobanana_${user.id}_${Date.now()}.${ext}`;
+      const filePrefix = useOpenAI ? "openai" : "nanobanana";
+      const fileName = `${filePrefix}_${user.id}_${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("ai-generations")
@@ -538,11 +728,15 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         throw dbError;
       }
 
+      const modelLabel = useOpenAI
+        ? "OpenAI gpt-image-1 🎨"
+        : model === NANO_BANANA_PRO ? "Nano Banana Pro 🍌" : "Nano Banana Flash ⚡";
+
       return NextResponse.json({
         success: true,
         imageUrl: finalPermanentUrl,
         balance: newBalance,
-        model: model === NANO_BANANA_PRO ? "Nano Banana Pro 🍌" : "Nano Banana Flash ⚡",
+        model: modelLabel,
       });
 
     } catch (apiError: any) {
@@ -555,14 +749,21 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       const msg = String(apiError?.message || "");
       const status = apiError?.status || apiError?.statusCode || apiError?.code;
       const isTimeout = apiError?.name === "AbortError" || msg === "GEMINI_TIMEOUT" || msg.includes("abort");
-      const overloaded = isOverloaded(apiError);
-      const isInvalidArg = status === 400 || msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("invalid_argument");
-      const isInternal = status === 500 || msg.toLowerCase().includes("internal") || msg.toLowerCase().includes("internal_error");
+      const quotaExhausted = isQuotaExhausted(apiError);
+      const overloaded = !quotaExhausted && isOverloaded(apiError);
+      const isInvalidArg = !quotaExhausted && (status === 400 || msg.toLowerCase().includes("invalid_argument"));
+      const isInternal = !quotaExhausted && (status === 500 || msg.toLowerCase().includes("internal"));
 
       let friendlyMsg: string;
       let httpStatus = 500;
-      if (isTimeout) {
-        friendlyMsg = "Nano Banana tardó demasiado (>75s). Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
+      if (quotaExhausted) {
+        // Cuota de la(s) API key(s) agotada — el problema NO es del usuario, es del sistema.
+        friendlyMsg = aiBackup
+          ? "Las API keys de Gemini agotaron su cuota diaria/por minuto. Espera unos minutos o contacta al admin. Tus créditos fueron reembolsados."
+          : "La API key de Gemini agotó su cuota. El admin debe configurar GEMINI_API_KEY_BACKUP o esperar al reset. Tus créditos fueron reembolsados.";
+        httpStatus = 429;
+      } else if (isTimeout) {
+        friendlyMsg = "Nano Banana tardó demasiado. Intenta con un prompt más simple. Tus créditos fueron reembolsados.";
         httpStatus = 504;
       } else if (overloaded) {
         friendlyMsg = "El modelo está saturado (503). Intenta de nuevo en unos segundos. Tus créditos fueron reembolsados.";
@@ -581,13 +782,14 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
         msg,
         status,
         isTimeout,
+        quotaExhausted,
         overloaded,
         isInvalidArg,
         isInternal,
         name: apiError?.name,
         stack: apiError?.stack?.split("\n").slice(0, 4).join(" | "),
       });
-      return NextResponse.json({ error: friendlyMsg, refunded: true }, { status: httpStatus });
+      return NextResponse.json({ error: friendlyMsg, refunded: true, quotaExhausted }, { status: httpStatus });
     }
 
   } catch (error: any) {
