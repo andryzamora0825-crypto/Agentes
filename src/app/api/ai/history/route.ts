@@ -11,12 +11,16 @@ export async function GET(request: Request) {
       .from("ai_images")
       .select("*")
       .eq("author_id", user.primaryEmailAddress?.emailAddress)
-      .not("prompt", "like", "🎨 Libre:%")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, images: posts });
+    // Filtrar las imágenes del generador libre en JS (más confiable que filtro SQL con emoji)
+    const filtered = (posts || []).filter(
+      (img: any) => !img.prompt?.startsWith("🎨 Libre:")
+    );
+
+    return NextResponse.json({ success: true, images: filtered });
   } catch (error: any) {
     console.error("Error obteniendo historial IA:", error);
     return NextResponse.json({ error: "Fallo al cargar registros." }, { status: 500 });
