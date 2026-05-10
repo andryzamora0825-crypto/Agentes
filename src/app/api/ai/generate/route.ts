@@ -502,17 +502,19 @@ DIVERSIDAD CREATIVA: varía ángulos (contrapicado, cenital, gran angular), fond
     try {
       // Pro para publicidad con logos/refs → calidad publicitaria real
       // Flash solo cuando no hay refs y el usuario no eligió modelo
-      // Si no hay forceModel, leer el modelo global configurado por el admin
+      // Si no hay forceModel, leer el modelo global configurado por el admin (Supabase Storage)
       let globalDefault: string = "";
       if (!forceModel) {
         try {
-          const { data: configData } = await supabase
-            .from("global_config")
-            .select("value")
-            .eq("key", "default_ai_model")
-            .single();
-          globalDefault = configData?.value || "";
-        } catch { /* tabla no existe, usar lógica normal */ }
+          const { data: configBlob } = await supabase.storage
+            .from("ai-generations")
+            .download("config/global_ai_model.json");
+          if (configBlob) {
+            const configText = await configBlob.text();
+            const config = JSON.parse(configText);
+            globalDefault = config.model || "";
+          }
+        } catch { /* config no existe, usar lógica normal */ }
       }
 
       let model: string;

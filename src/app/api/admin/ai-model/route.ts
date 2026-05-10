@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 
-const ADMIN_EMAIL = "andryzamora0825@gmail.com";
+const CONFIG_BUCKET = "ai-generations";
+const CONFIG_PATH = "config/global_ai_model.json";
 
 // GET: Leer modelo global actual
 export async function GET() {
@@ -10,19 +11,19 @@ export async function GET() {
     const user = await currentUser();
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    // Cualquier usuario puede leer el modelo global (necesitan saber cuál usar)
-    const { data } = await supabase
-      .from("global_config")
-      .select("value")
-      .eq("key", "default_ai_model")
-      .single();
+    const { data, error } = await supabase.storage
+      .from(CONFIG_BUCKET)
+      .download(CONFIG_PATH);
 
-    return NextResponse.json({ 
-      success: true, 
-      model: data?.value || "flash" 
-    });
+    if (error || !data) {
+      // Config no existe aún, devolver flash por defecto
+      return NextResponse.json({ success: true, model: "flash" });
+    }
+
+    const text = await data.text();
+    const config = JSON.parse(text);
+    return NextResponse.json({ success: true, model: config.model || "flash" });
   } catch (e: any) {
-    // Si la tabla no existe, devolver flash por defecto
     return NextResponse.json({ success: true, model: "flash" });
   }
 }
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const email = user.primaryEmailAddress?.emailAddress;
-    
+
     // Verificar admin via Supabase
     const { data: adminData } = await supabase
       .from("admins")
@@ -43,42 +44,30 @@ export async function POST(request: Request) {
       .single();
 
     if (!adminData) {
-      return NextResponse.json({ error: "Solo administradores pueden cambiar el modelo." }, { status: 403 });
+      return NextResponse.json({ error: "Solo administradores." }, { status: 403 });
     }
 
     const body = await request.json();
     const { model } = body;
 
     if (!["flash", "pro"].includes(model)) {
-      return NextResponse.json({ error: "Modelo inválido. Usa 'flash' o 'pro'." }, { status: 400 });
+      return NextResponse.json({ error: "Modelo inválido." }, { status: 400 });
     }
 
-    // Upsert en global_config
-    const { error } = await supabase
-      .from("global_config")
-      .upsert(
-        { key: "default_ai_model", value: model, updated_at: new Date().toISOString() },
-        { onConflict: "key" }
-      );
+    // Guardar como JSON en Supabase Storage (no requiere tabla)
+    const configJson = JSON.stringify({ model, updatedAt: new Date().toISOString(), updatedBy: email });
+    const blob = new Blob([configJson], { type: "application/json" });
+
+    const { error } = await supabase.storage
+      .from(CONFIG_BUCKET)
+      .upload(CONFIG_PATH, blob, { contentType: "application/json", upsert: true });
 
     if (error) {
-      // Si la tabla no existe, intentar crearla insertando
-      console.warn("[AI-MODEL] Error en upsert:", error.message);
-      
-      // Fallback: intentar insert directo
-      const { error: insertErr } = await supabase
-        .from("global_config")
-        .insert({ key: "default_ai_model", value: model });
-      
-      if (insertErr) {
-        console.error("[AI-MODEL] También falló insert:", insertErr.message);
-        return NextResponse.json({ 
-          error: "No se pudo guardar. Crea la tabla 'global_config' en Supabase con columnas: key (text, PK), value (text), updated_at (timestamptz)." 
-        }, { status: 500 });
-      }
+      console.error("[AI-MODEL] Error guardando config:", error.message);
+      return NextResponse.json({ error: "Error guardando: " + error.message }, { status: 500 });
     }
 
-    console.log(`[AI-MODEL] Modelo global cambiado a '${model}' por ${email}`);
+    console.log(`[AI-MODEL] ✅ Modelo global cambiado a '${model}' por ${email}`);
     return NextResponse.json({ success: true, model });
 
   } catch (e: any) {
