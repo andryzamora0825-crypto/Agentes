@@ -1070,6 +1070,15 @@ export default function EstudioIAPage() {
                       <Clipboard className="w-3 h-3" />
                     </button>
                   </div>
+                  {img.model_used && (
+                    <span className={`mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold w-fit ${
+                      img.model_used === 'pro'
+                        ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15'
+                        : 'bg-[#FFDE00]/[0.08] text-[#FFDE00]/70 border border-[#FFDE00]/10'
+                    }`}>
+                      {img.model_used === 'pro' ? '✨ Pro' : '⚡ Flash'}
+                    </span>
+                  )}
 
                   <div className="mt-auto">
                     {/* Action buttons */}
