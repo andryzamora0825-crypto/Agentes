@@ -88,6 +88,7 @@ export default function GeneradorLibrePage() {
   const [selectedModel, setSelectedModel] = useState<'flash' | 'pro'>('flash');
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [lastEnhanced, setLastEnhanced] = useState<string | null>(null);
+  const [lastWasEnhanced, setLastWasEnhanced] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -214,6 +215,7 @@ export default function GeneradorLibrePage() {
       if (res.ok) {
         setLastModel(data.model || null);
         setLastEnhanced(data.enhancedPrompt || null);
+        setLastWasEnhanced(data.wasEnhanced === true);
         fetchHistory();
         setPrompt("");
         setRefImages([]);
@@ -409,13 +411,20 @@ export default function GeneradorLibrePage() {
         )}
 
         {lastModel && (
-          <div className="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-            <Sparkles className="w-3.5 h-3.5" />
-            Generado con {lastModel}
-            {lastEnhanced && (
-              <span className="text-zinc-500 ml-2 truncate max-w-[300px]">
-                Prompt mejorado: "{lastEnhanced.slice(0, 60)}..."
-              </span>
+          <div className="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex flex-col gap-1 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5" />
+              Generado con {lastModel}
+              {lastWasEnhanced ? (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold">GPT ✅</span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[10px] font-semibold">GPT ❌ (prompt original)</span>
+              )}
+            </div>
+            {lastEnhanced && lastWasEnhanced && (
+              <p className="text-zinc-500 text-[10px] leading-relaxed line-clamp-2 pl-5">
+                🧠 "{lastEnhanced.slice(0, 150)}..."
+              </p>
             )}
           </div>
         )}

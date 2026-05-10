@@ -603,6 +603,7 @@ DIVERSIDAD CREATIVA: varía ángulos (contrapicado, cenital, gran angular), fond
         author_id: user.primaryEmailAddress?.emailAddress,
         author_name: user.fullName || user.firstName || "Agente",
         author_avatar_url: user.imageUrl,
+        model_used: model === NANO_BANANA_PRO ? "pro" : "flash",
       });
 
       if (dbError) {

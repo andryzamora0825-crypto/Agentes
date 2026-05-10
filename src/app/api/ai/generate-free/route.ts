@@ -65,21 +65,29 @@ function isEmpty(response: any): boolean {
 
 // ── Enhance prompt via GPT ────────────────────────────────────────────
 
-async function enhancePrompt(userPrompt: string): Promise<string> {
+async function enhancePrompt(userPrompt: string): Promise<{ text: string; wasEnhanced: boolean }> {
   if (!process.env.OPENAI_API_KEY) {
     console.warn("[FREE-GEN] No OPENAI_API_KEY — usando prompt tal cual");
-    return userPrompt;
+    return { text: userPrompt, wasEnhanced: false };
   }
 
-  const systemMsg = `Eres un experto director de arte y fotógrafo conceptual. Tu único trabajo es transformar una idea simple en un prompt MAESTRO de generación de imágenes IA.
+  const systemMsg = `Eres un DIRECTOR DE ARTE de clase mundial especializado en generación de imágenes con IA. Tu misión: transformar ideas simples en prompts MAESTROS que produzcan imágenes espectaculares, cinematográficas y de impacto visual máximo.
 
-REGLAS:
-1. Responde SOLO con el prompt final. Nada de introducciones, explicaciones ni notas.
-2. Escribe en español.
-3. Un solo párrafo denso y visual: describe composición, iluminación, ángulo de cámara, paleta de colores, texturas, ambiente, estilo artístico.
-4. Sé MUY específico con detalles visuales (tipo de luz, hora del día, materiales, profundidad de campo).
-5. Si la idea es vaga, interpreta creativamente con impacto visual máximo.
-6. Máximo 250 palabras.`;
+REGLAS ABSOLUTAS:
+1. Responde ÚNICAMENTE con el prompt mejorado. CERO introducciones, explicaciones, comillas o notas.
+2. Escribe en INGLÉS (los modelos de IA generan mejor en inglés).
+3. Un párrafo denso y ultra-descriptivo. Incluye SIEMPRE:
+   - Composición exacta (rule of thirds, leading lines, symmetry, Dutch angle)
+   - Iluminación específica (golden hour, volumetric rays, rim lighting, neon glow, dramatic chiaroscuro)
+   - Ángulo de cámara (low angle hero shot, aerial view, extreme close-up, wide establishing shot)
+   - Paleta de colores con nombres específicos (crimson, teal, burnt orange, midnight blue)
+   - Texturas y materiales (chrome, brushed metal, wet asphalt, velvet, holographic)
+   - Atmósfera y mood (epic, cinematic, ethereal, gritty, luxurious)
+   - Estilo artístico (photorealistic 8K, hyper-detailed CGI, award-winning photography)
+   - Profundidad de campo (shallow DOF f/1.4, deep focus, tilt-shift)
+4. Añade SIEMPRE: "ultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality"
+5. Si la idea es vaga, ELEVA creativamente al máximo nivel visual posible.
+6. Máximo 300 palabras.`;
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -94,8 +102,8 @@ REGLAS:
           { role: "system", content: systemMsg },
           { role: "user", content: userPrompt }
         ],
-        temperature: 0.8,
-        max_tokens: 500,
+        temperature: 0.85,
+        max_tokens: 600,
       }),
     });
 
@@ -105,11 +113,11 @@ REGLAS:
     const enhanced = data.choices?.[0]?.message?.content?.trim();
     if (!enhanced) throw new Error("Respuesta vacía de GPT");
 
-    console.log(`[FREE-GEN] Prompt mejorado (${enhanced.length} chars)`);
-    return enhanced;
+    console.log(`[FREE-GEN] ✅ Prompt mejorado OK (${enhanced.length} chars)`);
+    return { text: enhanced, wasEnhanced: true };
   } catch (e: any) {
-    console.warn("[FREE-GEN] GPT falló, usando prompt original:", e.message);
-    return userPrompt;
+    console.error("[FREE-GEN] ❌ GPT falló:", e.message);
+    return { text: userPrompt, wasEnhanced: false };
   }
 }
 
@@ -187,13 +195,13 @@ export async function POST(request: Request) {
     }
 
     // ── 1. Mejorar prompt con GPT ─────────────────────────────────────
-    const enhancedPrompt = await enhancePrompt(prompt.trim());
+    const { text: enhancedPrompt, wasEnhanced } = await enhancePrompt(prompt.trim());
 
     // ── 2. Construir prompt final con formato ─────────────────────────
     const formatStr = FORMAT_MAP[imageFormat] || "";
     const finalPrompt = formatStr
-      ? `[FORMATO]: ${formatStr}\n\n${enhancedPrompt}\n\nCalidad ultra-realista, resolución máxima, detalle fotográfico.`
-      : `${enhancedPrompt}\n\nCalidad ultra-realista, resolución máxima, detalle fotográfico.`;
+      ? `[FORMATO]: ${formatStr}\n\n${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`
+      : `${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`;
 
     // ── 3. Procesar refs del usuario ──────────────────────────────────
     const referenceImages: { base64: string; mimeType: string; label: string }[] = [];
@@ -284,6 +292,7 @@ export async function POST(request: Request) {
       success: true,
       imageUrl: finalUrl,
       enhancedPrompt,
+      wasEnhanced,
       model: modelUsed === PRO_MODEL ? "Pro 🍌" : "Flash ⚡",
     });
 
