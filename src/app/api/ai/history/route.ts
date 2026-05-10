@@ -11,6 +11,7 @@ export async function GET(request: Request) {
       .from("ai_images")
       .select("*")
       .eq("author_id", user.primaryEmailAddress?.emailAddress)
+      .not("prompt", "like", "🎨 Libre:%")
       .order("created_at", { ascending: false });
 
     if (error) throw error;

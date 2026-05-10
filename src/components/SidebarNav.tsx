@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2 } from "lucide-react";
+import { FileText, Newspaper, ShieldAlert, Settings, ShoppingCart, Image as ImageIcon, Coins, ShieldCheck, MessageSquare, DollarSign, Share2, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
@@ -46,6 +46,7 @@ export default function SidebarNav() {
     { name: "Notas de Retiro",     href: "/dashboard",              exact: true,  icon: FileText,      adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Panel Admin",         href: "/dashboard/admin",         exact: false, icon: ShieldCheck,   adminOnly: true,  vipOnly: false, requiresBot: false },
     { name: "Estudio IA",          href: "/dashboard/estudio",       exact: false, icon: ImageIcon,     adminOnly: false, vipOnly: true,  requiresBot: false },
+    { name: "Generador Libre",     href: "/dashboard/generador",     exact: false, icon: Wand2,         adminOnly: true,  vipOnly: false, requiresBot: false },
     { name: "Social Media",        href: "/dashboard/social",        exact: false, icon: Share2,        adminOnly: false, vipOnly: false, requiresBot: false, requiresSocial: true },
     { name: "Bot WhatsApp",        href: "/dashboard/whatsapp",      exact: false, icon: MessageSquare, adminOnly: false, vipOnly: true,  requiresBot: false },
     { name: "Recargas",            href: "/dashboard/recargas",      exact: false, icon: DollarSign,    adminOnly: false, vipOnly: true,  requiresBot: true  },

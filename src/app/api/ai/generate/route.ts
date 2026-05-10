@@ -181,15 +181,13 @@ async function generateWithSmartRetry(
     return true;
   };
 
-  // Estrategia ping-pong para saturación persistente de Google:
-  // intento#1 primario → wait 2s → intento#2 fallback → wait 5s → intento#3 primario → wait 10s → intento#4 fallback.
-  // Cada intento alterna de modelo y aumenta el backoff (jitter ±300ms). Total ~17s de espera + 4 generaciones.
-  // Con TOTAL_BUDGET=125s y per-call=65s/Pro y 25s/Flash, en el peor caso usamos 17s espera + ~50s en intentos = 67s.
+  // Estrategia de reintentos rápidos:
+  // intento#1 primario → wait 1s → intento#2 fallback → wait 2s → intento#3 primario
+  // Total ~3s de espera + generaciones. Peor caso: 3s + 65s + 25s ≈ 93s (dentro del budget de 125s).
   const sequence: Array<{ model: string; waitBefore: number; label: string }> = [
     { model: primaryModel, waitBefore: 0, label: "intento#1" },
-    { model: fallbackModel, waitBefore: 2000, label: "intento#2-alt" },
-    { model: primaryModel, waitBefore: 5000, label: "intento#3-primario" },
-    { model: fallbackModel, waitBefore: 10000, label: "intento#4-alt" },
+    { model: fallbackModel, waitBefore: 1000, label: "intento#2-alt" },
+    { model: primaryModel, waitBefore: 2000, label: "intento#3-primario" },
   ];
 
   let lastErr: any = null;
@@ -344,33 +342,14 @@ Reglas:
       const extraContact = aiSettings.extraContact || '';
       const contactString = extraContact ? `${contactNumber} / ${extraContact}` : contactNumber;
 
-      const agencyContext = `
-[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA]:
-Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}".
-A menos que la petición del usuario indique estrictamente lo contrario, DEBES incorporar la identidad de su marca.
-
-[CONTACTO — INTEGRACIÓN NATURAL OBLIGATORIA]:
-DEBES incluir el número de contacto "${contactString}" en la imagen, pero de forma que se sienta NATURAL y PARTE DEL DISEÑO. Ejemplos:
-- En un cartel/pancarta/banner que ya forme parte de la escena.
-- Escrito en una pantalla LED, neón, o marquesina dentro de la composición.
-- En la camiseta, uniforme o vestimenta de un personaje si es coherente.
-- Como parte de un flyer, volante o tarjeta que un personaje sostiene.
-- En un letrero de la calle, valla publicitaria o elemento de fondo.
-
-[REGLAS ESTRICTAS DE LEGIBILIDAD Y NO-SUPERPOSICIÓN — OBLIGATORIO]:
-1. EL TEXTO DEL CONTENIDO PRINCIPAL DE LA IMAGEN (titulares, headlines, eslogan, mensaje del cartel/banner/flyer, copy promocional, frases destacadas, números importantes, fechas, premios, montos, cuotas, llamados a la acción) DEBE SER 100% VISIBLE Y 100% LEGIBLE EN SU TOTALIDAD. CADA LETRA Y CADA PALABRA DEBEN VERSE COMPLETAS, SIN UN SOLO CARÁCTER TAPADO. ESTO ES INNEGOCIABLE.
-2. PROHIBIDO superponer el número, logos o cualquier texto sobre rostros, manos, o el sujeto principal de la imagen.
-3. PROHIBIDO que el texto se cruce, choque, intersecte o quede tapado por OTROS objetos, cuerpos, edificios, brazos, manos, productos o elementos del primer plano. Ningún elemento puede pasar POR DELANTE del texto principal.
-4. El texto y los logos DEBEN ubicarse en zonas LIMPIAS y DESPEJADAS de la composición (cielo, paredes vacías, espacios negativos, esquinas no ocupadas), con suficiente contraste de fondo para que cada letra se distinga sin esfuerzo.
-5. Reserva un margen mínimo de espacio respiratorio alrededor de cualquier texto/logo. Si no hay espacio limpio, REDISEÑA la escena (mueve sujetos, ajusta encuadre, cambia ángulo) para crear un área despejada que aloje el texto completo.
-6. Cualquier texto debe ser 100% legible: enfocado, nítido, sin recortes en bordes, sin salirse del lienzo, sin deformaciones, sin doble exposición, sin motion blur, sin objetos parciales encima, sin sombras que lo oscurezcan, sin gradientes que lo desvanezcan.
-7. Si dos elementos compiten por el mismo espacio, prioriza la VISIBILIDAD TOTAL del texto principal y desplaza al sujeto u objeto a otra zona. NUNCA los apiles ni cortes el texto.
-8. ANTES DE FINALIZAR EL RENDER, autoverifica: ¿se lee el texto principal de un vistazo, completo, sin interrupciones? Si la respuesta no es un SÍ rotundo, recompón la imagen.
-`;
+      const agencyContext = `[MARCA — DISEÑO PUBLICITARIO PROFESIONAL]:
+Estás generando una PIEZA PUBLICITARIA premium para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}".
+ESTILO OBLIGATORIO: composición cinematográfica, iluminación dramática, ángulos dinámicos, escenografía vivida. NUNCA generes un simple cartel plano con texto — crea una escena publicitaria impactante con profundidad, atmósfera y energía visual.
+DIVERSIDAD CREATIVA: varía ángulos (contrapicado, cenital, gran angular), fondos (urbano, neón, estadio, tecnológico), y poses (acción, celebración, dinamismo). PROHIBIDO repetir escenas genéricas (mostradores, personas paradas mirando a cámara).
+[CONTACTO]: Incluye "${contactString}" integrado naturalmente en la escena (banner LED, neón, marquesina, camiseta, pantalla). Cada dígito legible.
+[LEGIBILIDAD]: TODO texto (titulares, logos, contacto) 100% visible y nítido en zonas limpias con contraste. PROHIBIDO tapar texto con personas/objetos. Si hay conflicto, recompón priorizando legibilidad.`;
       finalPrompt = `${prompt}\n\n${agencyContext}`;
 
-      // Logos oficiales — sin cache buster: dejamos que el CDN los sirva rápido.
-      // Cuando ZamTools actualice un logo, basta con renombrar el archivo (default_X_v2.png) o purgar el bucket.
       const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
       const OFFICIAL_PLATFORMS: Record<string, string> = {
         ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
@@ -383,19 +362,19 @@ DEBES incluir el número de contacto "${contactString}" en la imagen, pero de fo
       const itemsToFetch: { url: string; label: string }[] = [];
 
       if (aiSettings.agencyLogoUrl) {
-        itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
+        itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia — COPIA EXACTA" });
       }
       if (aiSettings.inspLogoUrl) {
-        itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual Referencial" });
+        itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual de Referencia" });
       }
 
       const PLATFORM_COLORS: Record<string, {primary: string, secondary: string}> = {
-        ecuabet: { primary: "Amarillo vibrante (#FFD700)", secondary: "Negro (#000000)" },
-        doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
-        masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
-        databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
-        saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" },
-        astrobet: { primary: "Azul Intenso (#1A3A6B)", secondary: "Rojo Vibrante (#E8253A)" }
+        ecuabet: { primary: "#FFD700", secondary: "#000000" },
+        doradobet: { primary: "#FFDE00", secondary: "#000000" },
+        masparley: { primary: "#FF0000", secondary: "#000000" },
+        databet: { primary: "#00E1FF", secondary: "#000000" },
+        saborabet: { primary: "#FF6600", secondary: "#000000" },
+        astrobet: { primary: "#1A3A6B", secondary: "#E8253A" }
       };
 
       if (targetPlatform) {
@@ -412,45 +391,42 @@ DEBES incluir el número de contacto "${contactString}" en la imagen, pero de fo
         const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings.primaryColor || '#FFDE00';
         const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings.secondaryColor || '#000000';
 
-        finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}.
-ES OBLIGATORIO usar la siguiente paleta de colores para esta marca:
-- Color Primario: ${pColor}
-- Color Secundario: ${sColor}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.
-[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de los logos proporcionados. NO los pongas en blanco y negro, escala de grises o metalizados a menos que el prompt explícitamente lo pida. EL LOGO NUNCA debe quedar tapado, recortado o superpuesto a un sujeto — colócalo en una zona vacía con margen.`;
+        finalPrompt += `\n[PLATAFORMA]: Marca "${formattedPlat}". Colores OBLIGATORIOS: primario ${pColor}, secundario ${sColor}. Usa estos colores en ropa, fondos, iluminación. Escribe el nombre EXACTAMENTE como "${formattedPlat}". CALCA EXACTAMENTE el LOGO OFICIAL adjunto como imagen de referencia — NO INVENTES un logo distinto. Mantén los colores originales del logo (nunca B&N ni metálico). Colócalo en zona limpia sin tapar ni recortar.`;
 
         if (OFFICIAL_PLATFORMS[platKey]) {
-          itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
+          itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de ${formattedPlat} — COPIA EXACTA obligatoria` });
         }
       } else {
-        finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
-- Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
-- Color Secundario: ${aiSettings.secondaryColor || '#000000'}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.
-[REGLA DE LOGOS]: ES CRÍTICO Y OBLIGATORIO mantener fielmente los COLORES ORIGINALES de cualquier logo proporcionado. NO los pongas en blanco y negro, ni metalizados. El logo debe salir a full color exactamente como en la imagen de referencia y NUNCA superpuesto a otro sujeto.`;
+        finalPrompt += `\n[COLORES]: Primario ${aiSettings.primaryColor || '#FFDE00'}, Secundario ${aiSettings.secondaryColor || '#000000'}. Refléjalos en la composición. Logos a full color, nunca B&N.`;
       }
+
+      // Optimizar URLs de Supabase con transforms para reducir payload (6MB→~300KB por logo)
+      const optimizeUrl = (url: string): string => {
+        if (url.includes('supabase.co/storage/v1/object/public/')) {
+          const separator = url.includes('?') ? '&' : '?';
+          return `${url}${separator}width=800&quality=80`;
+        }
+        return url;
+      };
 
       const fetchPromises = itemsToFetch.map(async (item) => {
         try {
-          const res = await fetchWithTimeout(item.url, REF_FETCH_TIMEOUT_MS);
+          const optimizedUrl = optimizeUrl(item.url);
+          const res = await fetchWithTimeout(optimizedUrl, REF_FETCH_TIMEOUT_MS);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             let mimeType = (res.headers.get('content-type') || "image/png").toLowerCase().split(";")[0].trim();
             if (mimeType === "image/jpg") mimeType = "image/jpeg";
             if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-              // Si el content-type es genérico (octet-stream) o raro, asumimos PNG y dejamos que Gemini lo intente.
-              if (!mimeType.startsWith("image/")) {
-                console.warn(`[REF] mime sospechoso para ${item.label}: ${mimeType} — descartando`);
-                return null;
-              }
+              if (!mimeType.startsWith("image/")) return null;
               mimeType = "image/png";
             }
-            // Cap de 6 MB por logo remoto también
-            if (arrayBuffer.byteLength > 6 * 1024 * 1024) {
-              console.warn(`[REF] ${item.label} pesa ${arrayBuffer.byteLength}B — descartando para no romper Pro`);
+            // 2MB cap: Gemini no necesita más para entender un logo
+            if (arrayBuffer.byteLength > 2 * 1024 * 1024) {
+              console.warn(`[REF] ${item.label} pesa ${(arrayBuffer.byteLength/1024/1024).toFixed(1)}MB tras optimizar — descartando`);
               return null;
             }
+            console.log(`[REF] ${item.label}: ${(arrayBuffer.byteLength/1024).toFixed(0)}KB ✓`);
             return {
               base64: Buffer.from(arrayBuffer).toString("base64"),
               mimeType,
@@ -458,7 +434,7 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
             };
           }
         } catch (e) {
-          console.warn(`[REF] Timeout/error trayendo ${item.label} (ignorando):`, (e as Error).message);
+          console.warn(`[REF] error ${item.label}:`, (e as Error).message);
         }
         return null;
       });
@@ -466,54 +442,40 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
       for (const r of results) {
         if (r) referenceImages.push(r);
       }
+      console.log(`[GEMINI] Logos cargados: ${results.filter(Boolean).length}/${itemsToFetch.length} — labels: ${results.filter(Boolean).map((r: any) => r.label).join(', ') || 'ninguno'}`);
     }
 
     if (useAgencyCharacter && user.publicMetadata?.aiSettings) {
       const aiSettings: any = user.publicMetadata.aiSettings;
       if (aiSettings.characterImageUrl) {
         try {
-          const res = await fetchWithTimeout(aiSettings.characterImageUrl, REF_FETCH_TIMEOUT_MS);
+          let charUrl = aiSettings.characterImageUrl;
+          if (charUrl.includes('supabase.co/storage/v1/object/public/')) {
+            const sep = charUrl.includes('?') ? '&' : '?';
+            charUrl = `${charUrl}${sep}width=800&quality=80`;
+          }
+          const res = await fetchWithTimeout(charUrl, REF_FETCH_TIMEOUT_MS);
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             let mimeType = (res.headers.get('content-type') || "image/png").toLowerCase().split(";")[0].trim();
             if (mimeType === "image/jpg") mimeType = "image/jpeg";
-            if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-              mimeType = "image/png";
-            }
-            if (arrayBuffer.byteLength <= 6 * 1024 * 1024) {
-              referenceImages.push({
-                base64: Buffer.from(arrayBuffer).toString("base64"),
-                mimeType,
-                label: "Foto del Representante/Personaje de la Agencia"
-              });
+            if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) mimeType = "image/png";
+            if (arrayBuffer.byteLength <= 2 * 1024 * 1024) {
+              referenceImages.push({ base64: Buffer.from(arrayBuffer).toString("base64"), mimeType, label: "Personaje Agencia" });
+              console.log(`[REF] Personaje: ${(arrayBuffer.byteLength/1024).toFixed(0)}KB ✓`);
             } else {
-              console.warn(`[REF] personaje pesa ${arrayBuffer.byteLength}B — descartado`);
+              console.warn(`[REF] Personaje pesa ${(arrayBuffer.byteLength/1024/1024).toFixed(1)}MB — descartando`);
             }
           }
         } catch (e) {
-          console.warn("[REF] Timeout/error trayendo personaje (ignorando):", (e as Error).message);
+          console.warn("[REF] personaje error:", (e as Error).message);
         }
-        finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia. La imagen de referencia del personaje ha sido proporcionada.`;
+        finalPrompt += `\n[PERSONAJE]: Incluye al representante de la agencia (foto adjunta). Varía poses dinámicamente.`;
       }
     }
 
-    if (useAgencyIdentity && user.publicMetadata?.aiSettings) {
-      const aiS: any = user.publicMetadata.aiSettings;
-      const cn = aiS.contactNumber || '';
-      const ec = aiS.extraContact || '';
-      const cs = ec ? `${cn} / ${ec}` : cn;
-      finalPrompt += `\n\n[INSTRUCCIONES FINALES — LEE ESTO ANTES DE RENDERIZAR]:
-1. ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA SI EL USUARIO LO ESPECIFICÓ.
-2. VERIFICACIÓN DE CONTACTO: el número "${cs}" debe aparecer en la imagen de forma natural Y COMPLETAMENTE VISIBLE (cada dígito legible, sin caracteres tapados).
-3. VISIBILIDAD DEL TEXTO PRINCIPAL: cualquier texto del contenido principal (titular, mensaje, eslogan, premios, montos, llamados a la acción, fechas) debe verse ENTERO y NÍTIDO. Cero letras cortadas, cero palabras tapadas, cero caracteres detrás de objetos. Si tu boceto mental tiene aunque sea UNA letra obstruida, recompón la escena.
-4. ANTI-SUPERPOSICIÓN: NINGÚN texto, número de contacto o logo puede quedar tapado, atravesado, recortado o detrás de personas, objetos, manos, brazos o elementos del primer plano. Reubica el texto a un espacio limpio antes de renderizar.
-5. AUTO-CHEQUEO FINAL: simula leer la imagen como un usuario. Si no puedes leer cada palabra del texto principal de un solo vistazo, REHAZ la composición.`;
-    } else {
-      finalPrompt += `\n\n[INSTRUCCIONES FINALES]:
-1. ES ESTRICTAMENTE CRÍTICO OBEDECER CUALQUIER PROPORCIÓN SOLICITADA.
-2. EL TEXTO DEL CONTENIDO PRINCIPAL (titulares, mensajes, eslóganes, números, premios, llamados a la acción) DEBE SER 100% VISIBLE Y LEGIBLE: cada letra completa, sin recortes, sin objetos por delante, sin tapado parcial, sin deformación. Reubica sujetos u objetos si es necesario para liberar el espacio del texto.
-3. Antes de renderizar, autoverifica que cada palabra del texto principal se lea entera.`;
-    }
+    // Instrucciones finales compactas (siempre se aplican)
+    finalPrompt += `\n[FINAL]: Respeta proporción solicitada. Todo texto 100% legible, nítido, sin recortes ni tapados. Verifica antes de renderizar.`;
 
     // 1. Verificación financiera
     const currentCredits = Number(user.publicMetadata?.credits || 0);
@@ -538,13 +500,31 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     let creditsRefunded = false;
 
     try {
-      // Si el usuario subió refs propias, FORZAMOS Pro: Flash no maneja bien múltiples refs.
+      // Pro para publicidad con logos/refs → calidad publicitaria real
+      // Flash solo cuando no hay refs y el usuario no eligió modelo
+      // Si no hay forceModel, leer el modelo global configurado por el admin
+      let globalDefault: string = "";
+      if (!forceModel) {
+        try {
+          const { data: configData } = await supabase
+            .from("global_config")
+            .select("value")
+            .eq("key", "default_ai_model")
+            .single();
+          globalDefault = configData?.value || "";
+        } catch { /* tabla no existe, usar lógica normal */ }
+      }
+
       let model: string;
       if (userRefCount > 0) {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'pro') {
         model = NANO_BANANA_PRO;
       } else if (forceModel === 'flash') {
+        model = NANO_BANANA_2;
+      } else if (globalDefault === 'pro') {
+        model = NANO_BANANA_PRO;
+      } else if (globalDefault === 'flash') {
         model = NANO_BANANA_2;
       } else {
         model = hasRefImages ? NANO_BANANA_PRO : NANO_BANANA_2;

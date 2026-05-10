@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload, RefreshCw, UserPlus, Trash2, Image as ImageIcon, RotateCcw, Clock } from "lucide-react";
+import { ShieldCheck, Loader2, Search, Coins, Plus, Minus, MessageSquare, Send, Zap, Ticket, X, Share2, ChevronDown, ChevronUp, Upload, RefreshCw, UserPlus, Trash2, Image as ImageIcon, RotateCcw, Clock, Sparkles } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -62,6 +62,8 @@ export default function AdminPanelPage() {
   const [creditAmounts, setCreditAmounts] = useState<Record<string, string>>({});
   const [restarting, setRestarting] = useState(false);
   const [vipTimers, setVipTimers] = useState<Record<string, string>>({});
+  const [globalAiModel, setGlobalAiModel] = useState<'flash' | 'pro'>('flash');
+  const [savingModel, setSavingModel] = useState(false);
   const vipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check admin status via Supabase
@@ -322,6 +324,11 @@ export default function AdminPanelPage() {
     if (isAdmin) {
       loadUsers();
       loadRecentImages();
+      // Load global AI model
+      fetch("/api/admin/ai-model")
+        .then(r => r.json())
+        .then(data => { if (data.model) setGlobalAiModel(data.model as 'flash' | 'pro'); })
+        .catch(() => {});
     }
   }, [isAdmin]);
 
@@ -597,6 +604,76 @@ export default function AdminPanelPage() {
           </div>
         </div>
       )}
+
+      {/* Modelo IA Global */}
+      <div className="bg-[#141414] border border-white/[0.06] p-4 rounded-lg">
+        <h2 className="text-xs font-semibold text-white/50 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5" />
+          Modelo IA (Estudio)
+        </h2>
+        <p className="text-white/30 text-xs mb-3">Elige el modelo que usarán <strong>todos los usuarios</strong> en Estudio IA. Solo tú puedes cambiarlo desde aquí.</p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-[#0A0A0A] rounded-lg border border-white/[0.06] overflow-hidden">
+            <button
+              type="button"
+              onClick={async () => {
+                setGlobalAiModel('flash');
+                setSavingModel(true);
+                try {
+                  await fetch("/api/admin/ai-model", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ model: "flash" }),
+                  });
+                } catch { /* ignore */ }
+                finally { setSavingModel(false); }
+              }}
+              disabled={savingModel}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-all ${
+                globalAiModel === 'flash'
+                  ? 'bg-[#FFDE00]/10 text-[#FFDE00]'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              Flash ⚡
+            </button>
+            <div className="w-px h-6 bg-white/[0.06]"></div>
+            <button
+              type="button"
+              onClick={async () => {
+                setGlobalAiModel('pro');
+                setSavingModel(true);
+                try {
+                  await fetch("/api/admin/ai-model", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ model: "pro" }),
+                  });
+                } catch { /* ignore */ }
+                finally { setSavingModel(false); }
+              }}
+              disabled={savingModel}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-all ${
+                globalAiModel === 'pro'
+                  ? 'bg-purple-500/10 text-purple-300'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Pro ✨
+            </button>
+          </div>
+          {savingModel && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
+            globalAiModel === 'pro'
+              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15'
+              : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/50 border border-[#FFDE00]/10'
+          }`}>
+            {globalAiModel === 'pro' ? 'Alta fidelidad · Más lento · Mejor calidad' : 'Rápido · Económico · Uso general'}
+          </span>
+        </div>
+      </div>
 
       {/* Campaña de Estados Masiva */}
       <div className="bg-[#141414] border border-white/[0.06] p-5 sm:p-6 rounded-lg relative overflow-hidden mt-6">

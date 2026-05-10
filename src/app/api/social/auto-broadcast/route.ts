@@ -54,7 +54,15 @@ function callGemini(ai: GoogleGenAI, model: string, contents: any[], perCallMs: 
   const apiPromise = ai.models.generateContent({
     model,
     contents,
-    config: { responseModalities: ["TEXT", "IMAGE"] },
+    config: {
+      responseModalities: ["TEXT", "IMAGE"],
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_HATE_SPEECH" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+      ],
+    },
   });
   return Promise.race([apiPromise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);

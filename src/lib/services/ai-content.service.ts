@@ -139,35 +139,13 @@ export async function generateImage(
   };
   const formatInstruction = FORMAT_MAP[imageFormat] || FORMAT_MAP.square;
 
-  let finalPrompt = `[INSTRUCCIÓN DE FORMATO CRÍTICA - MÁXIMA PRIORIDAD]: ${formatInstruction}
-
-${imagePrompt}
-
-IMPORTANTE: Esta imagen es para publicar en redes sociales. Debe ser:
-- Visualmente impactante y profesional
-- Con colores vibrantes y buena composición
-- Sin texto superpuesto (a menos que se pida específicamente)
-- Alta calidad fotográfica o estilo gráfico premium`;
+  let finalPrompt = `[FORMATO]: ${formatInstruction}\n\n${imagePrompt}\n\nPIEZA PUBLICITARIA para redes sociales: composición cinematográfica, iluminación dramática, colores vibrantes, calidad premium. NUNCA un simple cartel plano — crea una escena impactante con profundidad y energía visual.`;
 
   if (useAgencyIdentity && aiSettings) {
-    const agencyContext = `
-[INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE MARCA Y CREATIVIDAD]: 
-Estás generando una imagen para la agencia: "${aiSettings.agencyName || 'Sin Nombre'}". 
-REGLAS DE ORO PARA EVITAR REPETICIÓN:
-1. PRIORIDAD ABSOLUTA AL TEMA PEDIDO: La imagen debe representar PRIMERO lo que el usuario pide en su idea principal.
-2. DIVERSIDAD EXTREMA: NUNCA repitas la misma escena aburrida (EJ: prohíbo terminantemente usar siempre mostradores, cajas registradoras, o personas de pie apuntando a la cámara).
-3. VARÍA EL CONTEXTO: Usa ángulos creativos, fondos abstractos, vistas desde arriba, escenas en exteriores, acción dinámica, o tecnología moderna, dependiendo de la idea.
-4. INTEGRACIÓN DE MARCA SUTIL Y ELEGANTE: 
-   - Estilo: ${aiSettings.agencyDesc || 'Estándar, profesional'}
-   - Si encaja naturalmente en la escena, incluye el teléfono: ${aiSettings.contactNumber || ''} ${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''}.`;
-    finalPrompt = `${finalPrompt}\n\n${agencyContext}`;
+    finalPrompt += `\n[MARCA]: Agencia "${aiSettings.agencyName || 'Sin Nombre'}". Estilo: ${aiSettings.agencyDesc || 'profesional'}. Prioriza el tema pedido. Varía composiciones (ángulos creativos, fondos dinámicos, acción). PROHIBIDO escenas genéricas. Contacto: ${aiSettings.contactNumber || ''}${aiSettings.extraContact ? ' / ' + aiSettings.extraContact : ''} — intégralo naturalmente.`;
 
-    // --- INYECCIÓN DE PERSONAJE (idéntico a Estudio IA) ---
     if (useAgencyCharacter && aiSettings.characterImageUrl) {
-      finalPrompt += `\n\n[INSTRUCCIÓN DE PERSONAJE]: DEBES incluir en la imagen al personaje/representante de la agencia (su rostro de referencia ha sido adjuntado). 
-REGLAS PARA EL PERSONAJE:
-- Mantén su apariencia y rasgos reconocibles.
-- EXTREMADAMENTE IMPORTANTE: Varía dinámicamente sus posiciones (volando, saltando, caminando, ángulos de cámara variados, tomas cinematográficas). PROHIBIDO hacer a la persona simplemente "sentada frente a una laptop" o "parada mirando a la cámara aburrida" a menos que se pida estrictamente.`;
+      finalPrompt += `\n[PERSONAJE]: Incluye al representante (foto adjunta). Varía poses dinámicamente (acción, celebración, ángulos cinematográficos). PROHIBIDO poses estáticas aburridas.`;
     }
   }
 
@@ -177,23 +155,21 @@ REGLAS PARA EL PERSONAJE:
   const itemsToFetch: { url: string; label: string }[] = [];
 
   if (useAgencyIdentity && aiSettings) {
-    if (aiSettings.agencyLogoUrl) itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia" });
-    if (aiSettings.inspLogoUrl) itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual Referencial" });
-    // Legacy support via `brandLogoUrl` just in case
-    if (aiSettings.brandLogoUrl) itemsToFetch.push({ url: aiSettings.brandLogoUrl, label: "Logo Secundario/Antiguo" });
+    if (aiSettings.agencyLogoUrl) itemsToFetch.push({ url: aiSettings.agencyLogoUrl, label: "Logo Principal de la Agencia — COPIA EXACTA" });
+    if (aiSettings.inspLogoUrl) itemsToFetch.push({ url: aiSettings.inspLogoUrl, label: "Estilo Visual de Referencia" });
+    if (aiSettings.brandLogoUrl) itemsToFetch.push({ url: aiSettings.brandLogoUrl, label: "Logo Secundario" });
   }
 
   const PLATFORM_COLORS: Record<string, {primary: string, secondary: string}> = {
-    ecuabet: { primary: "Azul oscuro (#0B1C3D)", secondary: "Amarillo (#FFD700)" },
-    doradobet: { primary: "Amarillo Dorado (#FFDE00)", secondary: "Negro oscuro (#000000)" },
-    masparley: { primary: "Rojo vibrante (#FF0000)", secondary: "Negro (#000000)" },
-    databet: { primary: "Celeste/Cyan (#00E1FF)", secondary: "Negro (#000000)" },
-    saborabet: { primary: "Naranja (#FF6600)", secondary: "Negro (#000000)" },
-    astrobet: { primary: "Azul Intenso (#1A3A6B)", secondary: "Rojo Vibrante (#E8253A)" }
+    ecuabet: { primary: "#0B1C3D", secondary: "#FFD700" },
+    doradobet: { primary: "#FFDE00", secondary: "#000000" },
+    masparley: { primary: "#FF0000", secondary: "#000000" },
+    databet: { primary: "#00E1FF", secondary: "#000000" },
+    saborabet: { primary: "#FF6600", secondary: "#000000" },
+    astrobet: { primary: "#1A3A6B", secondary: "#E8253A" }
   };
 
   const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rslhlpaxcwwchpcyiifc.supabase.co";
-  // Sin cache buster: dejamos que el CDN cachee. Para invalidar un logo, renombrar el archivo a default_X_v2.png.
   const OFFICIAL_PLATFORMS: Record<string, string> = {
     ecuabet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_ecuabet.png`,
     doradobet: `${supabaseBase}/storage/v1/object/public/ai-generations/agency-assets/default_doradobet.png`,
@@ -216,33 +192,33 @@ REGLAS PARA EL PERSONAJE:
     const pColor = PLATFORM_COLORS[platKey]?.primary || aiSettings?.primaryColor || '#FFDE00';
     const sColor = PLATFORM_COLORS[platKey]?.secondary || aiSettings?.secondaryColor || '#000000';
 
-    finalPrompt += `\n\n[PLATAFORMA Y COLORES ESTRICTOS]: DEBES generar esta imagen específicamente enfocada en promocionar la marca: ${formattedPlat}. 
-ES OBLIGATORIO usar la siguiente paleta de colores para esta marca: 
-- Color Primario: ${pColor}
-- Color Secundario: ${sColor}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación para que la imagen concuerde perfectamente con la marca. Evita usar colores de otras marcas.
-ALERTA DE ORTOGRAFÍA: ES ESTRICTAMENTE OBLIGATORIO escribir el nombre exactamente como "${formattedPlat}". Asegúrate de usar creativa e impecablemente EL LOGO OFICIAL DE ESTA PLATAFORMA (adjunto como imagen). NO INVENTES LOGOS NI COMETAS ERRORES DE ESCRITURA, calca exactamente el logo enviado.`;
+    finalPrompt += `\n[PLATAFORMA]: Marca "${formattedPlat}". Colores: primario ${pColor}, secundario ${sColor}. Nombre EXACTO: "${formattedPlat}". CALCA EXACTAMENTE el LOGO OFICIAL adjunto — NO INVENTES un logo distinto. Mantén colores originales del logo (nunca B&N). Logo en zona limpia.`;
     
     if (OFFICIAL_PLATFORMS[platKey]) {
-      itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de la casa de apuestas ${formattedPlat}` });
+      itemsToFetch.push({ url: OFFICIAL_PLATFORMS[platKey], label: `Logo OFICIAL de ${formattedPlat} — COPIA EXACTA obligatoria` });
     }
   } else if (useAgencyIdentity && aiSettings) {
-    // Fallback to agency colors if no platform selected
-    finalPrompt += `\n\n[COLORES DE LA MARCA]: Es OBLIGATORIO usar los colores de la agencia:
-- Color Primario: ${aiSettings.primaryColor || '#FFDE00'}
-- Color Secundario: ${aiSettings.secondaryColor || '#000000'}
-Refleja abundante y creativamente estos colores en la ropa, los fondos, las decoraciones o la iluminación.`;
+    finalPrompt += `\n[COLORES]: Primario ${aiSettings.primaryColor || '#FFDE00'}, Secundario ${aiSettings.secondaryColor || '#000000'}.`;
   }
 
 
-  // Fetch all images concurrently — devolvemos resultados ORDENADOS para no depender de race-conditions
+  // Optimizar URLs de Supabase para reducir payload
+  const optimizeUrl = (url: string): string => {
+    if (url.includes('supabase.co/storage/v1/object/public/')) {
+      const sep = url.includes('?') ? '&' : '?';
+      return `${url}${sep}width=800&quality=80`;
+    }
+    return url;
+  };
+
+  // Fetch all images concurrently
   const fetched = await Promise.all(itemsToFetch.map(async (item) => {
     try {
-      const res = await fetchWithTimeout(item.url, 6000);
+      const res = await fetchWithTimeout(optimizeUrl(item.url), 6000);
       if (!res.ok) return null;
       const arrayBuffer = await res.arrayBuffer();
-      if (arrayBuffer.byteLength > 6 * 1024 * 1024) {
-        console.warn(`[SOCIAL] ${item.label} pesa ${arrayBuffer.byteLength}B — descartando`);
+      if (arrayBuffer.byteLength > 2 * 1024 * 1024) {
+        console.warn(`[SOCIAL] ${item.label} pesa ${(arrayBuffer.byteLength/1024/1024).toFixed(1)}MB — descartando`);
         return null;
       }
       const mime = normalizeMime(res.headers.get('content-type'));
@@ -261,11 +237,11 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
 
   if (useAgencyCharacter && aiSettings && aiSettings.characterImageUrl) {
     try {
-      const res = await fetchWithTimeout(aiSettings.characterImageUrl, 6000);
+      const res = await fetchWithTimeout(optimizeUrl(aiSettings.characterImageUrl), 6000);
       if (res.ok) {
         const arrayBuffer = await res.arrayBuffer();
         const mime = normalizeMime(res.headers.get('content-type'));
-        if (mime && arrayBuffer.byteLength <= 6 * 1024 * 1024) {
+        if (mime && arrayBuffer.byteLength <= 2 * 1024 * 1024) {
           referenceImages.push({
             base64: Buffer.from(arrayBuffer).toString("base64"),
             mimeType: mime,
@@ -305,7 +281,15 @@ Refleja abundante y creativamente estos colores en la ropa, los fondos, las deco
     const apiPromise = ai.models.generateContent({
       model,
       contents,
-      config: { responseModalities: ["TEXT", "IMAGE"] },
+      config: {
+        responseModalities: ["TEXT", "IMAGE"],
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+          { category: "HARM_CATEGORY_HATE_SPEECH" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        ],
+      },
     });
     return Promise.race([apiPromise, timeoutPromise]).finally(() => {
       if (timer) clearTimeout(timer);

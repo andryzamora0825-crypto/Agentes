@@ -96,6 +96,8 @@ export default function EstudioIAPage() {
   const [isModerator, setIsModerator] = useState(false);
   const [autoPublishing, setAutoPublishing] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<'flash' | 'pro'>('flash');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [globalModel, setGlobalModel] = useState<'flash' | 'pro'>('flash');
   const [showCancelBtn, setShowCancelBtn] = useState(false);
   const [editingImage, setEditingImage] = useState<any | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
@@ -159,6 +161,26 @@ export default function EstudioIAPage() {
   }, []);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  // Load admin status & global model config
+  useEffect(() => {
+    const adminEmail = "andryzamora0825@gmail.com";
+    if (isLoaded && user) {
+      setIsAdmin(user.primaryEmailAddress?.emailAddress === adminEmail);
+    }
+  }, [isLoaded, user]);
+
+  useEffect(() => {
+    fetch("/api/admin/ai-model")
+      .then(r => r.json())
+      .then(data => {
+        if (data.model) {
+          setGlobalModel(data.model as 'flash' | 'pro');
+          setSelectedModel(data.model as 'flash' | 'pro');
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isLoaded && user && user.publicMetadata?.aiSettings) {
@@ -634,42 +656,53 @@ export default function EstudioIAPage() {
 
           {/* Model Selector + cost */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
-            {/* Model Toggle */}
-            <div className="flex items-center bg-[#0A0A0A] rounded-lg border border-white/[0.06] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setSelectedModel('flash')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
-                  selectedModel === 'flash'
-                    ? 'bg-[#FFDE00]/10 text-[#FFDE00] shadow-inner'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
-                }`}
-              >
-                <Zap className="w-3 h-3" />
-                Flash
-              </button>
-              <div className="w-px h-5 bg-white/[0.06]"></div>
-              <button
-                type="button"
-                onClick={() => setSelectedModel('pro')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
-                  selectedModel === 'pro'
-                    ? 'bg-purple-500/10 text-purple-300 shadow-inner'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
-                }`}
-              >
-                <Sparkles className="w-3 h-3" />
-                Pro
-              </button>
-            </div>
-
-            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
-              selectedModel === 'pro' 
-                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15' 
-                : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/50 border border-[#FFDE00]/10'
-            }`}>
-              {selectedModel === 'pro' ? 'Alta fidelidad · Más lento' : 'Rápido · Uso general'}
-            </span>
+            {/* Model Toggle — solo visible para admins */}
+            {isAdmin ? (
+              <>
+                <div className="flex items-center bg-[#0A0A0A] rounded-lg border border-white/[0.06] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModel('flash')}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
+                      selectedModel === 'flash'
+                        ? 'bg-[#FFDE00]/10 text-[#FFDE00] shadow-inner'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <Zap className="w-3 h-3" />
+                    Flash
+                  </button>
+                  <div className="w-px h-5 bg-white/[0.06]"></div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModel('pro')}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold transition-all ${
+                      selectedModel === 'pro'
+                        ? 'bg-purple-500/10 text-purple-300 shadow-inner'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Pro
+                  </button>
+                </div>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
+                  selectedModel === 'pro' 
+                    ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15' 
+                    : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/50 border border-[#FFDE00]/10'
+                }`}>
+                  {selectedModel === 'pro' ? 'Alta fidelidad · Más lento' : 'Rápido · Uso general'}
+                </span>
+              </>
+            ) : (
+              <span className={`text-[10px] font-medium px-2.5 py-1 rounded-md ${
+                globalModel === 'pro' 
+                  ? 'bg-purple-500/10 text-purple-400 border border-purple-500/15' 
+                  : 'bg-[#FFDE00]/[0.06] text-[#FFDE00]/50 border border-[#FFDE00]/10'
+              }`}>
+                {globalModel === 'pro' ? '✨ Modelo Pro' : '⚡ Modelo Flash'}
+              </span>
+            )}
 
             <div className="ml-auto text-xs font-medium px-2.5 py-1 rounded-lg border transition-all bg-purple-500/10 border-purple-500/15 text-purple-300">
               150 créditos
@@ -968,10 +1001,10 @@ export default function EstudioIAPage() {
                   <h3 className="font-semibold text-white text-lg">Generando tu imagen...</h3>
                   <p className="text-sm text-zinc-500 max-w-md">
                     {selectedModel === 'pro'
-                      ? 'Modelo Pro activo. Alta fidelidad. 30–60 segundos.'
+                      ? 'Modelo Pro activo. Alta fidelidad. 25–50 segundos.'
                       : refImages.length > 0
-                        ? 'Analizando referencias y generando. 20–40 segundos.'
-                        : 'Renderizando con Flash. 10–20 segundos.'}
+                        ? 'Analizando referencias con Pro. 25–50 segundos.'
+                        : 'Generando con Flash ⚡ 10–25 segundos.'}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="w-1.5 h-1.5 rounded-full bg-[#FFDE00] animate-pulse-subtle"></div>

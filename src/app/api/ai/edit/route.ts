@@ -40,12 +40,10 @@ function isOverloaded(err: any): boolean {
   const msg = String(err?.message || err || "").toLowerCase();
   const status = err?.status || err?.statusCode || err?.code;
   return (
-    status === 503 ||
-    status === 429 ||
-    msg.includes("503") ||
+    status === 503 || status === 429 || status === 500 ||
+    msg.includes("503") || msg.includes("500") || msg.includes("internal") ||
     msg.includes("overloaded") ||
-    msg.includes("unavailable") ||
-    msg.includes("rate limit") ||
+    msg.includes("unavailable") || msg.includes("rate limit") ||
     msg.includes("resource_exhausted")
   );
 }
@@ -58,7 +56,15 @@ function callGemini(contents: any[], perCallTimeoutMs: number): Promise<any> {
   const apiPromise = ai.models.generateContent({
     model: EDIT_MODEL,
     contents,
-    config: { responseModalities: ["TEXT", "IMAGE"] },
+    config: {
+      responseModalities: ["TEXT", "IMAGE"],
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_HATE_SPEECH" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+      ],
+    },
   });
   return Promise.race([apiPromise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -148,18 +154,7 @@ export async function POST(request: Request) {
       }
       const imageBase64 = Buffer.from(arrayBuffer).toString("base64");
 
-      const finalPrompt = `[INSTRUCCIÓN DE EDICIÓN DE IMAGEN]: Estás recibiendo una imagen ya existente. Tu tarea es editarla siguiendo EXACTAMENTE las instrucciones del usuario. NO generes una imagen nueva desde cero. MODIFICA la imagen proporcionada aplicando únicamente los cambios solicitados. Mantén TODO lo demás igual (composición, personas, fondos, logos, texto, etc.).
-
-Instrucciones de edición del usuario: "${editPrompt}"
-
-REGLAS ESTRICTAS:
-- SOLO modifica lo que el usuario pidió. No cambies nada más.
-- Mantén la misma resolución, proporciones y estilo general.
-- Si el usuario pide cambiar un color, cámbialo SOLO donde indicó.
-- Si el usuario pide agregar algo, agrégalo sin destruir el resto de la imagen.
-- Si el usuario pide quitar algo, quítalo y rellena el espacio de forma natural.
-- ANTI-SUPERPOSICIÓN: cualquier texto, logo o número debe ir en zonas limpias, sin tapar rostros, manos ni el sujeto principal. Si tu edición introduce nuevos elementos, colócalos en espacios negativos.
-- VISIBILIDAD DEL TEXTO PRINCIPAL: si la imagen contiene o tu edición agrega texto del contenido principal (titulares, mensajes, eslóganes, números, premios, fechas, montos, llamados a la acción), DEBE quedar 100% visible y 100% legible. Cada letra entera, ningún carácter tapado por objetos, manos, brazos, productos o elementos del primer plano, sin recortes en bordes, sin deformación. Si la edición introduciría una obstrucción, reubica el texto o el objeto antes de renderizar.`;
+      const finalPrompt = `[EDICIÓN]: Edita la imagen proporcionada según: "${editPrompt}". NO generes imagen nueva, MODIFICA la existente. Solo cambia lo que el usuario pide. Mantén resolución, proporciones, estilo. Texto visible y legible. No tapar rostros ni sujeto principal.`;
 
       const contents: any[] = [
         { text: finalPrompt },
