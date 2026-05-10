@@ -597,14 +597,31 @@ DIVERSIDAD CREATIVA: varía ángulos (contrapicado, cenital, gran angular), fond
 
       const finalPermanentUrl = publicUrlData.publicUrl;
 
-      const { error: dbError } = await supabase.from("ai_images").insert({
+      const modelLabel = model === NANO_BANANA_PRO ? "pro" : "flash";
+      let dbError: any = null;
+
+      // Intentar con model_used
+      const { error: insertErr } = await supabase.from("ai_images").insert({
         prompt,
         image_url: finalPermanentUrl,
         author_id: user.primaryEmailAddress?.emailAddress,
         author_name: user.fullName || user.firstName || "Agente",
         author_avatar_url: user.imageUrl,
-        model_used: model === NANO_BANANA_PRO ? "pro" : "flash",
+        model_used: modelLabel,
       });
+
+      // Si falla (columna no existe), reintentar sin model_used
+      if (insertErr) {
+        console.warn("[GENERATE] insert con model_used falló, reintentando sin:", insertErr.message);
+        const { error: retryErr } = await supabase.from("ai_images").insert({
+          prompt,
+          image_url: finalPermanentUrl,
+          author_id: user.primaryEmailAddress?.emailAddress,
+          author_name: user.fullName || user.firstName || "Agente",
+          author_avatar_url: user.imageUrl,
+        });
+        dbError = retryErr;
+      }
 
       if (dbError) {
         await supabase.storage.from("ai-generations").remove([fileName]).catch(() => {});
