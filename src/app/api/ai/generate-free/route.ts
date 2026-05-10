@@ -181,9 +181,14 @@ export async function POST(request: Request) {
     const user = await currentUser();
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    // Solo admins
+    // Solo admins (verificar en tabla admins de Supabase)
     const email = user.primaryEmailAddress?.emailAddress;
-    if (email !== ADMIN_EMAIL) {
+    const { data: adminData } = await supabase
+      .from("admins")
+      .select("email")
+      .eq("email", email)
+      .single();
+    if (!adminData) {
       return NextResponse.json({ error: "Acceso denegado. Solo administradores." }, { status: 403 });
     }
 
@@ -194,20 +199,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Escribe qué quieres generar" }, { status: 400 });
     }
 
-    // ── 1. Mejorar prompt con GPT ─────────────────────────────────────
-    // Si hay refs, avisar a GPT para que el prompt las contemple
-    const promptForGpt = clientRefs.length > 0
-      ? `${prompt.trim()}\n\n[NOTA: El usuario adjuntó ${clientRefs.length} imagen(es) de referencia que serán enviadas al modelo. Tu prompt DEBE mencionar que se deben integrar/replicar las referencias visuales proporcionadas.]`
-      : prompt.trim();
-    const { text: enhancedPrompt, wasEnhanced } = await enhancePrompt(promptForGpt);
-
-    // ── 2. Construir prompt final con formato ─────────────────────────
-    const formatStr = FORMAT_MAP[imageFormat] || "";
-    let finalPrompt = formatStr
-      ? `[FORMATO]: ${formatStr}\n\n${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`
-      : `${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`;
-
-    // ── 3. Procesar refs del usuario ──────────────────────────────────
+    // ── 1. Procesar refs del usuario PRIMERO ────────────────────────────
     const referenceImages: { base64: string; mimeType: string; label: string }[] = [];
 
     for (let i = 0; i < Math.min(clientRefs.length, 4); i++) {
@@ -216,21 +208,52 @@ export async function POST(request: Request) {
         referenceImages.push({
           base64: ref.base64,
           mimeType: ref.mimeType,
-          label: `Referencia ${i + 1}`
+          label: `Imagen de Referencia #${i + 1}`
         });
       }
     }
 
-    // Inyectar instrucciones obligatorias de uso de referencias
-    if (referenceImages.length > 0) {
-      finalPrompt += `\n\n[IMÁGENES DE REFERENCIA — USO OBLIGATORIO]:
-El usuario adjuntó ${referenceImages.length} imagen(es) de referencia (etiquetadas ARRIBA). Estas imágenes NO son decorativas: son CRÍTICAS y deben influir directamente en la imagen final.
+    const hasRefs = referenceImages.length > 0;
+
+    // ── 2. Mejorar prompt con GPT (SOLO si no hay refs) ───────────────
+    // Con refs: el prompt va DIRECTO a Gemini para que use las imágenes reales
+    // Sin refs: GPT mejora el prompt para máxima calidad visual
+    let enhancedPrompt: string;
+    let wasEnhanced = false;
+
+    if (hasRefs) {
+      // NO usar GPT — el prompt debe ser simple para que Gemini priorice las imágenes
+      enhancedPrompt = prompt.trim();
+      console.log(`[FREE-GEN] ${referenceImages.length} refs detectadas → prompt directo (sin GPT)`);
+    } else {
+      const result = await enhancePrompt(prompt.trim());
+      enhancedPrompt = result.text;
+      wasEnhanced = result.wasEnhanced;
+    }
+
+    // ── 3. Construir prompt final ─────────────────────────────────────
+    const formatStr = FORMAT_MAP[imageFormat] || "";
+    let finalPrompt = "";
+
+    if (hasRefs) {
+      // Prompt estilo Estudio IA: conciso + instrucciones de uso de refs
+      finalPrompt = `${enhancedPrompt}
+
+[IMÁGENES DE REFERENCIA DEL USUARIO — USO OBLIGATORIO]:
+El usuario adjuntó ${referenceImages.length} ${referenceImages.length === 1 ? 'imagen' : 'imágenes'} de referencia (etiquetadas ARRIBA como "Imagen de Referencia #1", "#2", etc.). Estas imágenes NO son decorativas: son CRÍTICAS y deben influir directamente en la imagen final.
 Reglas:
-1. Si las referencias muestran personas, productos u objetos concretos, INCLÚYELOS preservando su apariencia (rostro, forma, colores, vestuario).
-2. Si la referencia es un estilo visual o paleta, aplícalo a toda la composición.
-3. Combina coherentemente TODAS las referencias entre sí y con el prompt textual.
-4. NO ignores ninguna referencia. Si es ambigua, intégrala como contexto/atmósfera.
+1. Si las referencias muestran personas, productos u objetos concretos, INCLÚYELOS en la imagen final preservando su apariencia distintiva (rostro, marca, forma, colores, vestuario).
+2. Si la referencia es un estilo visual o paleta, aplícalo a la composición.
+3. Combina coherentemente todas las referencias entre sí y con el prompt textual del usuario.
+4. NO ignores ninguna referencia. Si una referencia es ambigua, intégrala como contexto/atmósfera.
 5. Mantén la calidad y proporción solicitadas.`;
+
+      if (formatStr) finalPrompt = `[FORMATO]: ${formatStr}\n\n${finalPrompt}`;
+    } else {
+      // Sin refs: usar el prompt mejorado por GPT
+      finalPrompt = formatStr
+        ? `[FORMATO]: ${formatStr}\n\n${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`
+        : `${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`;
     }
 
     // ── 4. Seleccionar modelo ─────────────────────────────────────────
@@ -240,14 +263,15 @@ Reglas:
     } else if (forceModel === "flash") {
       model = FLASH_MODEL;
     } else {
-      // Auto: Pro si hay refs, Flash si no
-      model = referenceImages.length > 0 ? PRO_MODEL : FLASH_MODEL;
+      // Auto: SIEMPRE Pro cuando hay refs (maneja mejor las imágenes)
+      model = hasRefs ? PRO_MODEL : FLASH_MODEL;
     }
 
     // ── 5. Construir contenido para Gemini ────────────────────────────
+    // Orden: imágenes primero, prompt textual al final (recomendado por Gemini)
     const contents: any[] = [];
     for (const img of referenceImages) {
-      contents.push({ text: `\n[IMAGEN DE REFERENCIA: ${img.label} — INTEGRAR OBLIGATORIAMENTE en la imagen final]\n` });
+      contents.push({ text: `\n[ESTA IMAGEN CORRESPONDE A: ${img.label}]\n` });
       contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
     }
     contents.push({ text: finalPrompt });
@@ -343,7 +367,12 @@ export async function GET(request: Request) {
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const email = user.primaryEmailAddress?.emailAddress;
-    if (email !== ADMIN_EMAIL) {
+    const { data: adminRow } = await supabase
+      .from("admins")
+      .select("email")
+      .eq("email", email)
+      .single();
+    if (!adminRow) {
       return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
     }
 

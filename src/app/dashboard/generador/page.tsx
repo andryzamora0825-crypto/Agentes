@@ -100,8 +100,22 @@ export default function GeneradorLibrePage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isAdmin = isLoaded && user?.primaryEmailAddress?.emailAddress === ADMIN_EMAIL;
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
   const currentFormat = FORMAT_OPTIONS.find(f => f.id === selectedFormat) || FORMAT_OPTIONS[0];
+
+  // Check admin status via API
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) { setCheckingAdmin(false); return; }
+
+    fetch("/api/admin/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) })
+      .then(r => r.json())
+      .then(data => setIsAdmin(data.isAdmin === true))
+      .catch(() => setIsAdmin(email === ADMIN_EMAIL))
+      .finally(() => setCheckingAdmin(false));
+  }, [isLoaded, user]);
 
   // Close format menu on outside click
   useEffect(() => {
