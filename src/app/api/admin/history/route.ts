@@ -5,9 +5,17 @@ import { supabase } from "@/lib/supabase";
 export async function GET(request: Request) {
   try {
     const user = await currentUser();
-    // Protección absoluta: Solo Admin
-    if (!user || user.primaryEmailAddress?.emailAddress !== "andryzamora0825@gmail.com") {
-      return NextResponse.json({ error: "No autorizado. Solo administrador." }, { status: 403 });
+    if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+
+    // Verificar admin via Supabase
+    const email = user.primaryEmailAddress?.emailAddress;
+    const { data: adminRow } = await supabase
+      .from("admins")
+      .select("email")
+      .eq("email", email)
+      .single();
+    if (!adminRow) {
+      return NextResponse.json({ error: "No autorizado. Solo administradores." }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
