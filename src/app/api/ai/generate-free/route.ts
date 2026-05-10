@@ -195,11 +195,15 @@ export async function POST(request: Request) {
     }
 
     // ── 1. Mejorar prompt con GPT ─────────────────────────────────────
-    const { text: enhancedPrompt, wasEnhanced } = await enhancePrompt(prompt.trim());
+    // Si hay refs, avisar a GPT para que el prompt las contemple
+    const promptForGpt = clientRefs.length > 0
+      ? `${prompt.trim()}\n\n[NOTA: El usuario adjuntó ${clientRefs.length} imagen(es) de referencia que serán enviadas al modelo. Tu prompt DEBE mencionar que se deben integrar/replicar las referencias visuales proporcionadas.]`
+      : prompt.trim();
+    const { text: enhancedPrompt, wasEnhanced } = await enhancePrompt(promptForGpt);
 
     // ── 2. Construir prompt final con formato ─────────────────────────
     const formatStr = FORMAT_MAP[imageFormat] || "";
-    const finalPrompt = formatStr
+    let finalPrompt = formatStr
       ? `[FORMATO]: ${formatStr}\n\n${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`
       : `${enhancedPrompt}\n\nultra-detailed, 8K resolution, professional lighting, cinematic composition, masterpiece quality.`;
 
@@ -217,6 +221,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // Inyectar instrucciones obligatorias de uso de referencias
+    if (referenceImages.length > 0) {
+      finalPrompt += `\n\n[IMÁGENES DE REFERENCIA — USO OBLIGATORIO]:
+El usuario adjuntó ${referenceImages.length} imagen(es) de referencia (etiquetadas ARRIBA). Estas imágenes NO son decorativas: son CRÍTICAS y deben influir directamente en la imagen final.
+Reglas:
+1. Si las referencias muestran personas, productos u objetos concretos, INCLÚYELOS preservando su apariencia (rostro, forma, colores, vestuario).
+2. Si la referencia es un estilo visual o paleta, aplícalo a toda la composición.
+3. Combina coherentemente TODAS las referencias entre sí y con el prompt textual.
+4. NO ignores ninguna referencia. Si es ambigua, intégrala como contexto/atmósfera.
+5. Mantén la calidad y proporción solicitadas.`;
+    }
+
     // ── 4. Seleccionar modelo ─────────────────────────────────────────
     let model: string;
     if (forceModel === "pro") {
@@ -231,7 +247,7 @@ export async function POST(request: Request) {
     // ── 5. Construir contenido para Gemini ────────────────────────────
     const contents: any[] = [];
     for (const img of referenceImages) {
-      contents.push({ text: `\n[IMAGEN DE REFERENCIA: ${img.label}]\n` });
+      contents.push({ text: `\n[IMAGEN DE REFERENCIA: ${img.label} — INTEGRAR OBLIGATORIAMENTE en la imagen final]\n` });
       contents.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
     }
     contents.push({ text: finalPrompt });
